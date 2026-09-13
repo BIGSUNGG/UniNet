@@ -38,7 +38,10 @@
 
 ## 프로젝트 사실
 
-- 저장소: 초기화 단계 (아직 기능 코드 없음). 프로젝트 정의는 `Document/overview.md` — 미정 항목은 추측 금지.
-- 기술: C#/.NET (Visual Studio). 코딩 규약: `Document/conventions.md`.
+- 정체성: **상용 유니티 게임 서버용 네트워크 프레임워크 라이브러리**. 원칙 “사용은 간단하게, 기능은 강력하게”.
+- 기능 목표: MonoBehaviour 기준 RPC / 변수 자동 Replicate / UE Network Framework 패리티 (`Document/roadmap.md` 매트릭스).
+- 기반 스택: MessageProtocol + DRPC(Communication 간접) **적극 재사용**. 최소 Unity 6, 서버는 Unity 서버 빌드(서버 권위).
+- 구현 상태: 기능 코드 미착수 — 어셈블리 구조·참조 방식은 미정이므로 추측 금지. 정의 상세: `Document/overview.md`.
+- 기술: C#/Unity (netstandard2.1 호환). 코딩 규약: `Document/conventions.md`.
 - 문서·보고·질문 언어: **한국어**.
 - 변경 기록: 모든 의미 있는 변경을 `Document/changelog.md`에 남긴다.
