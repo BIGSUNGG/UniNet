@@ -31,7 +31,7 @@
 
 1. 게임 코드는 **UniNet API만** 사용한다 (DRPC·MessageProtocol·Communication을 직접 건드리지 않는 것을 기본으로 한다).
 2. UniNet은 기존 스택(DRPC·MessageProtocol·Communication)을 **우선 재사용**하고, 부족한 기능만 자체 구현한다. 우회·중복 구현이 필요해지면 ADR로 기록한다.
-3. 기존 스택 수정이 필요하면 각 저장소에서 처리하고 버전으로 참조한다 (단, 참조 방식 — NuGet/프로젝트 참조 — 은 구현 시작 시 확정).
+3. 기존 스택 수정이 필요하면 각 저장소에서 처리하고 버전으로 참조한다 (참조 방식은 패키지 고정 — ADR-0003).
 
 ## 데이터 흐름 (개념)
 
@@ -41,10 +41,11 @@
 ## 외부 의존성
 
 - Unity 6 (netstandard2.1 호환)
-- DRPC(조사 시점 3.1.0, CodeGenerator 포함), MessageProtocol(조사 시점 3.0.0), Communication (DRPC 경유) — 참조 버전은 구현 착수 시 확정
+- DRPC(조사 시점 3.1.0, CodeGenerator 포함), MessageProtocol(조사 시점 3.0.0), Communication (DRPC 경유) — **패키지 참조 고정** (ADR-0003), 참조 버전은 구현 착수 시 확정
 - 그 외 라이브러리는 필요 시 추가 (ADR로 기록)
 
 ## 미정 사항
 
-- 어셈블리 구조(asmdef 분할)·패키지 배포 형태(UPM/NuGet) — 구현 착수 시 확정
+- 어셈블리 구조(asmdef 분할) — [[plan]] Phase 0 스파이크 후 확정 (제안: Core/Unity/Editor/Tests 분리)
+- UPM-NuGet 연결 방식 — [[plan]] Phase 0 스파이크에서 확정 (ADR-0003 참조)
 - 클라이언트-서버 간 공유 계약 코드 배치 방식
