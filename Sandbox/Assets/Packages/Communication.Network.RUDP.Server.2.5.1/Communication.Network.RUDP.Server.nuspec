@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>Communication.Network.RUDP.Server</id>
+    <version>2.5.1</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/BIGSUNGG/DS_Communication</projectUrl>
+    <description>연결형 통신 전송 계층 RUDP 서버 — RudpListener 수락 (LiteNetLib 기반, .NET Standard 2.1, Unity 호환).</description>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_Communication.git" commit="09c7a953250f2c484fa3225429a7d20b2f54fa24" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="Communication.Network.RUDP.Shared" version="2.5.1" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

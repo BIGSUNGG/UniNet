@@ -1,0 +1,521 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>MessageProtocol.Core</name>
+    </assembly>
+    <members>
+        <member name="T:MessageProtocol.MessageCategory">
+            <summary>헤더 하위 니블(0~15) 메시지 카테고리.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageCategory.Category0">
+            <summary>기본 카테고리.</summary>
+        </member>
+        <member name="T:MessageProtocol.MessageIgnoreAttribute">
+            <summary>직렬화 대상 멤버에서 제외한다.</summary>
+        </member>
+        <member name="T:MessageProtocol.MessageIncludeAttribute">
+            <summary>public 이 아닌 멤버를 직렬화 대상에 포함한다.</summary>
+        </member>
+        <member name="T:MessageProtocol.MessageAttribute">
+            <summary>
+            메시지 선언 속성 — 종류·ID·카테고리의 유일한 진입점.
+            <para>
+            <c>Kind</c> 는 <see cref="T:MessageProtocol.MessageKind"/> 값대로 종류를 확정하고, <see cref="F:MessageProtocol.MessageKind.Automatic"/> 은
+            계층에서 추론한다. <c>Id</c> 를 생략(0)하면 MessageId 는 타입 FullName 의 FNV-1a 해시(24비트,
+            <see cref="T:MessageProtocol.MessageIdHash"/>)로 결정되고, 명시하면 수동 할당이다(단, 0 은 '생략'을 뜻하므로 수동 0 은 불가).
+            해시 충돌·Child 위치의 해시 0 은 진단 에러로 거부된다. <see cref="F:MessageProtocol.MessageKind.NonId"/> 는
+            id·category 인자와 함께 쓰면 진단 에러(MSGPROT018)다.
+            </para>
+            </summary>
+        </member>
+        <member name="P:MessageProtocol.MessageAttribute.Kind">
+            <summary>메시지 종류. 기본 Automatic(계층 추론).</summary>
+        </member>
+        <member name="P:MessageProtocol.MessageAttribute.Id">
+            <summary>수동 MessageId. 0(생략)이면 FullName 해시로 결정된다.</summary>
+        </member>
+        <member name="P:MessageProtocol.MessageAttribute.Category">
+            <summary>헤더 하위 니블(0~15). 기본 Category0. NonId 에서는 사용 불가.</summary>
+        </member>
+        <member name="T:MessageProtocol.GenericMessageAttribute">
+            <summary>
+            제네릭 메시지의 직렬화 지원 구성(닫힌 제네릭) 선언. 선언부·캐리어 등 임의의 타입 선언에
+            구성마다 반복 부착한다: <c>[GenericMessage(typeof(Envelope&lt;Ping&gt;), ClassId = 1)]</c>.
+            선언된 구성은 생성 코드가 (MessageId, ClassId) 키로 모듈 로드 시 자동 등록해 송수신 양쪽에서
+            object dispatch 가 동작한다. 구성 미선언 제네릭 메시지의 직렬화는 예외.
+            </summary>
+        </member>
+        <member name="P:MessageProtocol.GenericMessageAttribute.ClassId">
+            <summary>구성 클래스 식별자. 헤더의 MessageId 뒤에 3바이트로 기록된다. 1 .. 2^24-1.</summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.BinaryPrimitivesCompat">
+            <summary>
+            netstandard2.1 에 없는 float/double 리틀엔디안 읽기·쓰기를 제공한다.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.IMessageSerializable`1">
+            <summary>
+            메시지 직렬화 계약 마커. 구현 타입은 다음 public static 멤버를 노출한다
+            (생성기가 채워 주거나 수동 구현이 직접 작성):
+            <list type="bullet">
+              <item><c>static void Serialize(T, ref MessageBufferWriter)</c></item>
+              <item><c>static byte[] Serialize(T)</c></item>
+              <item><c>static T Deserialize(ref MessageBufferReader)</c></item>
+              <item><c>static T Deserialize(byte[])</c></item>
+            </list>
+            정적 추상 멤버를 쓰지 않아 netstandard2.1 에서도 동작한다.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.IHasIdMessageSerializable`1">
+            <summary>
+            프로토콜 식별자(MessageId)를 갖는 메시지 계약.
+            구현 타입은 추가로 <c>public static uint MessageId { get; }</c> 를 노출해야 한다.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageBufferReader">
+            <summary>
+            Forward-only ReadOnlySpan 기반 버퍼 reader. 경계 초과 읽기는 <see cref="T:System.IO.EndOfStreamException"/>.
+            </summary>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageBufferReader.DefaultMaxNestingDepth">
+            <summary>
+            기본 중첩 객체 역직렬화 깊이 상한. 불신 피어가 작은 프레임에 깊은 중첩을 담아
+            재귀 스택을 소진시키는 것(스택 오버플로 — catch 불가, 프로세스 즉시 종료)을 막는다 (Known-Issues KI-14).
+            <see cref="M:MessageProtocol.Serialize.MessageBufferReader.#ctor(System.ReadOnlySpan{System.Byte},System.Int32)"/> 로 reader 단위로 올릴 수 있다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferReader.#ctor(System.ReadOnlySpan{System.Byte},System.Int32)">
+            <param name="buffer">읽을 페이로드 버퍼.</param>
+            <param name="maxNestingDepth">
+            중첩 객체 역직렬화 깊이 상한. 합법적으로 깊은 객체 그래프를 다루는 호출자가 상한을 올리는 탈출구이며,
+            값은 스레드 스택 크기(수준당 스택 프레임)보다 작아야 한다. 0 이하 거부.
+            </param>
+        </member>
+        <member name="P:MessageProtocol.Serialize.MessageBufferReader.MaxNestingDepth">
+            <summary>이 reader 가 허용하는 중첩 객체 깊이 상한.</summary>
+        </member>
+        <member name="P:MessageProtocol.Serialize.MessageBufferReader.NestingDepth">
+            <summary>현재 중첩 깊이 — <see cref="M:MessageProtocol.Serialize.MessageBufferReader.EnterNestedObject"/>·<see cref="M:MessageProtocol.Serialize.MessageBufferReader.LeaveNestedObject"/> 가 관리한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferReader.EnterNestedObject">
+            <summary>
+            중첩 객체 판독 시작을 알린다. 상한 도달 시 <see cref="T:System.IO.InvalidDataException"/> (와이어 내용 불법 —
+            경계 위반 <see cref="T:System.IO.EndOfStreamException"/> 과 구분). 생성 코드·<c>DeserializeFromReader</c> 가 재귀 지점에서 호출한다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferReader.LeaveNestedObject">
+            <summary>
+            중첩 객체 판독 종료를 알린다. 짝이 맞지 않는 호출(판독 중 예외)은 깊이를 부풀리기만 하므로
+            가드는 실패 방향으로 안전하다 — 예외가 난 reader 는 위치가 객체 중간이라 재사용해서는 안 된다.
+            음수로 내려가지 않도록 0 에서 클램프(음수 깊이가 상한을 무력화하는 것 차단).
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferReader.ReadDecimal">
+            <summary>WriteDecimal 의 GetBits 순서(lo, mid, hi, flags) 16바이트를 복원.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferReader.ReadBytes(System.Int32)">
+            <summary><paramref name="length"/> 바이트 구간을 뷰로 반환하고 전진한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferReader.ReadString">
+            <summary>int32 길이 접두 문자열. -1 은 null, 0 은 빈 문자열. 무효 UTF-8 은 와이어 손상으로 거부한다.</summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageBufferWriter">
+            <summary>
+            Forward-only 풀링 바이트 버퍼 writer. ArrayPool 에서 대여하고 필요 시 자동 증량한다.
+            리틀엔디안 고정 폭 프리미티브 + 길이 접두 문자열/바이트 형식을 쓴다.
+            </summary>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageBufferWriter.DefaultMaxNestingDepth">
+            <summary>
+            기본 중첩 객체 직렬화 깊이 상한. reader 기본 상한과 **의도적으로 동일**하다 —
+            써서 보낼 수 있는 그래프를 상대가 기본 설정으로 읽지 못하는 비대칭을 막는다 (Known-Issues KI-25).
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.Create(System.Int32,System.Int32)">
+            <param name="initialCapacity">초기 대여 용량(0 이하는 빈 버퍼로 시작해 첫 쓰기에서 증설).</param>
+            <param name="maxNestingDepth">
+            중첩 객체 직렬화 깊이 상한. 합법적으로 깊은 객체 그래프를 다루는 호출자가 올리는 탈출구이며,
+            수신 측도 읽으려면 <see cref="M:MessageProtocol.Serialize.MessageBufferReader.#ctor(System.ReadOnlySpan{System.Byte},System.Int32)"/> 로 같은 상한을 맞춰야 한다. 0 이하 거부.
+            </param>
+        </member>
+        <member name="P:MessageProtocol.Serialize.MessageBufferWriter.MaxNestingDepth">
+            <summary>이 writer 가 허용하는 중첩 객체 깊이 상한.</summary>
+        </member>
+        <member name="P:MessageProtocol.Serialize.MessageBufferWriter.NestingDepth">
+            <summary>현재 중첩 깊이 — <see cref="M:MessageProtocol.Serialize.MessageBufferWriter.EnterNestedObject"/>·<see cref="M:MessageProtocol.Serialize.MessageBufferWriter.LeaveNestedObject"/> 가 관리한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.EnterNestedObject">
+            <summary>
+            중첩 객체 기록 시작을 알린다. 상한 도달 시 <see cref="T:System.InvalidOperationException"/> —
+            객체 그래프가 너무 깊거나(긴 연결 리스트·깊은 트리), 런타임 디스패치 멤버를 통해 순환이 흘렀다
+            (디스패치 경로는 백레퍼런스를 추적하지 않는다). 가드가 없으면 두 경우 모두 재귀가 스택을
+            소진해 **catch 불가한 스택 오버플로**로 프로세스가 죽는다 (Known-Issues KI-25).
+            생성 코드·<c>SerializeToWriter</c> 가 재귀 지점에서 호출한다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.LeaveNestedObject">
+            <summary>
+            중첩 객체 기록 종료를 알린다. 짝이 맞지 않는 호출(기록 중 예외)은 깊이를 부풀리기만 하므로
+            가드는 실패 방향으로 안전하다. 음수로 내려가지 않도록 0 에서 클램프(음수 깊이가 상한을 무력화하는 것 차단).
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.GetSpan(System.Int32)">
+            <summary><paramref name="size"/> 바이트를 쓸 공간을 확보하고 해당 구간을 반환·전진한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.EnsureCapacity(System.Int32)">
+            <summary><paramref name="additional"/> 바이트를 더 쓸 수 있음을 보장한다. 생성 코드는 고정 크기 구간을 합산해 1회 호출한다.</summary>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageBufferWriter.DefaultGrowCapacity">
+            <summary>빈 버퍼의 첫 증설 용량(<see cref="F:MessageProtocol.MessageWireFormat.DefaultStreamCapacity"/> 와 동일).</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.ComputeGrowCapacity(System.Int32,System.Int64)">
+            <summary>
+            증설 용량 산정 — **long 산술** + 배열 상한 clamp (Known-Issues KI-7).
+            이전 공식 `Math.Max(_buffer.Length * 2, required)` 는 버퍼가 1GB 를 넘는 순간 `Length * 2` 가 음수로
+            오버플로해 `Math.Max` 가 항상 `required` 를 고르고, 그래서 매 증설이 **여유 없는 정확 용량** 대여 +
+            전체 복사가 되어 성장 비용이 제곱이 됐다(게다가 그 크기면 풀링도 안 된다). 페이로드 상한
+            <see cref="F:MessageProtocol.Serialize.MessageBufferWriter.MaxBufferLength"/>(약 2.1GB)은 이 라이브러리가 지원하는 범위라 그 구간에서도 배증이 유지돼야 한다.
+            </summary>
+            <param name="currentCapacity">현재 대여 배열 길이(0 = 빈 버퍼).</param>
+            <param name="required">필요 총용량(위치 + 추가) — 호출자가 <see cref="F:MessageProtocol.Serialize.MessageBufferWriter.MaxBufferLength"/> 이하임을 보장한다.</param>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.WriteDecimal(System.Decimal)">
+            <summary>GetBits 순서(lo, mid, hi, flags)로 16바이트 기록. 중간 할당 없음.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.WriteString(System.String)">
+            <summary>null = int32(-1), 빈 문자열 = int32(0), 그 외 int32(utf8 길이) + utf8 바이트.</summary>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageBufferWriter.MaxBufferLength">
+            <summary>byte[] 버퍼의 최대 길이(.NET 배열 상한) — 이보다 큰 페이로드는 단일 버퍼에 담을 수 없다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.GetStringBufferRequirement(System.Int32)">
+            <summary>문자열 페이로드(길이 접두 4바이트 + UTF-8 상한)에 필요한 버퍼 바이트 수를 long 으로 반환한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.PatchInt32(System.Int32,System.Int32)">
+            <summary>
+            지정 오프셋에 int32 를 다시 쓴다 (외부 프레이밍 등 드문 용도).
+            오프셋은 **이미 기록된 구간**(`0 .. Length - 4`) 안이어야 한다 — 밖이면 대여 배열의 미기록 바이트를
+            건드리고, 그 배열은 나중에 풀로 돌아가므로 다른 대여자에게 보이는 쓰기가 된다 (Known-Issues KI-7).
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.ToPooledBuffer">
+            <summary>버퍼 소유권을 <see cref="T:MessageProtocol.Serialize.PooledBuffer"/> 로 이전하고 writer 는 비운다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageBufferWriter.ToArray">
+            <summary>기록된 내용을 새 byte[] 로 복사해 반환한다 (호환 경로).</summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer">
+            <summary>
+            메시지 등록·직렬화·역직렬화 정적 진입점.
+            생성 코드는 <c>[ModuleInitializer]</c> 에서 델리게이트·MessageId 를 직접 넘겨 등록한다.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.TypedSerializeRefAction`1">
+            <summary>제네릭 hot path 가 호출하는 ref 기반 직렬화 델리게이트.</summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.TypedDeserializeRefFunc`1">
+            <summary>제네릭 hot path 가 호출하는 ref 기반 역직렬화 델리게이트.</summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.SerializerCachePrefill`1">
+            <summary>
+            <see cref="T:MessageProtocol.Serialize.MessageSerializer.SerializerCache`1"/> cctor 보다 먼저 델리게이트를 심기 위한 홀더.
+            별도 타입이라 Prefill 중에는 캐시 cctor 가 돌지 않는다.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.SerializerCache`1">
+            <summary>
+            타입 인자 전용 정적 캐시. 등록 시 Prefill 되면 리플렉션 없이 채워지고,
+            그렇지 않으면 첫 접근 시 1회 리플렉션으로 채워진다.
+            <para>
+            필드는 <c>readonly</c> 가 아니고 cctor 는 **절대 던지지 않는다** — 둘 다 같은 이유다. cctor 가 던지면 CLR 이
+            그 실패를 타입별로 영구 캐싱해 이후 성공적인 델리게이트 등록으로도 복구할 수 없고(`TypeInitializationException`),
+            readonly 면 등록 전 조기 접근으로 cctor 가 먼저 돌았을 때 Prefill 이 영원히 무시된다 (Known-Issues KI-11).
+            미해결 멤버는 null 로 남고 사용 지점에서 명확한 메시지로 보고한다.
+            </para>
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.TryCreateDelegate``1(System.Reflection.MethodInfo)">
+            <summary>리플렉션으로 찾은 static 멤버를 델리게이트로 만든다. 멤버가 없으면 null (cctor 비던짐 규약).</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.TryResolveSerializeRefMethod(System.Type)">
+            <summary>`static void Serialize(T, ref MessageBufferWriter)` 를 찾는다. 없으면 null — cctor 가 던지면 CLR 이 실패를 영구 캐싱한다 (KI-11).</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.TryResolveSerializeBytesMethod(System.Type)">
+            <summary>`static byte[] Serialize(T)` 를 찾는다. 없으면 null (사유는 <see cref="M:MessageProtocol.Serialize.MessageSerializer.TryResolveSerializeRefMethod(System.Type)"/> 와 동일).</summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.ReferenceKind">
+            <summary>
+            forward-only wire format 의 참조 유형 태그. 값 0/1/2 는 와이어 규격의 일부라 변경할 수 없다.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.SerializeContext">
+            <summary>
+            한 번의 직렬화 동안 공유·순환 참조를 추적하는 컨텍스트.
+            첫 객체는 슬롯만 쓰고, Dictionary 는 두 번째 등록부터 할당된다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.SerializeContext.TryGetObjectId(System.Object,System.Int32@)">
+            <summary>
+            이미 등록한 객체의 id 를 찾는다. null 은 거부한다 — null 참조는 <see cref="F:MessageProtocol.Serialize.MessageSerializer.ReferenceKind.Null"/> 로 써야 하고,
+            id 조회 대상으로 삼으면 `_firstObject is null`(빈 슬롯 sentinel)과 구분이 사라진다 (Known-Issues KI-30).
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.SerializeContext.RegisterObject(System.Object)">
+            <summary>
+            새 객체를 등록하고 할당된 id 를 반환한다. id 는 1 부터 시작한다.
+            null 은 거부한다 — null 을 등록하면 첫 슬롯이 비어 있는 상태로 남아 **다음 객체도 id 1 을 받아**
+            백레퍼런스가 다른 객체를 가리키게 된다(조용한 객체 그래프 손상) — Known-Issues KI-30.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.DeserializeContext">
+            <summary>
+            한 번의 역직렬화 동안 id → 객체 역참조를 복원하는 테이블.
+            첫 객체는 슬롯만 쓰고, Dictionary 는 두 번째 등록부터 할당된다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.DeserializeContext.RegisterNewObject(System.Object)">
+            <summary>
+            새로 생성된 객체를 등록하고 id 를 반환한다 (직렬화 시와 동일한 순서여야 한다).
+            null 은 거부한다 — <see cref="M:MessageProtocol.Serialize.MessageSerializer.SerializeContext.RegisterObject(System.Object)"/> 와 같은 이유로 id 1 이 중복 발급되어
+            <see cref="M:MessageProtocol.Serialize.MessageSerializer.DeserializeContext.GetObject(System.Int32)"/> 이 백레퍼런스를 잘못 된 인스턴스로 해석한다 (Known-Issues KI-30).
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.ThrowNullReferenceValue(System.String)">
+            <summary>
+            참조 추적 컨텍스트의 null 거부 — 두 컨텍스트가 공유하는 단일 사유 메시지.
+            `_firstObject is null` 이 "빈 슬롯" sentinel 이라서 null 을 등록·조회하면 슬롯이 차지되지 않아
+            **id 1 이 중복 발급**되고 백레퍼런스가 다른 인스턴스로 해석된다 (Known-Issues KI-30).
+            </summary>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageSerializer._genericClassIds">
+            <summary>닫힌 제네릭 구성별 클래스 ID. 선언부·분산 선언 양쪽 등록이 공유한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.GetGenericClassId``1">
+            <summary>닫힌 제네릭 구성의 클래스 ID 조회. 미등록 구성은 0.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.RegisterHasIdMessage``1(MessageProtocol.Serialize.MessageSerializer.TypedSerializeRefAction{``0},MessageProtocol.Serialize.MessageSerializer.TypedDeserializeRefFunc{``0},System.UInt32,System.Func{``0,System.Byte[]},System.Func{System.Byte[],``0})">
+            <summary>
+            ID 메시지 등록 fast path. <see cref="T:MessageProtocol.Serialize.MessageSerializer.SerializerCache`1"/> 를 리플렉션 없이 채운다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.RegisterHasIdMessage``1">
+            <summary>ID 메시지 등록 리플렉션 경로. 수동 구현 타입이거나 델리게이트를 넘기지 않을 때 사용한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.RegisterNonIdMessage``1(MessageProtocol.Serialize.MessageSerializer.TypedSerializeRefAction{``0},MessageProtocol.Serialize.MessageSerializer.TypedDeserializeRefFunc{``0},System.Func{``0,System.Byte[]},System.Func{System.Byte[],``0})">
+            <summary>NonId 메시지 등록 fast path.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.RegisterGenericConstruction``1(System.UInt32)">
+            <summary>
+            닫힌 제네릭 구성 등록. (MessageId, ClassId) 키로 writer·reader 를 디스패치에 올려
+            송수신 양쪽 모두에서 object dispatch 가 동작하게 한다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.RegisterNonIdMessage``1">
+            <summary>NonId 메시지 등록 리플렉션 경로.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.RegisterType(System.Type)">
+            <summary>
+            리플렉션 기반 등록. 타입이 <see cref="T:MessageProtocol.Serialize.IMessageSerializable`1"/> 또는
+            <see cref="T:MessageProtocol.Serialize.IHasIdMessageSerializable`1"/> 를 구현해야 한다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.PrefillSerializerCache``1(MessageProtocol.Serialize.MessageSerializer.TypedSerializeRefAction{``0},MessageProtocol.Serialize.MessageSerializer.TypedDeserializeRefFunc{``0},System.Func{``0,System.Byte[]},System.Func{System.Byte[],``0},System.UInt32,System.Boolean)">
+            <summary>
+            Prefill 홀더에 델리게이트를 심은 뒤 <see cref="T:MessageProtocol.Serialize.MessageSerializer.SerializerCache`1"/> cctor 를 돌려 리플렉션을 건너뛴다.
+            홀더가 별도 타입이라 설정 중에는 캐시 cctor 가 트리거되지 않는다. cctor 가 이미 돌았다면(등록 전 조기 접근) CLR 은 다시 돌리지 않으므로 캐시 필드를 직접 채워 복구한다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.ValidateRegistration(System.Type,System.UInt32,System.Boolean,System.Boolean)">
+            <summary>
+            등록을 발행하기 전에 거부 조건을 검증한다 — 부수효과 없음(디스패치·캐시 어느 쪽도 건드리지 않는다).
+            prefill 이 이 검증보다 먼저 돌면 거부된 등록의 MessageId/HasId 가 <see cref="T:MessageProtocol.Serialize.MessageSerializer.SerializerCache`1"/> 에
+            영구 잔류한다 (Known-Issues KI-11 잔존). RegisterCore 의 원자적 클레임(TryAdd/GetOrAdd) 은 그대로
+            남아 검증 통과 후 발행 직전의 동시 등록 경쟁을 담당한다.
+            </summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.BufferReaderFunc">
+            <summary>MessageId 로 dispatch 되는 reader 델리게이트.</summary>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageSerializer._genericReaderDispatch">
+            <summary>제네릭 구성 디스패치: (MessageId, ClassId) → reader. 키는 두 값을 24비트씩 합성한 ulong.</summary>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageSerializer._registeredGenericIds">
+            <summary>(MessageId, ClassId) 등록 소유 타입. 구성 간 충돌 검출용.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Deserialize``1(MessageProtocol.Serialize.MessageBufferReader@)">
+            <summary>제네릭 hot path 역직렬화 (딕셔너리 조회·박싱 없음).</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Deserialize``1(System.ReadOnlySpan{System.Byte})">
+            <summary>제네릭 경로: ReadOnlySpan 에서 역직렬화.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.DeserializeExact``1(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            제네릭 경로(전체 소비 검사): 프레임 전체를 정확히 소비해야 성공한다. 남은 바이트가 있으면
+            <see cref="T:System.IO.InvalidDataException"/> — 피어가 이 타입과 다른 멤버 레이아웃으로 쓴 프레임
+            (스키마 표류 — ADR-0006 레이아웃 동결 위반, 예: 필드 제거)을 조용한 데이터 유실 대신 크게 실패시킨다.
+            기본 <see cref="M:MessageProtocol.Serialize.MessageSerializer.Deserialize``1(System.ReadOnlySpan{System.Byte})"/> 은 뒤에 붙은 여유 바이트를 허용한다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Deserialize``1(System.ReadOnlyMemory{System.Byte})">
+            <summary>제네릭 경로: ReadOnlyMemory 에서 역직렬화.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Deserialize``1(System.Byte[])">
+            <summary>제네릭 경로: byte[] 호환 경로.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Deserialize(System.Byte[])">
+            <summary>object dispatch 역직렬화: 헤더 MessageId 로 등록된 타입에 라우팅한다 (Standalone/Group 만).</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Deserialize(System.ReadOnlyMemory{System.Byte})">
+            <summary>object dispatch 역직렬화: ReadOnlyMemory 입력.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Deserialize(System.ReadOnlySpan{System.Byte})">
+            <summary>object dispatch 역직렬화: ReadOnlySpan 입력. 제네릭 메시지는 (MessageId, ClassId) 로 구성에 라우팅한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.DeserializeExact(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            object dispatch 역직렬화(전체 소비 검사): 프레임 전체를 정확히 소비해야 성공한다.
+            남은 바이트가 있으면 <see cref="T:System.IO.InvalidDataException"/> — 피어가 이 타입과 다른 멤버 레이아웃으로
+            쓴 프레임(스키마 표류 — ADR-0006 레이아웃 동결 위반)을 조용한 데이터 유실 대신 크게 실패시킨다.
+            기본 <see cref="M:MessageProtocol.Serialize.MessageSerializer.Deserialize(System.ReadOnlySpan{System.Byte})"/> 은 전송 계층 프레이밍 여유 등으로 뒤에 붙은 바이트를 허용한다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.DeserializeCore(System.ReadOnlySpan{System.Byte},System.Int32@)">
+            <summary>라우팅 공통 본체 — 소비한 바이트 수를 반환한다(전체 소비 검사용).</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.ThrowTrailingBytes(System.Int32,System.Int32)">
+            <summary>전체 소비 검사 실패 — 와이어 내용 불법으로 보고한다(경계·인자 오류와 구분).</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(MessageProtocol.Serialize.MessageBufferReader@)">
+            <summary>중첩 object dispatch: 현재 reader 위치의 헤더로 등록된 타입에 라우팅한다. 제네릭 헤더는 (MessageId, ClassId) 라우팅.</summary>
+            <remarks>
+            중첩 객체 한 수준으로 계산된다(<see cref="M:MessageProtocol.Serialize.MessageBufferReader.EnterNestedObject"/>) — 타입 매개변수 멤버·외부 호출자의
+            재귀가 reader 깊이 카운터에 연결되어 작은 적대 프레임의 무한 재귀(스택 오버플로)를 막는다 (Known-Issues KI-14).
+            </remarks>
+        </member>
+        <member name="F:MessageProtocol.Serialize.MessageSerializer._writerDispatch">
+            <summary>object 경로에서 타입별 직렬화 델리게이트를 찾는 디스패치 테이블.</summary>
+        </member>
+        <member name="T:MessageProtocol.Serialize.MessageSerializer.BufferWriterAction">
+            <summary>object 경로 직렬화 델리게이트.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Serialize``1(``0,MessageProtocol.Serialize.MessageBufferWriter@)">
+            <summary>
+            제네릭 hot path. 정적 캐시 델리게이트 1회 호출만으로 직렬화한다 (딕셔너리 조회·박싱 없음).
+            선언 타입 기준이며 파생 타입 다형성이 필요하면 <see cref="M:MessageProtocol.Serialize.MessageSerializer.Serialize(System.Object)"/> 를 쓴다.
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Serialize``1(``0)">
+            <summary>제네릭 경로: 호환용 byte[] 반환.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.SerializePooled``1(``0)">
+            <summary>제네릭 경로: ArrayPool 기반 <see cref="T:MessageProtocol.Serialize.PooledBuffer"/> 반환. 호출자가 Dispose 해야 한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.ThrowMissingSerialize``1">
+            <summary>
+            캐시에 직렬화 델리게이트가 없을 때 보고한다. <see cref="T:MessageProtocol.Serialize.MessageSerializer.SerializerCache`1"/> cctor 가 던지는 대신 여기서 보고하므로
+            CLR 이 초기화 실패를 타입별로 영구 캐싱하지 않고, 이후 델리게이트 등록으로 복구할 수 있다 (Known-Issues KI-11).
+            </summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.Serialize(System.Object)">
+            <summary>object dispatch 경로: 런타임 타입으로 직렬화 (다형성). 호환용 byte[] 반환.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.SerializePooled(System.Object)">
+            <summary>object dispatch 경로: <see cref="T:MessageProtocol.Serialize.PooledBuffer"/> 반환.</summary>
+        </member>
+        <member name="M:MessageProtocol.Serialize.MessageSerializer.SerializeToWriter(System.Object,MessageProtocol.Serialize.MessageBufferWriter@)">
+            <summary>object dispatch: 지정 writer 에 직접 기록한다 (중첩 메시지 용도).</summary>
+            <remarks>
+            중첩 객체 한 수준으로 계산된다(<see cref="M:MessageProtocol.Serialize.MessageBufferWriter.EnterNestedObject"/>) — 타입 매개변수·추상 메시지 멤버와
+            수동 구현의 재귀가 writer 깊이 카운터에 연결되어, 백레퍼런스가 추적되지 않는 디스패치 경로의 순환 그래프가
+            재귀 스택을 소진시키는 것(catch 불가 스택 오버플로)을 막는다 (Known-Issues KI-25).
+            </remarks>
+        </member>
+        <member name="T:MessageProtocol.Serialize.PooledBuffer">
+            <summary>
+            ArrayPool 에서 대여한 byte[] 를 소유하는 직렬화 결과 버퍼.
+            사용 후 <see cref="M:MessageProtocol.Serialize.PooledBuffer.Dispose"/> 로 풀에 반환한다. 이중 Dispose 는 안전하다.
+            </summary>
+            <remarks>
+            소유 상태는 참조형 <see cref="T:MessageProtocol.Serialize.PooledBuffer.Owner"/> 홀더에 둔다 — 이 타입은 struct 이므로 대입·전달마다 사본이 만들어지는데,
+            사본끼리 홀더를 공유하지 않으면 어느 한 사본의 Dispose 가 다른 사본에 보이지 않아 같은 배열이 풀에
+            두 번 반납된다(다음 대여자가 남의 데이터를 보는 손상 — Known-Issues KI-37). 공유 홀더로 모든 사본이
+            단일 반환 상태를 보고, 어떤 사본이 먼저 Dispose 해도 나머지 사본은 빈 뷰를 본다.
+            </remarks>
+        </member>
+        <member name="T:MessageProtocol.Serialize.PooledBuffer.Owner">
+            <summary>대여 배열의 실제 소유자. struct 사본 전체가 이 인스턴스를 공유한다.</summary>
+        </member>
+        <member name="P:MessageProtocol.Serialize.PooledBuffer.UnsafeArraySegment">
+            <summary>풀 반환 없는 뷰. 배열이 재사용될 수 있으니 수명 관리에 주의.</summary>
+        </member>
+        <member name="T:MessageProtocol.MessageFlag">
+            <summary>헤더 상위 니블에 기록되는 메시지 종류 플래그.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageFlag.Generic">
+            <summary>제네릭 독립 메시지용 예약 헤더 플래그(값 0). 헤더 뒤에 3바이트 구성 타입 ID 가 따라온다.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageFlag.IdMessage">
+            <summary>ID 를 가진 세 종류(Standalone/Parent/Child)의 조합 — NonIdMessage 의 반대 개념.</summary>
+        </member>
+        <member name="T:MessageProtocol.MessageKind">
+            <summary>[Message] 생성자로 지정하는 메시지 종류.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageKind.Automatic">
+            <summary>
+            계층에서 자동 추론: 조상에 메시지가 있으면 Child, 없고 동일 컴파일에 [Message] 파생이 있으면 Parent,
+            나머지는 Standalone.
+            </summary>
+        </member>
+        <member name="F:MessageProtocol.MessageKind.Standalone">
+            <summary>독립 ID 메시지. 헤더 4바이트.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageKind.Parent">
+            <summary>부모 메시지. 상속 계층의 꼭대기.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageKind.Child">
+            <summary>자식 메시지. 상속 계층에 부모가 필수이며 수동 id 는 0 일 수 없다.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageKind.NonId">
+            <summary>ID 없는 메시지. 헤더 1바이트. object Deserialize 대상이 아니다. id·category 인자는 쓸 수 없다.</summary>
+        </member>
+        <member name="T:MessageProtocol.MessageWireFormat">
+            <summary>헤더·MessageId 조립 규칙. 런타임과 코드 생성기가 공유하는 단일 소스.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageWireFormat.GenericIdHeaderSize">
+            <summary>제네릭 메시지 헤더: 헤더 1바이트 + MessageId 3바이트 + 구성 타입 ID 3바이트.</summary>
+        </member>
+        <member name="M:MessageProtocol.MessageWireFormat.ComposeHeaderByte(MessageProtocol.MessageFlag,System.Byte)">
+            <summary>flags(상위 니블) + category(하위 니블) 로 헤더 첫 바이트를 만든다.</summary>
+        </member>
+        <member name="M:MessageProtocol.MessageWireFormat.ComposeMessageId(MessageProtocol.MessageFlag,System.Byte,System.UInt32)">
+            <summary>헤더 바이트 + 24비트 ID 값으로 MessageId 를 조립한다.</summary>
+        </member>
+        <member name="M:MessageProtocol.MessageWireFormat.HasEmbeddedMessageId(System.Byte)">
+            <summary>헤더 뒤에 3바이트 ID 값이 따라오는 메시지인지 여부.</summary>
+        </member>
+        <member name="M:MessageProtocol.MessageWireFormat.IsGenericMessage(System.Byte)">
+            <summary>제네릭 메시지 헤더인지 여부 (플래그 니블 0 예약). 헤더 뒤 구성 타입 ID 3바이트가 따라온다.</summary>
+        </member>
+        <member name="T:MessageProtocol.MessageIdHash">
+            <summary>
+            <c>[Message]</c> 자동 MessageId 해시 — 타입 FullName 의 FNV-1a 32비트를 와이어 24비트(<c>0x00FF_FFFF</c>)로 마스크한다.
+            알고리즘과 FullName 문자열 형식은 와이어 호환을 위해 동결되어 있다(변경 시 기존 메시지 ID 전부 무효).
+            </summary>
+        </member>
+        <member name="F:MessageProtocol.MessageIdHash.OffsetBasis">
+            <summary>FNV-1a 32비트 오프셋 basis.</summary>
+        </member>
+        <member name="F:MessageProtocol.MessageIdHash.Prime">
+            <summary>FNV-1a 32비트 소수.</summary>
+        </member>
+        <member name="M:MessageProtocol.MessageIdHash.FromFullName(System.String)">
+            <summary>
+            FullName(네임스페이스 점 구분 + 중첩 <c>+</c> + 제네릭 차수 <c>`n</c>, BCL <see cref="P:System.Type.FullName"/> 관례)의
+            FNV-1a 32비트 해시를 24비트로 마스크해 반환한다.
+            </summary>
+        </member>
+        <member name="T:System.Runtime.CompilerServices.ModuleInitializerAttribute">
+            <summary>netstandard2.1 대상용 polyfill. net6+ 에서는 런타임 제공 타입을 사용한다.</summary>
+        </member>
+    </members>
+</doc>

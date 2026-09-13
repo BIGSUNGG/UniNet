@@ -1,0 +1,16 @@
+{
+    "name": "UniNet.Unity",
+    "rootNamespace": "UniNet.Unity",
+    "references": [
+        "UniNet.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

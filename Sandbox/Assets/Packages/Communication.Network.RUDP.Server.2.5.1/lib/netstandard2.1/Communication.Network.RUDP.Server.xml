@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Communication.Network.RUDP.Server</name>
+    </assembly>
+    <members>
+        <member name="T:Communication.Network.RUDP.RudpListener">
+            <summary>
+            RUDP 수락. 수락된 채널은 <see cref="E:Communication.Network.RUDP.RudpListener.Accepted"/>로 전달하며, 세션 생성은 앱이 한다.
+            <c>RudpTransportOptions.MaxConnections</c> 설정 시 상한을 넘는 접속 요청은 즉시 거부되고 수락은 계속된다.
+            </summary>
+            <remarks>
+            접속 수와 무관하게 전용 폴링 스레드 1개만 돌린다. 수신은 세션별 디스패치 큐로 넘어가므로
+            앱 핸들러가 폴링 스레드를 점유하지 않는다.
+            </remarks>
+        </member>
+        <member name="E:Communication.Network.RUDP.RudpListener.Accepted">
+            <summary>
+            수락된 채널 통지. 세션 생성 등 앱 로직에서 던진 예외는 격리된다.
+            </summary>
+            <remarks>
+            메시지 단위 채널(RUDP)은 구독 전에 도착한 메시지를 버퍼링하지 않는다 —
+            통지 시점에 <c>RudpSession</c>을 **동기적으로** 생성해야 한다(핸들러 안에서 <c>new</c> 후 반환).
+            채널을 다른 스레드로 넘겨 세션 생성을 미루면 그 사이 도착한 메시지는 유실된다.
+            TCP는 스트림 버퍼링으로 동일 창구가 없다.
+            </remarks>
+        </member>
+        <member name="P:Communication.Network.RUDP.RudpListener.LocalPort">
+            <summary>바인딩된 실제 포트. 포트 0(임시 포트) 수락 시 테스트·등록에 사용한다.</summary>
+        </member>
+        <member name="P:Communication.Network.RUDP.RudpListener.ActiveConnectionCount">
+            <summary>수락됐으나 아직 회수되지 않은 채널 수. <c>MaxConnections</c> 상한 강제의 기준이다.</summary>
+        </member>
+        <member name="M:Communication.Network.RUDP.RudpListener.Start(Communication.Network.RUDP.RudpTransportOptions)">
+            <exception cref="T:System.InvalidOperationException">이미 시작됐거나 바인딩에 실패한 경우.</exception>
+        </member>
+    </members>
+</doc>

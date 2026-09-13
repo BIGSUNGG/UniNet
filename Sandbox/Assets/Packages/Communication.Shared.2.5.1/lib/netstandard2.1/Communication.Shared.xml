@@ -1,0 +1,353 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Communication.Shared</name>
+    </assembly>
+    <members>
+        <member name="T:Communication.Shared.Channels.IByteChannel">
+            <summary>
+            바이트 스트림 채널. 메시지 경계는 제공하지 않으며, 프레이밍은 상위(<c>MessagePipeline</c> + Framer)가 담당한다.
+            </summary>
+        </member>
+        <member name="P:Communication.Shared.Channels.IByteChannel.IsConnected">
+            <summary>전송 계층 관점의 연결 상태. 끊김 감지의 보조 신호이며 최종 판단은 세션이 한다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Channels.IByteChannel.ReadAsync(System.Memory{System.Byte},System.Threading.CancellationToken)">
+            <summary>
+            버퍼에 바이트를 읽는다. 반환 0 = 스트림 끝(원격 닫힘).
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Channels.IByteChannel.WriteAsync(System.ReadOnlyMemory{System.Byte},System.Threading.CancellationToken)">
+            <summary>버퍼 전체를 스트림에 쓴다.</summary>
+        </member>
+        <member name="T:Communication.Shared.Channels.IMessageChannel">
+            <summary>
+            메시지 단위 채널. 전송 계층이 메시지 경계를 제공하므로 프레이머가 필요 없다. (예: RUDP)
+            </summary>
+        </member>
+        <member name="P:Communication.Shared.Channels.IMessageChannel.IsConnected">
+            <summary>전송 계층 관점의 연결 상태.</summary>
+        </member>
+        <member name="M:Communication.Shared.Channels.IMessageChannel.SendAsync(System.ReadOnlyMemory{System.Byte},Communication.Shared.Channels.SendOptions,System.Threading.CancellationToken)">
+            <summary>payload 하나를 보낸다. <paramref name="options"/>는 구현이 해석한다(예: 신뢰성).</summary>
+        </member>
+        <member name="E:Communication.Shared.Channels.IMessageChannel.MessageReceived">
+            <summary>
+            수신 메시지 알림. 호출 스레드(콜백/펌프)는 구현이 결정한다.
+            전달되는 payload는 콜백 안에서만 유효하다.
+            </summary>
+        </member>
+        <member name="T:Communication.Shared.Channels.SendOptions">
+            <summary>
+            송신 부가 옵션의 기반 마커 타입. 필드가 없어 기본 송신은 할당이 없다.
+            스택별 옵션은 파생 타입으로 확장한다(예: <c>RudpSendOptions</c>).
+            </summary>
+        </member>
+        <member name="T:Communication.Shared.Connection.DisconnectedEventArgs">
+            <summary><c>ISession.Disconnected</c> 이벤트 인자. 세션당 1회만 전달된다.</summary>
+        </member>
+        <member name="P:Communication.Shared.Connection.DisconnectedEventArgs.Reason">
+            <summary>끊김 원인.</summary>
+        </member>
+        <member name="P:Communication.Shared.Connection.DisconnectedEventArgs.Exception">
+            <summary><see cref="P:Communication.Shared.Connection.DisconnectedEventArgs.Reason"/>이 <see cref="F:Communication.Shared.Connection.DisconnectReason.Error"/>일 때의 원인 예외.
+            바이트 채널(TCP) 경로에서는 <see cref="F:Communication.Shared.Connection.DisconnectReason.Timeout"/>(<see cref="T:System.TimeoutException"/>)과
+            <see cref="F:Communication.Shared.Connection.DisconnectReason.FlowControl"/>(<see cref="T:System.InvalidOperationException"/>)도 원인 예외를 실는다.
+            그 외(및 RUDP 전송 끊김 통지)에는 <c>null</c>.</summary>
+        </member>
+        <member name="T:Communication.Shared.Connection.DisconnectReason">
+            <summary>세션 끊김의 원인.</summary>
+        </member>
+        <member name="F:Communication.Shared.Connection.DisconnectReason.Local">
+            <summary>이 쪽의 명시적 <c>Disconnect()</c> 또는 Dispose.</summary>
+        </member>
+        <member name="F:Communication.Shared.Connection.DisconnectReason.Remote">
+            <summary>상대의 닫힘(스트림 끝, peer disconnect).</summary>
+        </member>
+        <member name="F:Communication.Shared.Connection.DisconnectReason.Error">
+            <summary>I/O·프로토콜 오류.</summary>
+        </member>
+        <member name="F:Communication.Shared.Connection.DisconnectReason.Timeout">
+            <summary>수신 프레임 완료 마감 초과(읽기 유휴 타임아웃).</summary>
+        </member>
+        <member name="F:Communication.Shared.Connection.DisconnectReason.FlowControl">
+            <summary>흐름 제어 — 수신 처리가 밀려 선언된 백프레셔 상한을 초과(실패 폐쇄 단절).</summary>
+        </member>
+        <member name="T:Communication.Shared.Framing.LengthPrefixFramer">
+            <summary>
+            4바이트 little-endian 길이 + payload 프레이밍의 쓰기 쪽.
+            읽기 쪽(부분 읽기 처리)은 <see cref="T:Communication.Shared.Framing.LengthPrefixFrameReader"/>.
+            </summary>
+        </member>
+        <member name="F:Communication.Shared.Framing.LengthPrefixFramer.HeaderSize">
+            <summary>헤더(길이 필드) 크기.</summary>
+        </member>
+        <member name="F:Communication.Shared.Framing.LengthPrefixFramer.MaxFrameLength">
+            <summary>
+            프레임 길이의 절대 상한. 파이프라인 실효 상한은 <c>MessageQueueOptions.MaxFrameLength</c>(기본 4MB)로
+            이보다 낮게 조정하며, 이 절대 상한을 넘는 값은 허용되지 않는다.
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Framing.LengthPrefixFramer.WriteFrame(System.Buffers.IBufferWriter{System.Byte},System.ReadOnlySpan{System.Byte})">
+            <summary><paramref name="destination"/>에 length-prefix + payload를 쓴다.</summary>
+        </member>
+        <member name="T:Communication.Shared.Framing.LengthPrefixFrameReader">
+            <summary>
+            <see cref="T:Communication.Shared.Channels.IByteChannel"/>에서 length-prefix 프레임을 읽는다.
+            단일 누적 버퍼(ArrayPool)에 부분 읽기를 모으고, 완성된 프레임은 버퍼의 제로카피 슬라이스로 돌려준다.
+            버퍼는 선언된 프레임 길이가 아니라 실제 누적된 데이터 기준으로만 성장한다 —
+            헤더만으로 거대 버퍼를 선할당하는 메모리 증폭 공격을 막는다.
+            </summary>
+            <remarks>
+            컴팩트(미처리 데이터를 버퍼 앞으로 당기기)는 **프레임마다가 아니라 읽기 창이 부족할 때만** 수행한다 —
+            한 세그먼트에 묶여 도착한 N개 프레임을 프레임마다 당기면 O(N²) 복사가 된다.
+            </remarks>
+        </member>
+        <member name="M:Communication.Shared.Framing.LengthPrefixFrameReader.#ctor(Communication.Shared.Channels.IByteChannel,System.Nullable{System.TimeSpan},System.Int32)">
+            <param name="channel">읽을 바이트 채널.</param>
+            <param name="frameTimeout">
+            프레임 완료 마감. 프레임의 첫 바이트가 도착한 순간 시작되어 이 시간 안에 프레임이 완성되지 않으면
+            <see cref="T:System.TimeoutException"/>을 던진다. <c>null</c> 또는 0 이하면 비활성화.
+            </param>
+            <param name="maxFrameLength">
+            허용 프레임 길이 상한. 초과 프레임은 <see cref="T:System.IO.InvalidDataException"/>으로 거부된다.
+            기본은 절대 상한(<see cref="F:Communication.Shared.Framing.LengthPrefixFramer.MaxFrameLength"/>) — 파이프라인은 옵션으로 더 낮은 값을 전달한다.
+            </param>
+        </member>
+        <member name="M:Communication.Shared.Framing.LengthPrefixFrameReader.ReadFrameAsync(System.Threading.CancellationToken)">
+            <summary>
+            다음 프레임의 payload를 읽는다.
+            </summary>
+            <returns>
+            내부 버퍼의 슬라이스 — 다음 호출 전까지 유효하다(버퍼는 재사용된다).
+            빈 메모리 = 프레임 경계에서의 정상적인 스트림 끝(원격 닫힘).
+            </returns>
+            <exception cref="T:System.IO.EndOfStreamException">프레임 도중에 스트림이 끊긴 경우.</exception>
+            <exception cref="T:System.IO.InvalidDataException">프레임 길이가 0·음수거나 상한 초과인 경우.</exception>
+            <exception cref="T:System.TimeoutException">프레임 완료 마감 활성화 시, 마감 안에 프레임이 완성되지 않은 경우.</exception>
+        </member>
+        <member name="M:Communication.Shared.Framing.LengthPrefixFrameReader.Compact">
+            <summary>미처리 데이터를 버퍼 앞으로 당긴다. 창이 부족할 때만 호출 — 프레임당 무조건 컴팩트는 O(N²) 복사다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Framing.LengthPrefixFrameReader.EnsureCapacity(System.Int32)">
+            <summary>버퍼를 키운다(2배 성장, ArrayPool 재렌탈). 컴팩트 직후(_offset == 0)에만 호출한다.</summary>
+        </member>
+        <member name="P:Communication.Shared.Framing.LengthPrefixFrameReader.BufferCapacity">
+            <summary>테스트 전용 — 현재 누적 버퍼 용량.</summary>
+        </member>
+        <member name="P:Communication.Shared.Framing.LengthPrefixFrameReader.CompactionCount">
+            <summary>테스트 전용 — 컴팩트 수행 횟수(프레임당 무조건 컴팩트 회귀 탐지용).</summary>
+        </member>
+        <member name="M:Communication.Shared.Framing.LengthPrefixFrameReader.Dispose">
+            <summary>누적 버퍼를 풀에 반환한다.</summary>
+        </member>
+        <member name="T:Communication.Shared.Messages.IMessageConverter">
+            <summary>
+            메시지 ↔ 바이트 변환기. 구현은 앱 또는 직렬화 프로젝트(예: DS_MessageProtocol)가 주입한다.
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.IMessageConverter.Serialize(System.Object,System.Buffers.IBufferWriter{System.Byte})">
+            <summary>메시지를 <paramref name="writer"/>에 직렬화한다. 송신 힙 할당을 피하기 위해 결과 배열을 반환하지 않는다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.IMessageConverter.Deserialize(System.ReadOnlySpan{System.Byte})">
+            <summary>프레임/수신 payload를 메시지로 역직렬화한다. 스팬은 호출 중에만 유효하다.</summary>
+        </member>
+        <member name="T:Communication.Shared.Messages.IMessageHandler">
+            <summary>
+            수신 메시지 핸들러. 동기 계약 — 긴 작업은 앱이 직접 오프로딩한다.
+            끊김은 다루지 않으며 세션의 <c>Disconnected</c> 이벤트만 사용한다.
+            </summary>
+        </member>
+        <member name="T:Communication.Shared.Messages.MessageHandler">
+            <summary>
+            타입 등록 기반 수신 디스패처. <c>RegisterMessageType</c>/<see cref="M:Communication.Shared.Messages.MessageHandler.Register``1(System.Action{``0})"/>로
+            타입별 <see cref="T:System.Action`1"/>을 등록하고 <see cref="M:Communication.Shared.Messages.MessageHandler.HandleMessage(System.Object)"/>가 분배한다.
+            등록 테이블은 동시 안전 — 디스패치 중 지연 등록도 경쟁이 없다.
+            정확 타입이 없으면 등록된 베이스 타입(상속·인터페이스) 중 가장 구체적인 것으로 분배하고,
+            맞는 핸들러가 전혀 없을 때만 Trace 후 skip한다. 핸들러 예외는 Trace 후 계속 — 수신 루프를 죽이지 않는다.
+            </summary>
+        </member>
+        <member name="P:Communication.Shared.Messages.MessageHandler.Session">
+            <summary>핸들러가 속한 세션.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessageHandler.RegisterMessageType(System.Type,System.Action{System.Object})">
+            <summary>타입 → 핸들러 등록. 같은 타입 재등록은 덮어쓴다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessageHandler.Register``1(System.Action{``0})">
+            <summary>타입 → 핸들러 등록(제네릭).</summary>
+        </member>
+        <member name="T:Communication.Shared.Messages.MessagePipeline">
+            <summary>
+            메시지 ↔ 와이어 공통 경로. 송신 큐·백프레셔·직렬화·(프레이밍)·수신·디스패치를 담당한다.
+            Connect/Accept·재접속·하트비트는 다루지 않는다. 채널 정리는 소유자(세션)가 한다.
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessagePipeline.#ctor(Communication.Shared.Channels.IByteChannel,Communication.Shared.Messages.IMessageConverter,Communication.Shared.Messages.IMessageHandler,Communication.Shared.Messages.MessageQueueOptions)">
+            <summary>바이트 스트림 채널(길이 프레이밍 + coalesce 송신) 파이프라인.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessagePipeline.#ctor(Communication.Shared.Channels.IMessageChannel,Communication.Shared.Messages.IMessageConverter,Communication.Shared.Messages.IMessageHandler,Communication.Shared.Messages.MessageQueueOptions)">
+            <summary>메시지 단위 채널(프레이밍 없음, 예: RUDP) 파이프라인.</summary>
+        </member>
+        <member name="E:Communication.Shared.Messages.MessagePipeline.Disconnected">
+            <summary>수신 루프·채널 오류로 끊김이 감지되면 1회 발생. 재접속 신호는 없다.</summary>
+        </member>
+        <member name="P:Communication.Shared.Messages.MessagePipeline.IsChannelConnected">
+            <summary>전송 계층 관점의 연결 상태.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessagePipeline.Start">
+            <summary>송신·수신 루프를 시작한다. 한 번만 호출한다.</summary>
+            <exception cref="T:System.InvalidOperationException">이미 시작된 파이프라인인 경우.</exception>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessagePipeline.SendAsync(System.Object,Communication.Shared.Channels.SendOptions)">
+            <summary>메시지를 송신 큐에 넣는다. 큐가 가득 차면 공간이 날 때까지 비동기 대기한다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessagePipeline.SendAndFlushAsync(System.Object,Communication.Shared.Channels.SendOptions,System.Threading.CancellationToken)">
+            <summary>큐잉 후 와이어 기록 완료까지 기다린다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessagePipeline.ValidatePayloadLength(System.Int32)">
+            <summary>
+            송신 페이로드 길이 검증(양쪽 송신 경로 공통) — 빈 payload는 상대편에서 EOF와 구분이 안 되므로 거부하고,
+            상한 초과는 수신 측 거부(단절)보다 보내기 전 로컬 격리가 낫다.
+            </summary>
+            <exception cref="T:System.ArgumentException">0 이하이거나 <see cref="P:Communication.Shared.Messages.MessageQueueOptions.MaxFrameLength"/> 초과인 경우.</exception>
+        </member>
+        <member name="M:Communication.Shared.Messages.MessagePipeline.IsolateFailedSend(Communication.Shared.Messages.MessagePipeline.PendingSend,System.Exception)">
+            <summary>송신 항목 하나를 격리한다 — flush를 예외 완료시키고 슬롯을 반환한 뒤 진단만 남긴다. 송신 루프는 계속된다.</summary>
+        </member>
+        <member name="T:Communication.Shared.Messages.MessageQueueOptions">
+            <summary>
+            송신 큐·수신 디스패치·수신 타임아웃 옵션.
+            </summary>
+        </member>
+        <member name="P:Communication.Shared.Messages.MessageQueueOptions.MaxPendingMessages">
+            <summary>
+            송신 큐 백프레셔 상한. 상한 도달 시 송신은 공간이 날 때까지 비동기 대기한다.
+            수신 디스패치 큐에도 동일 상한이 적용된다.
+            </summary>
+            <remarks>
+            메시지 단위 채널(<c>IMessageChannel</c>, 예: RUDP) 경로는 UDP 특성상 상대방을 늦출 수 없어
+            슬롯 대기(메시지 보유)까지 동일 상한으로 강제하고, 초과 시 **흐름 제어 단절**
+            (<see cref="F:Communication.Shared.Connection.DisconnectReason.FlowControl"/>)로 실패 폐쇄한다 —
+            메모리 무제한 누적이 아니라 선언된 상한 안에서 동작한다.
+            바이트 채널 경로는 단일 수신 루프가 슬롯 대기로 추가 읽기를 막으므로 상한이 유지된다.
+            </remarks>
+        </member>
+        <member name="P:Communication.Shared.Messages.MessageQueueOptions.InlineDispatch">
+            <summary>
+            <c>true</c>면 수신 경로에서 핸들러를 즉시 호출한다(큐 없음). 느린 핸들러가 수신을 막으므로 핫패스 전용.
+            기본 <c>false</c> — 내부 큐 + 별도 디스패치 루프.
+            </summary>
+            <remarks>
+            메시지 단위 채널(<c>IMessageChannel</c>, 예: RUDP) 경로에서는 <b>무시</b>된다 — 수신 콜백이
+            여러 세션이 공유하는 전송 계층 스레드(폴링 스레드)에서 실행되므로, 핸들러를 그 자리에서 돌리면
+            느린 핸들러 하나가 다른 세션의 수신·수락을 막는다. 이 경로는 항상 큐 디스패치를 강제한다.
+            </remarks>
+        </member>
+        <member name="P:Communication.Shared.Messages.MessageQueueOptions.CoalesceLimitBytes">
+            <summary>
+            바이트 채널 송신 시 한 번의 write로 묶는 배치 상한(바이트). 상한에 닿으면 즉시 전송한다.
+            상한 확인은 프레임 추가 후라 배치가 최대 1프레임만큼 상한을 초과할 수 있다.
+            </summary>
+        </member>
+        <member name="P:Communication.Shared.Messages.MessageQueueOptions.FrameTimeout">
+            <summary>
+            수신 프레임 완료 마감(슬로로리스 방어). 프레임의 **첫 바이트가 도착한 순간** 시작되어,
+            이 시간 안에 프레임이 완성되지 않으면 세션이 단절된다(<c>DisconnectReason.Timeout</c>).
+            바이트가 전혀 오지 않는 완전 유휴 연결에는 적용되지 않는다(하트비트는 앱 책임).
+            <c>null</c> 또는 <see cref="F:System.TimeSpan.Zero"/>면 비활성화. 기본 30초.
+            </summary>
+        </member>
+        <member name="P:Communication.Shared.Messages.MessageQueueOptions.MaxFrameLength">
+            <summary>
+            단일 프레임 길이 상한(바이트). 이보다 큰 프레임은 송신에서 격리되고 수신에서 거부(단절)된다.
+            절대 상한은 <see cref="F:Communication.Shared.Framing.LengthPrefixFramer.MaxFrameLength"/>(64MB).
+            기본 <c>4MB</c> — 필요 시 앱이 올린다.
+            </summary>
+        </member>
+        <member name="T:Communication.Shared.Messages.PooledBufferWriter">
+            <summary>
+            ArrayPool 기반 성장 <see cref="T:System.Buffers.IBufferWriter`1"/>. 파이프라인의 직렬화·coalesce 배치용.
+            </summary>
+        </member>
+        <member name="P:Communication.Shared.Messages.PooledBufferWriter.WrittenMemory">
+            <summary>현재까지 쓰인 영역.</summary>
+        </member>
+        <member name="P:Communication.Shared.Messages.PooledBufferWriter.WrittenSpan">
+            <summary>현재까지 쓰인 영역(스팬).</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.PooledBufferWriter.GetWritableSpan">
+            <summary>쓰인 영역을 되쓰기용(길이 헤더 기입 등)으로 노출한다. 파이프라인 내부 전용.</summary>
+        </member>
+        <member name="M:Communication.Shared.Messages.PooledBufferWriter.RewindTo(System.Int32)">
+            <summary>쓰인 위치를 지정한 곳으로 되돌린다(부분 직렬화 프레임 폐기용).</summary>
+        </member>
+        <member name="T:Communication.Shared.Sessions.ISession">
+            <summary>
+            연결형 메시지 세션의 공개 계약. 앱이 생성하고, 끊김 관측은 <see cref="E:Communication.Shared.Sessions.ISession.Disconnected"/> 이벤트만 사용한다.
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.ISession.SendAsync(System.Object)">
+            <summary>메시지를 송신 큐에 넣는다. 큐잉만 완료되면 반환되는 fire-and-forget 경로.</summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.ISession.SendAsync(System.Object,Communication.Shared.Channels.SendOptions)">
+            <summary>메시지를 송신 큐에 넣는다. <paramref name="options"/>는 전송 구현이 해석한다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.ISession.SendAndFlushAsync(System.Object,Communication.Shared.Channels.SendOptions,System.Threading.CancellationToken)">
+            <summary>큐잉 후 와이어 기록 완료까지 기다린다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.ISession.Disconnect">
+            <summary>로컬 주도로 끊는다. <c>Disconnected(Local)</c>이 1회 통지된다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.ISession.IsConnected">
+            <summary>로컬 끊김 플래그와 전송 상태를 함께 본 연결 여부.</summary>
+        </member>
+        <member name="E:Communication.Shared.Sessions.ISession.Disconnected">
+            <summary>끊김 통지. 원인(<see cref="T:Communication.Shared.Connection.DisconnectReason"/>)과 함께 세션당 1회만 발생한다. 재접속 이벤트는 없다.</summary>
+        </member>
+        <member name="T:Communication.Shared.Sessions.Session">
+            <summary>
+            <see cref="T:Communication.Shared.Messages.MessagePipeline"/>과 채널을 소유하는 세션 기본 구현.
+            전송 패키지는 이 클래스를 상속해 세션을 만들고, 앱은 그 세션을 채널 위에 직접 생성한다.
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.Session.#ctor(System.IDisposable)">
+            <param name="channel">세션이 소유·정리하는 채널.</param>
+        </member>
+        <member name="E:Communication.Shared.Sessions.Session.Disconnected">
+            <summary>
+            끊김 통지 — 세션당 정확히 1회. **늦은 구독자(이미 끊긴 뒤 구독)에게도 구독 즉시 1회 재생된다**
+            (구독 타이밍 때문에 끊김을 놓치는 앱 부류를 원천 차단). 구독자 예외는 격리(Trace).
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.Session.AttachPipeline(Communication.Shared.Messages.MessagePipeline)">
+            <summary>송신 파이프라인을 연결하고 수신 루프를 시작한다. 파생 생성자에서 한 번만 호출한다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.Session.MarkDisconnected(Communication.Shared.Connection.DisconnectReason,System.Exception)">
+            <summary>
+            끊김을 기록하고 파이프라인·채널을 정리한 뒤 <see cref="E:Communication.Shared.Sessions.Session.Disconnected"/>를 1회 발생시킨다.
+            중복 호출은 무시된다.
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.Session.InvokeIsolated(System.EventHandler{Communication.Shared.Connection.DisconnectedEventArgs},Communication.Shared.Connection.DisconnectedEventArgs)">
+            <summary>구독자를 하나씩 호출한다 — 예외를 던지는 구독자도 나머지와 격리된다(Trace).</summary>
+        </member>
+        <member name="M:Communication.Shared.Sessions.Session.NoLivePipelineException">
+            <summary>송신할 파이프라인이 없을 때 반환할 예외 — 끊김·미부착을 구분한다(동기 throw 아님).</summary>
+        </member>
+        <member name="T:Communication.Shared.Threading.SignalGate">
+            <summary>
+            SemaphoreSlim(0,1)에 Interlocked 게이트를 결합해 연속 <see cref="M:Communication.Shared.Threading.SignalGate.Signal"/>로도
+            <see cref="T:System.Threading.SemaphoreFullException"/>이 나지 않는 단일 시그널 게이트. 송신·디스패치 웨이크업에 사용한다.
+            </summary>
+        </member>
+        <member name="M:Communication.Shared.Threading.SignalGate.Signal">
+            <summary>대기자를 깨운다. 이미 깨울 신호가 걸려 있으면 아무 일도 하지 않는다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Threading.SignalGate.WaitAsync(System.Threading.CancellationToken)">
+            <summary>신호를 기다린다. <see cref="M:Communication.Shared.Threading.SignalGate.Dispose"/>로 풀리면 이후 대기는 즉시 취소로 끝난다.</summary>
+        </member>
+        <member name="M:Communication.Shared.Threading.SignalGate.ResetPendingAndResignalIf(System.Func{System.Boolean})">
+            <summary>pending을 지우고, 조건이 참이면 다시 신호를 건다(드레인 후 재점검용).</summary>
+        </member>
+    </members>
+</doc>

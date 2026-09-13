@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>MessageProtocol</id>
+    <version>3.0.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <description>메시지 프로토콜 직렬화 메인 패키지. MessageProtocol.Core 런타임과 소스 생성 분석기를 함께 포함합니다.</description>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_MessageProtocol" commit="98d1662897cab3649b8a2c3eb08f4237f0b89385" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="MessageProtocol.Core" version="3.0.0" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

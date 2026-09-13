@@ -103,7 +103,7 @@ StyleCopReport.xml
 *_p.c
 *_h.h
 *.ilk
-*.meta
+# *.meta  — Unity .meta는 커밋 대상(절대 규칙), VS용 패턴 제거. Unity 산출물 메타는 아래 개별 명시
 *.obj
 *.idb
 *.iobj
@@ -440,3 +440,43 @@ Document/.obsidian/cache
 # pi harness runtime artifacts
 .pi-glla/
 .pi-subagents/
+
+# === Unity (Sandbox) ===
+/Sandbox/Library/
+/Sandbox/Temp/
+/Sandbox/Obj/
+/Sandbox/Build/
+/Sandbox/Builds/
+/Sandbox/Logs/
+/Sandbox/UserSettings/
+/Sandbox/MemoryCaptures/
+/Sandbox/Collab/
+/Sandbox/ExportedObj/
+/Sandbox/AssetStoreTools*
+/Sandbox/Assets/Plugins/Editor/JetBrains*
+/Sandbox/*.csproj
+/Sandbox/*.sln
+/Sandbox/*.suo
+/Sandbox/*.user
+/Sandbox/*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.mdb
+Sandbox-*.log
+# === Unity(Sandbox) 예외 — Packages 재포함 (상단 **/[Pp]ackages/* 무시 패턴에서 제외) ===
+!/Sandbox/Packages/**
+!/Sandbox/Assets/Packages/**
+# Unity 산출물 디렉터리의 형제 .meta (디렉터리 자체는 무시되나 메타는 생성됨)
+/Sandbox/Library.meta
+/Sandbox/Temp.meta
+/Sandbox/Obj.meta
+/Sandbox/Build.meta
+/Sandbox/Builds.meta
+/Sandbox/Logs.meta
+/Sandbox/UserSettings.meta
+/Sandbox/MemoryCaptures.meta
+/Sandbox/Collab.meta
+/Sandbox/ExportedObj.meta
+/Sandbox/AssetStoreTools*.meta
+/Sandbox/Assets/Plugins/Editor/JetBrains*.meta

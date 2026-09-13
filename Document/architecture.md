@@ -40,12 +40,12 @@
 
 ## 외부 의존성
 
-- Unity 6 (netstandard2.1 호환)
-- DRPC(조사 시점 3.1.0, CodeGenerator 포함), MessageProtocol(조사 시점 3.0.0), Communication (DRPC 경유) — **패키지 참조 고정** (ADR-0003), 참조 버전은 구현 착수 시 확정
+- Unity **6000.0.83f1** (6.0 LTS, 샌드박스 고정)
+- DRPC 3.2.0·MessageProtocol 3.0.0·Communication(RUDP) 2.5.1 — **패키지 참조 고정** (ADR-0003), 로컬 소스 `unity-nuget/` + NuGetForUnity 4.5.0(OpenUPM)으로 Unity에 공급
 - 그 외 라이브러리는 필요 시 추가 (ADR로 기록)
 
 ## 미정 사항
 
-- 어셈블리 구조(asmdef 분할) — [[plan]] Phase 0 스파이크 후 확정 (제안: Core/Unity/Editor/Tests 분리)
-- UPM-NuGet 연결 방식 — [[plan]] Phase 0 스파이크에서 확정 (ADR-0003 참조)
+- 어셈블리 구조(asmdef 분할) — [[plan]] Phase 0 스파이크 후 확정 (현행 스캐폴드: `Package/Runtime`에 UniNet.Core·UniNet.Unity 2종)
+- UPM-NuGet 연결 방식 — 1차 확정 NuGetForUnity 4.5.0, 스파이크 1(소스젠 동작) 통과 시 최종 확정 ([[plan]] Phase 0)
 - 클라이언트-서버 간 공유 계약 코드 배치 방식

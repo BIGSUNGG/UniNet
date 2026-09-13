@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Communication.Network.RUDP.Client</name>
+    </assembly>
+    <members>
+        <member name="T:Communication.Network.RUDP.RudpConnector">
+            <summary>
+            RUDP 클라이언트 연결. 연결만 열고, 세션 생성은 앱이 한다. 성공 후 <see cref="P:Communication.Network.RUDP.RudpConnector.Channel"/>을 노출한다.
+            </summary>
+            <remarks>
+            클라이언트는 peer가 하나뿐이므로 채널이 내부 호스트(폴링 스레드·NetManager)까지 소유한다 —
+            세션이나 채널을 Dispose하면 남는 자원 없이 정리된다. 들어오는 접속 요청은 거부된다.
+            </remarks>
+        </member>
+        <member name="P:Communication.Network.RUDP.RudpConnector.Channel">
+            <summary>연결 성공 후 사용 가능한 채널. 실패 시 <c>null</c>.</summary>
+        </member>
+        <member name="M:Communication.Network.RUDP.RudpConnector.ConnectAsync(System.String,System.Int32,Communication.Network.RUDP.RudpTransportOptions,System.Threading.CancellationToken)">
+            <returns>연결 성공 여부. 실패(접속 거부·호스트 해석 불가·재시도 소진) 시 <c>false</c>.</returns>
+            <exception cref="T:System.OperationCanceledException"><paramref name="cancellationToken"/>이 취소된 경우.</exception>
+        </member>
+    </members>
+</doc>

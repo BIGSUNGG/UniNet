@@ -1,0 +1,10 @@
+{
+  "name": "com.ds.uninet",
+  "displayName": "UniNet",
+  "version": "0.1.0",
+  "unity": "6000.0",
+  "description": "상용 유니티 게임 서버용 네트워크 프레임워크 — MonoBehaviour RPC & 변수 리플리케이션",
+  "author": {
+    "name": "DS"
+  }
+}
