@@ -15,7 +15,10 @@
 | --- | --- | --- |
 | 컨텍스트 규칙 | `AGENTS.md` (루트) | 4원칙 + 워크플로. pi가 모든 세션에 자동 로드 |
 | 문서 갱신 절차 | `.pi/skills/doc-sync/` | 무엇을 언제 어떻게 갱신할지, 작업 시작 시 무엇을 읽을지 |
-| 리뷰 루프 절차 | `.pi/skills/review-until-clean/` | 코드 변경 후 reviewer Clean 판정까지 수정-재리뷰 반복 |
+| 리뷰 루프 절차 | `.pi/skills/review-until-clean/` | 코드·개발 환경 변경 후 reviewer Clean 판정까지 수정-재리뷰 반복 |
+| 구조 리뷰 기준 | `.pi/skills/review-structure/` | reviewer 참조 — 레이어링·의존성·SOLID·과잉 추상화(YAGNI) 체크리스트 |
+| 보안 리뷰 기준 | `.pi/skills/review-security/` | reviewer 참조 — 서버 권위·신뢰 경계·RPC/직렬화·리소스 소진 체크리스트 |
+| 속도 리뷰 기준 | `.pi/skills/review-performance/` | reviewer 참조 — hot path GC 압력·할당·잠금·복잡도 체크리스트 |
 | 문서 감시 훅 | `.pi/extensions/doc-guard.ts` | agent_settled 시 git 상태 검사. 코드 변경 있는데 `Document/` 미갱신이면 경고 표시 + follow-up 재촉(최대 2회). 대화형(tui) 세션에서만 작동 |
 | 리뷰어 에이전트 | `.pi/agents/reviewer.md` | 읽기 전용 검토. 첫 줄 `CLEAN` 또는 `ISSUES` 판정. 빌트인 reviewer를 프로젝트 스코프로 재정의 |
 
@@ -29,7 +32,7 @@
 
 ### 리뷰 루프 (review-until-clean)
 
-1. 의미 있는 코드 변경 완료 → reviewer 서브에이전트에 diff·맥락 전달해 검토 요청
+1. 코드나 개발 환경이 수정되었을 때(기능 추가/수정/제거, 리팩토링, 버그 수정, 빌드·설정 변경 등) → reviewer 서브에이전트에 diff·맥락 전달해 구조·보안·속도 포함 검토 요청
 2. 판정이 `ISSUES`면 이슈 수정 → 재검토 (무제한 반복, 단 정체 시 사용자 보고)
 3. `CLEAN` 판정 후 최종 보고
 

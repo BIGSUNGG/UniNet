@@ -27,8 +27,8 @@ description: UniNet Document/ 문서 갱신 절차. 기능을 추가·수정·�
 
 | 변경 종류 | 갱신 대상 |
 | --- | --- |
-| 기능 추가 | `_templates/feature.md`로 `features/<기능명>.md` 신규 작성 + [[changelog]] |
-| 기능 수정 | 해당 `features/*.md` 본문 갱신 + 하단 변경 이력 추가 + [[changelog]] |
+| 기능 추가 | `_templates/feature.md`로 `features/<기능명>.md` 신규 작성 + `README.md` 반영(없으면 신규 생성) + [[changelog]] |
+| 기능 수정 | 해당 `features/*.md` 본문 갱신 + 하단 변경 이력 추가 + `README.md` 반영 + [[changelog]] |
 | 기능 제거 | 해당 `features/*.md` 삭제 또는 상단에 "제거됨" 명시 + [[changelog]] |
 | 구조·모듈·의존성 변경 | [[architecture]] + [[changelog]] |
 | 규약·관례 변경 | [[conventions]] + ADR + [[changelog]] |
