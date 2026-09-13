@@ -4,10 +4,11 @@
 "연결 1개 → 오브젝트 RPC 1번 → 변수 1개 동기화"가 도는 최소 경로를 먼저 만들고 폭을 넓힌다.
 단계 진입·완료 시 이 문서의 상태와 [[roadmap]] 매트릭스, [[changelog]]를 함께 갱신한다.
 
-## Phase 0 — 결정·스캐폴드 (상태: 진행중 — 결정 2건 확정)
+## Phase 0 — 결정·스캐폴드 (상태: 진행중 — 결정 3건 확정)
 
 | 항목 | 상태 | 비고 |
 | --- | --- | --- |
+| 개발 환경 | **확정** — Unity 샌드박스 + UPM 로컬 참조 (ADR-0005) | 저장소 내 `/Sandbox`, `file:` 참조, sln 자동 생성 |
 | 참조 방식 | **확정** — 패키지 고정 (ADR-0003) | NuGet + UPM |
 | RPC 계약 방식 | **확정** — 자동 생성 (ADR-0004) | UniNet 자체 소스젠 |
 | asmdef 구조 확정 | 미정 | 제안: `UniNet.Core`(순수 C#) / `UniNet.Unity`(바인딩) / `UniNet.Editor` / `UniNet.Tests` — 스파이크 결과로 확정 |
@@ -15,7 +16,7 @@
 
 **스파이크 (기술 리스크 조기 제거, 순서대로):**
 
-1. Unity 6 샌드박스에서 MessageProtocol + DRPC 패키지 로드 → 에코 RPC 왕복 (소스젠 2종이 Unity 컴파일 파이프라인에서 동작하는가)
+1. 저장소 내 `/Sandbox` Unity 6 프로젝트(ADR-0005)에서 MessageProtocol + DRPC 패키지 로드 → 에코 RPC 왕복 (소스젠 2종이 Unity 컴파일 파이프라인에서 동작하는가)
 2. 전용서버 빌드(전용 서버 빌드 옵션)에서 Communication RUDP 동작
 3. IL2CPP AOT 빌드 확인 (reflection 금지 설계 검증)
 
