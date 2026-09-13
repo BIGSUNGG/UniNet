@@ -1,0 +1,17 @@
+# changelog — 변경 기록
+
+의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
+형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
+
+## [2026-09-13]
+
+### Added
+
+- **하네스 엔지니어링 도입** — AI 협업 규칙(문서 우선, 능동 질문, OOP/SOLID, 요청 비판적 검토)을 pi 하네스에 구성
+  - `Document/` Obsidian Vault (사람+AI 공동 참조, 변경 시 갱신 의무)
+  - `AGENTS.md` — 핵심 4원칙과 워크플로 (모든 세션에 자동 로드)
+  - `.pi/skills/doc-sync` — 문서 갱신 절차 스킬
+  - `.pi/skills/review-until-clean` — 리뷰어 Clean-판정 루프 스킬
+  - `.pi/extensions/doc-guard.ts` — 코드 변경 시 문서 미갱신 감지·재촉 훅
+  - `.pi/agents/reviewer.md` — ISSUES/CLEAN 판정 리뷰어 (프로젝트 스코프)
+  - 자세한 내용: [[harness]], [[decisions/0001-하네스-엔지니어링-도입|0001-하네스-엔지니어링-도입]]

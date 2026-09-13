@@ -427,3 +427,8 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Obsidian vault (Document/) - workspace state is per-machine
+Document/.obsidian/workspace.json
+Document/.obsidian/workspace-mobile.json
+Document/.obsidian/cache

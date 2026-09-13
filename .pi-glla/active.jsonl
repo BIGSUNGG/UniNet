@@ -1,0 +1,11 @@
+{"type":"session_rebound","value":{"reason":"startup"},"at":"2026-09-13T11:58:31.304Z"}
+{"type":"session_waiting_for_load","value":{"reason":"startup"},"at":"2026-09-13T11:58:31.320Z"}
+{"type":"session_rebound","value":{"reason":"startup"},"at":"2026-09-13T12:32:13.311Z"}
+{"type":"session_waiting_for_load","value":{"reason":"startup"},"at":"2026-09-13T12:32:13.341Z"}
+{"type":"session_shutdown","value":{"reason":"quit"},"at":"2026-09-13T12:32:23.997Z"}
+{"type":"session_rebound","value":{"reason":"startup"},"at":"2026-09-13T12:38:23.058Z"}
+{"type":"session_waiting_for_load","value":{"reason":"startup"},"at":"2026-09-13T12:38:23.082Z"}
+{"type":"session_shutdown","value":{"reason":"quit"},"at":"2026-09-13T12:38:33.274Z"}
+{"type":"session_rebound","value":{"reason":"startup"},"at":"2026-09-13T12:43:40.847Z"}
+{"type":"session_waiting_for_load","value":{"reason":"startup"},"at":"2026-09-13T12:43:40.872Z"}
+{"type":"session_shutdown","value":{"reason":"quit"},"at":"2026-09-13T12:43:51.237Z"}
