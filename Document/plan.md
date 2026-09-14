@@ -4,14 +4,15 @@
 "연결 1개 → 오브젝트 RPC 1번 → 변수 1개 동기화"가 도는 최소 경로를 먼저 만들고 폭을 넓힌다.
 단계 진입·완료 시 이 문서의 상태와 [[roadmap]] 매트릭스, [[changelog]]를 함께 갱신한다.
 
-## Phase 0 — 결정·스캐폴드 (상태: 진행중 — 결정 3건 확정 · 개발 환경 구축 완료)
+## Phase 0 — 결정·스캐폴드 (상태: 진행중 — 결정 4건 확정 · 개발 환경 구축 완료 · 사용법 API 확정)
 
 | 항목 | 상태 | 비고 |
 | --- | --- | --- |
 | 개발 환경 | **구축 완료** — Unity 6000.0.83f1 · NuGetForUnity 4.5.0 | 2026-09-14. 패키지 `Package/` 하위 + `file:../../Package` 참조 (ADR-0005 변경 이력 참고) |
 | 참조 방식 | **확정** — 패키지 고정 (ADR-0003) · 버전 확정: DRPC 3.5.0 / MessageProtocol 3.2.0 / Communication(RUDP) 2.7.0 | 로컬 소스 `unity-nuget/` |
 | RPC 계약 방식 | **확정** — 자동 생성 (ADR-0004) | UniNet 자체 소스젠 |
-| asmdef 구조 확정 | 미정 (스캐폴드: Core/Unity 2개 착수) | 제안: `UniNet.Core`(순수 C#) / `UniNet.Unity`(바인딩) / `UniNet.Editor` / `UniNet.Tests` — 스파이크 결과로 확정 |
+| 공개 API 스타일 | **확정** — Mirror/Netcode류 속성 (`[ServerRpc]`·`[ClientRpc]`·`[MulticastRpc]`·`[Replicated(Notify)]`·`IsOwner`·`UniNetManager`) | 2026-09-14. 사용법 우선 확정 (ADR-0007) — RepNotify(이전값 1개 콜백)·MulticastRpc 확장 포함, `Sandbox/Assets/Usage/` 사용법 + Package API 스텁, batch 컴파일 녹색 |
+| asmdef 구조 확정 | 미정 (스캐폴드: Core/Unity 2개 착수 — 스텁 배치는 Core 계약·Unity 바인딩으로 유지) | 제안: `UniNet.Core`(순수 C#) / `UniNet.Unity`(바인딩) / `UniNet.Editor` / `UniNet.Tests` — 스파이크 결과로 확정 |
 | UPM-NuGet 연결 방식 | **1차 확정** — NuGetForUnity 4.5.0 (OpenUPM 고정) | 소스젠 2종 동작을 스파이크 1에서 검증 후 최종 확정 |
 
 **스파이크 (기술 리스크 조기 제거, 순서대로):**

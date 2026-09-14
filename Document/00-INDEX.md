@@ -30,6 +30,7 @@
 - [[0004-계약-자동-생성]] — MonoBehaviour RPC 계약 자동 생성 (UniNet 소스젠, 수동 폴백)
 - [[0005-개발-환경-샌드박스-upm]] — 개발 환경 확정: Unity 샌드박스 + UPM 로컬 참조 (저장소 내 `/Sandbox`)
 - [[0006-리뷰-품질-게이트-확대]] — 리뷰 품질 게이트 확대: 트리거 확대·차원 스킬 3종(구조/보안/속도)·README 갱신 규칙
+- [[0007-사용법-우선-api-확정]] — 사용법 우선 개발 + 공개 API 스타일 확정 (Mirror/Netcode류 속성, Sandbox 사용법 + Package API 스텁; 변경 이력 — RepNotify·MulticastRpc 확장)
 
 ### _templates/ — 문서 템플릿
 
@@ -38,6 +39,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-14 — 사용법 우선 API 확정 (ADR-0007: 공개 API 스타일 Mirror/Netcode류·Sandbox 사용법 예제·Package API 스텁 · 변경 이력 — RepNotify·MulticastRpc 확장)
 - 2026-09-14 — 기반 패키지 최신화: DRPC 3.5.0 / MessageProtocol 3.2.0 / Communication(RUDP) 2.7.0 (ADR-0005 변경 이력)
 - 2026-09-14 — 리뷰 품질 게이트 확대 (ADR-0006: 트리거 확대·차원 스킬 3종·README 갱신 규칙)
 - 2026-09-14 — 개발 환경 구축 완료 (ADR-0005 변경 이력: Package/ 분리·6000.0.83f1·NuGetForUnity 4.5.0·기반 패키지 버전 확정)
