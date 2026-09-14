@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>DRPC.Attribute</id>
+    <version>3.5.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/BIGSUNGG/DS_RPC</projectUrl>
+    <description>Contract declarations for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Annotates hub interface methods with [RemoteProcedure] and carries the per-method delivery options: five delivery modes (Unreliable, ReliableUnordered, Sequenced, ReliableSequenced, ReliableOrdered), fire-and-forget one-way calls, per-call timeouts, an opt-in server-side validation gate, and generic procedures with compile-time-checked type sets. Zero runtime dependencies; targets netstandard2.1 so it is safe to reference from Unity 2021.2+ and any netstandard2.1-capable project. Belongs in the contract project shared by your client and server.</description>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_RPC" commit="f8f383105b494964b27b027406e2fa178a19b9fd" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1" />
+    </dependencies>
+  </metadata>
+</package>

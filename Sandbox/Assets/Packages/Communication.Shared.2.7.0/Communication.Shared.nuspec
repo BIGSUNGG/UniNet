@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>Communication.Shared</id>
+    <version>2.7.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/BIGSUNGG/DS_Communication</projectUrl>
+    <description>Transport-agnostic contracts for connection-oriented messaging: session lifecycle (ISession with DisconnectReason), IByteChannel/IMessageChannel abstractions, length-prefix framing, and a message pipeline (converter/handler over IBufferWriter/Span) with per-send SendOptions. All TCP/RUDP transports in the DS_Communication family build on these contracts. Targets .NET Standard 2.1 — runs on modern .NET and Unity.</description>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_Communication.git" commit="242faddcfabf48830486e0db956465324565d4ee" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1" />
+    </dependencies>
+  </metadata>
+</package>

@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>MessageProtocol</id>
+    <version>3.2.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <description>Compile-time binary message serialization for .NET — built for game servers, networking, and other allocation-sensitive applications.
+
+Declare partial message classes with [Message]; the included Roslyn source generator emits Serialize/Deserialize code, and message types self-register on module load. No reflection on the hot path, no runtime codegen, no manual registration. Supports message inheritance families (Parent/Child), hash-derived or manual message IDs, a compact little-endian wire format, and pooled-buffer send paths.
+
+Targets netstandard2.1 (Unity-compatible) and net6.0+. This single package installs everything: MessageProtocol.Core (runtime) and MessageProtocol.CodeGenerator (source generator) come in as dependencies.</description>
+    <tags>serialization binary source-generator unity game networking messages</tags>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_MessageProtocol" commit="c79363037bff98cc7c3691b8549cefb45757a240" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="MessageProtocol.CodeGenerator" version="3.2.0" exclude="Build,Analyzers" />
+        <dependency id="MessageProtocol.Core" version="3.2.0" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

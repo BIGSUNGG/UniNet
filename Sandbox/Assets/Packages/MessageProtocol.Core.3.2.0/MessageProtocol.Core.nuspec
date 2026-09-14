@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>MessageProtocol.Core</id>
+    <version>3.2.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <description>Runtime half of the MessageProtocol binary serialization library: the MessageSerializer API — registration, dispatch, generic hot paths with delegate caches, and pooled buffers — plus the message contract attributes and interfaces.
+
+Standalone it falls back to reflection; for compile-time generated serializers install the main MessageProtocol package (bundles this runtime and the source generator) or add MessageProtocol.CodeGenerator alongside.
+
+Targets netstandard2.1 (Unity-compatible) and net6.0+.</description>
+    <tags>serialization binary unity game networking messages</tags>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_MessageProtocol" commit="c79363037bff98cc7c3691b8549cefb45757a240" />
+    <dependencies>
+      <group targetFramework="net6.0">
+        <dependency id="System.Buffers" version="4.5.1" exclude="Build,Analyzers" />
+        <dependency id="System.Memory" version="4.5.5" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="System.Buffers" version="4.5.1" exclude="Build,Analyzers" />
+        <dependency id="System.Memory" version="4.5.5" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

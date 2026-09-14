@@ -41,7 +41,7 @@
 ## 외부 의존성
 
 - Unity **6000.0.83f1** (6.0 LTS, 샌드박스 고정)
-- DRPC 3.2.0·MessageProtocol 3.0.0·Communication(RUDP) 2.5.1 — **패키지 참조 고정** (ADR-0003), 로컬 소스 `unity-nuget/` + NuGetForUnity 4.5.0(OpenUPM)으로 Unity에 공급
+- DRPC 3.5.0·MessageProtocol 3.2.0·Communication(RUDP) 2.7.0 — **패키지 참조 고정** (ADR-0003), 로컬 소스 `unity-nuget/` + NuGetForUnity 4.5.0(OpenUPM)으로 Unity에 공급
 - 그 외 라이브러리는 필요 시 추가 (ADR로 기록)
 
 ## 미정 사항

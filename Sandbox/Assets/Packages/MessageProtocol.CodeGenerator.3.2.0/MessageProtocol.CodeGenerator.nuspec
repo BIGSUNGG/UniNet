@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>MessageProtocol.CodeGenerator</id>
+    <version>3.2.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <description>Roslyn source generator for the MessageProtocol serialization library: emits Serialize/Deserialize implementations, message IDs, and self-registration code for [Message]-decorated partial types at compile time, and reports MSGPROT0xx diagnostics for invalid message declarations.
+
+Analyzer-only package (netstandard2.0). For most apps, install the main MessageProtocol package instead — it pulls this in automatically.</description>
+    <tags>roslyn source-generator code-generation analyzer serialization</tags>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_MessageProtocol" commit="c79363037bff98cc7c3691b8549cefb45757a240" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.0" />
+    </dependencies>
+  </metadata>
+</package>

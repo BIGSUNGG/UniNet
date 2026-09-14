@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>DRPC.CodeGenerator</id>
+    <version>3.5.0</version>
+    <authors>BIGSUNGG</authors>
+    <developmentDependency>true</developmentDependency>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/BIGSUNGG/DS_RPC</projectUrl>
+    <description>Roslyn source generator for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Scans hub classes for [RemoteProcedure] contracts and emits the entire RPC plumbing at build time: typed async client stubs ({Method}Async), incoming dispatch with {Method}_Implementation hooks, connection wiring (ConnectAsync / ListenAsync), and flat payload encoding — you never write transport or serialization code. Contract mistakes such as duplicate method ids, unsupported signatures, or undeclared generic arguments surface as DRPCGEN compile-time diagnostics. Reference it as an analyzer (OutputItemType="Analyzer" ReferenceOutputAssembly="false") in every project that declares or implements a hub. Targets netstandard2.0.</description>
+    <tags>DRPC Roslyn SourceGenerator Analyzer</tags>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_RPC" commit="6a650f3dea4a09c4493f72b2d2cd7f626c4951ab" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.0" />
+    </dependencies>
+  </metadata>
+</package>

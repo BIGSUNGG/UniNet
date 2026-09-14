@@ -9,7 +9,7 @@
 | 항목 | 상태 | 비고 |
 | --- | --- | --- |
 | 개발 환경 | **구축 완료** — Unity 6000.0.83f1 · NuGetForUnity 4.5.0 | 2026-09-14. 패키지 `Package/` 하위 + `file:../../Package` 참조 (ADR-0005 변경 이력 참고) |
-| 참조 방식 | **확정** — 패키지 고정 (ADR-0003) · 버전 확정: DRPC 3.2.0 / MessageProtocol 3.0.0 / Communication(RUDP) 2.5.1 | 로컬 소스 `unity-nuget/` |
+| 참조 방식 | **확정** — 패키지 고정 (ADR-0003) · 버전 확정: DRPC 3.5.0 / MessageProtocol 3.2.0 / Communication(RUDP) 2.7.0 | 로컬 소스 `unity-nuget/` |
 | RPC 계약 방식 | **확정** — 자동 생성 (ADR-0004) | UniNet 자체 소스젠 |
 | asmdef 구조 확정 | 미정 (스캐폴드: Core/Unity 2개 착수) | 제안: `UniNet.Core`(순수 C#) / `UniNet.Unity`(바인딩) / `UniNet.Editor` / `UniNet.Tests` — 스파이크 결과로 확정 |
 | UPM-NuGet 연결 방식 | **1차 확정** — NuGetForUnity 4.5.0 (OpenUPM 고정) | 소스젠 2종 동작을 스파이크 1에서 검증 후 최종 확정 |

@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>DRPC.Shared</id>
+    <version>3.5.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/BIGSUNGG/DS_RPC</projectUrl>
+    <description>Shared runtime for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Contains HubBase (pending-call table with per-call timeouts, cancellation tokens, and pending/incoming concurrency caps), the wire message model (one-way calls signal CallId 0), the structured error model surfaced as RpcFaultException with typed RpcErrorCode values, and incoming routing. Transport (RUDP with optional DTLS 1.2 encryption and certificate pinning) comes from DS_Communication; serialization from DS_MessageProtocol. Common foundation of the DRPC.Client and DRPC.Server packages — reference it alongside DRPC.Attribute in the contract project shared by both sides. Targets netstandard2.1 for modern .NET and Unity 2021.2+.</description>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_RPC" commit="f8f383105b494964b27b027406e2fa178a19b9fd" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="DRPC.Attribute" version="3.5.0" exclude="Build,Analyzers" />
+        <dependency id="Communication.Network.RUDP.Shared" version="2.7.0" exclude="Build,Analyzers" />
+        <dependency id="Communication.Shared" version="2.7.0" exclude="Build,Analyzers" />
+        <dependency id="MessageProtocol" version="3.1.0" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

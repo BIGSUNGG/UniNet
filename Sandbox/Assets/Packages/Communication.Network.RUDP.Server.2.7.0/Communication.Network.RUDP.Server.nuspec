@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>Communication.Network.RUDP.Server</id>
+    <version>2.7.0</version>
+    <authors>BIGSUNGG</authors>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/BIGSUNGG/DS_Communication</projectUrl>
+    <description>Reliable-UDP server for DS_Communication: RudpListener accepts connections and hands channels to the application for session creation. Pairs with Communication.Network.RUDP.Shared/Client. Targets .NET Standard 2.1 — runs on modern .NET and Unity.</description>
+    <repository type="git" url="https://github.com/BIGSUNGG/DS_Communication.git" commit="242faddcfabf48830486e0db956465324565d4ee" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="Communication.Network.RUDP.Shared" version="2.7.0" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

@@ -436,6 +436,8 @@ FodyWeavers.xsd
 Document/.obsidian/workspace.json
 Document/.obsidian/workspace-mobile.json
 Document/.obsidian/cache
+# 루트를 볼트로 열 때 생기는 머신 종속 상태
+/.obsidian/
 
 # pi harness runtime artifacts
 .pi-glla/
