@@ -20,16 +20,17 @@
 └─────────────────────────────────────────────┘
 ```
 
-## 구성 요소 (계획)
+## 구성 요소 (구현 — [[0008-구현-아키텍처]])
 
-- **UniNet Unity 레이어** — `MonoBehaviour` 파생 네트워크 베이스 클래스, RPC 속성, 리플리케이션 마킹, 오브젝트 등록/조회. 게임 코드가 직접 만지는 유일한 계층.
-- **리플리케이션 엔진** — 네트워크 오브젝트의 변수 변경 추적, 델타 직렬화, 조건부 전송, 스폰/파괴 동기화. UniNet 자체 구현 예정.
-- **RPC 매핑** — MonoBehaviour 메서드 → DRPC 계약으로 연결. DRPC의 전달 모드(ReliableOrdered 등 5종)를 RPC 속성에 노출.
-- **직렬화** — 모든 와이어 포맷은 MessageProtocol 메시지로 정의.
+- **UniNet.CodeGenerator** (`CodeGenerator/`) — Roslyn 4.3 소스 제너레이터. NetworkBehaviour 파생의 RPC·리플리케이션 멤버를 스캔해 DRPC 런타임 수동 구성 API로 허브 배선·타입별 partial 구현·델타 핸들을 방출한다. DRPC/MP 제너레이터와는 체이닝하지 않는다.
+- **UniNet.Core.Hosting** (`Package/Runtime/UniNet.Core/Hosting/`) — 순수 C# 런타임. NetworkServer(연결·소유권·리플리케이션 틱)·NetworkClient(Welcome·소유권 맵)·UniNetEnvironment(메인 스레드 펌프)·UniNetDispatch(전역 디스패치 — 다중 어셈블리)·UniNetEndpointOptions(연결/보안 설정 래핑).
+- **UniNet.Unity** (`Package/Runtime/UniNet.Unity/`) — MonoBehaviour 바인딩. NetworkBehaviour(netId=씬 경로 해시·IsOwner)·UniNetManager(연결 수명주기)·UniNetDriver(구동기).
+- **RPC 매핑** — 사용법 partial 메서드 → 생성 코드가 DRPC 허브 프로시저로 변환. 전달 모드는 `Delivery`(ReliableOrdered·Unreliable) → `RpcDeliveryMode` 매핑.
+- **직렬화** — 모든 와이어 포맷은 MessageProtocol 런타임 프리미티브(`MessageBufferWriter/Reader`)로 생성 코드가 직접 방출 ([netId][인자/델타]).
 
 ## 의존성 규칙
 
-1. 게임 코드는 **UniNet API만** 사용한다 (DRPC·MessageProtocol·Communication을 직접 건드리지 않는 것을 기본으로 한다).
+1. 게임 코드는 **UniNet API만** 사용한다. **DRPC·MessageProtocol 타입은 게임 코드에 노출하지 않는다를 원칙으로 한다** — 보안(연결 키·DTLS)·속도(전달 모드) 설정은 `UniNetEndpointOptions`처럼 UniNet 타입으로 래핑해 제공한다. (ADR-0008)
 2. UniNet은 기존 스택(DRPC·MessageProtocol·Communication)을 **우선 재사용**하고, 부족한 기능만 자체 구현한다. 우회·중복 구현이 필요해지면 ADR로 기록한다.
 3. 기존 스택 수정이 필요하면 각 저장소에서 처리하고 버전으로 참조한다 (참조 방식은 패키지 고정 — ADR-0003).
 

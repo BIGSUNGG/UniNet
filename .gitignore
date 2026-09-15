@@ -482,3 +482,5 @@ Sandbox-*.log
 /Sandbox/ExportedObj.meta
 /Sandbox/AssetStoreTools*.meta
 /Sandbox/Assets/Plugins/Editor/JetBrains*.meta
+.tmp-2proc/
+.idea/

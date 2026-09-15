@@ -20,10 +20,9 @@ namespace Usage
                 // await UniNetManager.ServerAsync(_port);
                 // await UniNetManager.ClientAsync("127.0.0.1", _port);
             }
-            catch (NotImplementedException)
+            catch (Exception e)
             {
-                // ponytail: 스텁 단계 임시 장치 — P1(NetworkManager 구현)에서 이 catch 블록 제거
-                Debug.LogWarning("UniNet API는 아직 스텁 상태입니다 (P1에서 구현 예정).");
+                Debug.LogException(e);
             }
         }
     }

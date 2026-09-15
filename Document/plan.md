@@ -11,8 +11,8 @@
 | 개발 환경 | **구축 완료** — Unity 6000.0.83f1 · NuGetForUnity 4.5.0 | 2026-09-14. 패키지 `Package/` 하위 + `file:../../Package` 참조 (ADR-0005 변경 이력 참고) |
 | 참조 방식 | **확정** — 패키지 고정 (ADR-0003) · 버전 확정: DRPC 3.5.0 / MessageProtocol 3.2.0 / Communication(RUDP) 2.7.0 | 로컬 소스 `unity-nuget/` |
 | RPC 계약 방식 | **확정** — 자동 생성 (ADR-0004) | UniNet 자체 소스젠 |
-| 공개 API 스타일 | **확정** — Mirror/Netcode류 속성 (`[ServerRpc]`·`[ClientRpc]`·`[MulticastRpc]`·`[Replicated(Notify)]`·`IsOwner`·`UniNetManager`) | 2026-09-14. 사용법 우선 확정 (ADR-0007) — RepNotify(이전값 1개 콜백)·MulticastRpc 확장 포함, `Sandbox/Assets/Usage/` 사용법 + Package API 스텁, batch 컴파일 녹색 |
-| asmdef 구조 확정 | 미정 (스캐폴드: Core/Unity 2개 착수 — 스텁 배치는 Core 계약·Unity 바인딩으로 유지) | 제안: `UniNet.Core`(순수 C#) / `UniNet.Unity`(바인딩) / `UniNet.Editor` / `UniNet.Tests` — 스파이크 결과로 확정 |
+| 공개 API 스타일 | **확정** — Mirror/Netcode류 속성 (`[ServerRpc]`·`[ClientRpc]`·`[MulticastRpc]`·`[Replicated(Notify)]`·`IsOwner`·`UniNetManager`) | 2026-09-14. 사용법 우선 확정 (ADR-0007) — RepNotify(이전값 1개 콜백)·MulticastRpc 확장 포함, `Sandbox/Assets/Scripts/` 사용법 + Package API 스텁, batch 컴파일 녹색 |
+| 어셈블리 구조 확정 | **확정(1차)** — `UniNet.Core`(순수 C#·Hosting 런타임) / `UniNet.Unity`(바인딩) / 독립 `CodeGenerator/`(dotnet·Roslyn 4.3) / 테스트 3종(Fixtures·EditMode·PlayMode) | ADR-0008. 스파이크 대상이던 소스젠 2종은 3.5.0 라인에서 Roslyn 4.3 메인라인 전환 확인(경고 소멸) |
 | UPM-NuGet 연결 방식 | **1차 확정** — NuGetForUnity 4.5.0 (OpenUPM 고정) | 소스젠 2종 동작을 스파이크 1에서 검증 후 최종 확정 |
 
 **스파이크 (기술 리스크 조기 제거, 순서대로):**
@@ -21,7 +21,7 @@
 2. 전용서버 빌드(전용 서버 빌드 옵션)에서 Communication RUDP 동작
 3. IL2CPP AOT 빌드 확인 (reflection 금지 설계 검증)
 
-## Phase 1 — MonoBehaviour RPC (핵심 기능 1, 상태: 미착수)
+## Phase 1 — MonoBehaviour RPC (핵심 기능 1, 상태: **구현됨 — 2026-09-14, ADR-0008**)
 
 | 순서 | 작업 | 비고 |
 | --- | --- | --- |
@@ -33,7 +33,7 @@
 
 **완료 정의**: 오브젝트 대상 Server/Client/Multicast RPC가 양방향 왕복하고, 유닛 테스트가 이를 검증한다.
 
-## Phase 2 — 변수 Replicate (핵심 기능 2, 상태: 미착수)
+## Phase 2 — 변수 Replicate (핵심 기능 2, 상태: **기본 구현됨 — 델타·RepNotify·소유권·초기 전송(씬 오브젝트 기준). 잔여: 동적 스폰/파괴 동기화·조건부(COND_OwnerOnly)·InitialOnly 스폰 시 전체 전송**)
 
 변경 감지(dirty) → 델타 직렬화(MessageProtocol 위) → `[Replicated]` 마킹과 코드 생성 → 조건(OwnerOnly 등)·소유권·RepNotify → 스폰 시 초기 전송.
 

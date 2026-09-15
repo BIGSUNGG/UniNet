@@ -1,0 +1,8 @@
+{
+  "ignore": [
+    "**/CodeGenerator/**",
+    "^CodeGenerator/",
+    "**/Sandbox/Library/**",
+    "**/Sandbox/Temp/**"
+  ]
+}

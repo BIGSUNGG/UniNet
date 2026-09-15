@@ -1,0 +1,26 @@
+{
+    "name": "UniNet.Tests.PlayMode",
+    "rootNamespace": "UniNet.Tests",
+    "references": [
+        "UniNet.Core",
+        "UniNet.Unity",
+        "UniNet.Tests.Fixtures",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "DRPC.Attribute.dll",
+        "MessageProtocol.Core.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

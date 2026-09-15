@@ -1,0 +1,29 @@
+{
+    "name": "UniNet.Tests.EditMode",
+    "rootNamespace": "UniNet.Tests",
+    "references": [
+        "UniNet.Core",
+        "UniNet.Unity",
+        "UniNet.Tests.Fixtures",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "DRPC.Attribute.dll",
+        "DRPC.Shared.dll",
+        "MessageProtocol.Core.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using UniNet.Core;
 using UniNet.Unity;
 using UnityEngine;
@@ -5,10 +6,10 @@ using UnityEngine;
 namespace Usage
 {
     /// <summary>
-    /// UniNet 사용법 예제 — MonoBehaviour RPC + 변수 리플리케이션의 최소 형태.
+    /// UniNet 사용법 예제 — RPC partial 선언 + _Implementation(구현) + _Validate(선택 검증) 패턴.
     /// (사용법 우선 설계: 이 클래스가 곧 UniNet 공개 API의 설계안이다)
     /// </summary>
-    public sealed class Player : NetworkBehaviour
+    public sealed partial class Player : NetworkBehaviour
     {
         /// <summary>서버 권위 변수 — 변경 시 클라이언트에 자동 동기화 + RepNotify 콜백.</summary>
         [Replicated(Notify = nameof(OnHpChanged))]
@@ -20,9 +21,16 @@ namespace Usage
             // _hp(현재값)로 UI 갱신, prevHp로 변화량 계산 (데미지 팝업 등)
         }
 
-        /// <summary>클라 → 서버 요청. 서버에서만 실행된다 (서버 권위).</summary>
+        /// <summary>클라 → 서버 요청. 선언만 하고 구현은 _Implementation에 쓴다 (서버 권위).</summary>
         [ServerRpc]
-        private void RpcRequestHit(int damage)
+        private partial void RpcRequestHit(int damage);
+
+        /// <summary>선택 검증 후크 — false면 서버가 _Implementation를 실행하지 않는다 (DRPC Validation 패리티).</summary>
+        private Task<bool> RpcRequestHit_Validate(int damage)
+            => Task.FromResult(damage > 0);
+
+        /// <summary>서버에서만 실행되는 구현.</summary>
+        private void RpcRequestHit_Implementation(int damage)
         {
             _hp -= damage;
 
@@ -32,11 +40,17 @@ namespace Usage
 
         /// <summary>서버 → 클라(들) 브로드캐스트. 비신뢰 전달(유실 허용) 예시.</summary>
         [ClientRpc(Delivery.Unreliable)]
-        private void RpcPlayHitFx(int damage) { /* FX 재생 */ }
+        private partial void RpcPlayHitFx(int damage);
+
+        /// <summary>클라이언트에서 실행되는 구현.</summary>
+        private void RpcPlayHitFx_Implementation(int damage) { /* FX 재생 */ }
 
         /// <summary>서버 → 서버+전 클라 Multicast. 사망 FX처럼 모두가 봐야 하는 것 (서버에서도 실행, 클라 호출 시 로컬 전용).</summary>
         [MulticastRpc]
-        private void RpcPlayDeathFx() { /* 사망 FX */ }
+        private partial void RpcPlayDeathFx();
+
+        /// <summary>서버·클라 모두에서 실행되는 구현.</summary>
+        private void RpcPlayDeathFx_Implementation() { /* 사망 FX */ }
 
         private void Update()
         {
