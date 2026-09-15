@@ -63,5 +63,38 @@ namespace UniNet.Tests
 
         private void RpcDeath_Implementation()
             => MulticastCount++;
+
+        // ── 메시지 타입 지원 검증 (MP [Message] + 다형성) ──
+
+        /// <summary>서버가 마지막으로 받은 메시지 (다형성 확인용).</summary>
+        public PayloadMsg LastMsg;
+
+        /// <summary>마지막 메시지가 자식 타입이었는가.</summary>
+        public bool LastMsgWasDerived => LastMsg is DerivedPayloadMsg;
+
+        /// <summary>리플리케이션 대상 메시지 필드.</summary>
+        [Replicated(Notify = nameof(OnStateMsgChanged))]
+        public PayloadMsg StateMsg = new PayloadMsg();
+
+        /// <summary>StateMsg RepNotify 호출 여부.</summary>
+        public bool StateMsgNotified;
+
+        /// <summary>StateMsg RepNotify가 받은 이전 참조.</summary>
+        public PayloadMsg LastStatePrev;
+
+        [ServerRpc]
+        internal partial void RpcDeliver(PayloadMsg msg);
+
+        private System.Threading.Tasks.Task<bool> RpcDeliver_Validate(PayloadMsg msg)
+            => System.Threading.Tasks.Task.FromResult(msg != null);
+
+        private void RpcDeliver_Implementation(PayloadMsg msg)
+            => LastMsg = msg;
+
+        private void OnStateMsgChanged(PayloadMsg prev)
+        {
+            StateMsgNotified = true;
+            LastStatePrev = prev;
+        }
     }
 }

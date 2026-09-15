@@ -59,7 +59,24 @@ namespace UniNet.Tests
                 Assert.AreEqual(93, player.Score, "리플리케이션 적용값");
                 Assert.AreEqual(100, player.LastPrevScore, "RepNotify 이전값");
 
-                UnityEngine.Debug.Log("[UNINET-VERIFY] HostRoundtrip PASS — ServerRpc/Validate/ClientRpc/Multicast/Replicated/RepNotify");
+                // 6) 메시지 파라미터 RPC + 다형성: 부모(PayloadMsg) 선언에 자식 인스턴스 → 생성 인코더 → 네트워크 → 서버에서 자식 복원
+                int deliverId = Fnv1a.MethodId("UniNet.Tests.VerifyPlayer.RpcDeliver");
+                var msg = new DerivedPayloadMsg { Value = 5, Bonus = 3 };
+                UniNetEnvironment.ClientSender.UniNetSend(deliverId,
+                    VerifyPlayer.__UniNetEncode_RpcDeliver(player.NetId, msg), RpcDeliveryMode.ReliableOrdered);
+                yield return WaitUntil(() => player.LastMsg != null, 5);
+                Assert.IsInstanceOf<DerivedPayloadMsg>(player.LastMsg, "다형성 — 자식 타입 복원");
+                Assert.AreEqual(3, ((DerivedPayloadMsg)player.LastMsg).Bonus, "자식 고유 필드 온전");
+                Assert.AreEqual(5, player.LastMsg.Value, "부모 필드 온전");
+
+                // 7) 리플리케이션 메시지 필드: 서버에서 인스턴스 교체 → 델타 → 클라 적용 + RepNotify(이전 참조)
+                player.StateMsg = new PayloadMsg { Value = 77 };
+                yield return WaitUntil(() => player.StateMsgNotified, 5);
+                Assert.AreEqual(77, player.StateMsg.Value, "메시지 필드 적용값");
+                Assert.IsNotNull(player.LastStatePrev, "RepNotify 이전 인스턴스 참조");
+                Assert.AreEqual(0, player.LastStatePrev.Value, "이전 인스턴스 값(초기 0) 보존");
+
+                UnityEngine.Debug.Log("[UNINET-VERIFY] HostRoundtrip PASS — ServerRpc/Validate/ClientRpc/Multicast/Replicated/RepNotify/MessageParam/MessageReplicate");
             }
             finally
             {

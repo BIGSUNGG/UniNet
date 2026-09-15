@@ -5,6 +5,17 @@
 
 ## [2026-09-15]
 
+### Added (MP 메시지 타입 지원)
+
+- **RPC 매개변수·[Replicated] 필드에 MessageProtocol [Message] 타입 지원** — object 직렬화 경로(MessageId 헤더 디스패치: `MessageSerializer.SerializeToWriter`/`DeserializeFromReader`)로 **Parent/Child 다형성 공식 지원**(부모 선언 파라미터에 자식 인스턴스 전달 → 수신측 자식 캐스팅·자식 필드 온전). MessageKind.NonId는 object 디스패치 불가로 미지원(UNINET002 안내 갱신)
+  - 제너레이터: [Message] 타입 감지(파서) + 인코더/디스패치/델타 방출에 object 경로 분기(이미터) — MP 제너레이터와 체이닝 없음(메시지 DTO는 사용자가 직접 작성해 MP 제너레이터가 처리 — 기존 아키텍처 원칙 유지)
+  - 사용법 예제: `Assets/Scripts/DamageMsg`·`CriticalHitMsg`(부모/자식) + Player.RpcApplyDamage(K 키 시연)
+  - [Replicated] 메시지 필드: dirty 비교는 object.Equals(참조 비교) — 값 동일성 필요 시 Equals 오버라이드, RepNotify는 이전 인스턴스 참조 전달
+  - 검증: EditMode 6/6(신규 MessageSupportTests — 다형성 보존·메시지 필드 델타/이전 참조) + PlayMode 호스트 왕복(네트워크 전 경로 — [UNINET-VERIFY] 마커 갱신) + 배치 컴파일 녹색(run53 — 해시 검증 배포 빌드)
+  - 상류 무수정(MP 런타임 공개 API로 해결)
+
+
+
 ### Changed (개발 환경 — sln 브라우징)
 
 - **사용법 예제 폴더 이동** — `Sandbox/Assets/Usage/` → `Sandbox/Assets/Scripts/` (IDE 솔루션에서 브라우징하기 좋은 관례명으로. 어셈블리·netId·동작 무변경 — Assembly-CSharp 소속 그대로). ADR-0007 변경 이력·README·features·plan 경로 동기 갱신

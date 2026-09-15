@@ -25,9 +25,16 @@ namespace Usage
         [ServerRpc]
         private partial void RpcRequestHit(int damage);
 
+        /// <summary>메시지 타입 매개변수 + 다형성 — 부모(DamageMsg) 선언에 자식(CriticalHitMsg) 인스턴스 전달.</summary>
+        [ServerRpc]
+        private partial void RpcApplyDamage(DamageMsg damage);
+
         /// <summary>선택 검증 후크 — false면 서버가 _Implementation를 실행하지 않는다 (DRPC Validation 패리티).</summary>
         private Task<bool> RpcRequestHit_Validate(int damage)
             => Task.FromResult(damage > 0);
+
+        private Task<bool> RpcApplyDamage_Validate(DamageMsg damage)
+            => Task.FromResult(damage != null && damage.Amount > 0);
 
         /// <summary>서버에서만 실행되는 구현.</summary>
         private void RpcRequestHit_Implementation(int damage)
@@ -36,6 +43,15 @@ namespace Usage
 
             if (_hp <= 0)
                 RpcPlayDeathFx();   // 서버에서 호출 → 서버+전 클라에서 실행
+        }
+
+        /// <summary>메시지 구현 — 수신측에서 자식 타입으로 캐스팅해 확장 필드 사용 (다형성 공식 지원).</summary>
+        private void RpcApplyDamage_Implementation(DamageMsg damage)
+        {
+            _hp -= damage.Amount;
+
+            if (damage is CriticalHitMsg crit)
+                _hp -= (int)(damage.Amount * (crit.Multiplier - 1f));   // 치명타 추가분
         }
 
         /// <summary>서버 → 클라(들) 브로드캐스트. 비신뢰 전달(유실 허용) 예시.</summary>
@@ -58,6 +74,9 @@ namespace Usage
 
             if (Input.GetKeyDown(KeyCode.Space))
                 RpcRequestHit(10);
+
+            if (Input.GetKeyDown(KeyCode.K))
+                RpcApplyDamage(new CriticalHitMsg { Amount = 20, Multiplier = 2f });   // 자식 인스턴스 전달
         }
     }
 }

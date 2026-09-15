@@ -46,6 +46,14 @@ public sealed partial class Player : NetworkBehaviour
     private partial void RpcPlayDeathFx();
     private void RpcPlayDeathFx_Implementation() { /* 사망 FX */ }
 
+    [ServerRpc]                             // MP [Message] 타입 파라미터 + 다형성 공식 지원
+    private partial void RpcApplyDamage(DamageMsg damage);
+    private void RpcApplyDamage_Implementation(DamageMsg damage)
+    {
+        if (damage is CriticalHitMsg crit)  // 자식 인스턴스 → 자식 캐스팅·필드 온전
+            _hp -= (int)(damage.Amount * (crit.Multiplier - 1f));
+    }
+
     private void Update()
     {
         if (!IsOwner) return;

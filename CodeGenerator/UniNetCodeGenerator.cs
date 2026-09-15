@@ -132,10 +132,11 @@ namespace UniNet.CodeGenerator
                 Parameters = method.Parameters.Select(p => new ParamModel { Name = p.Name, Type = p.Type }).ToList(),
             };
 
-            // 매개변수 타입 검사
+            // 매개변수 타입 검사 — 기본형·string 또는 [Message] 타입
             foreach (var p in rpc.Parameters)
             {
-                if (Emitter.WriteCall(p.Type) == null)
+                p.IsMessage = IsMessageType(p.Type);
+                if (!p.IsMessage && Emitter.WriteCall(p.Type) == null)
                     Report(Diagnostics.UnsupportedType, method.Locations[0], p.Type.ToDisplayString(), method.Name);
             }
 
@@ -172,7 +173,8 @@ namespace UniNet.CodeGenerator
                 Index = model.ReplicatedFields.Count,
             };
 
-            if (Emitter.WriteCall(field.Type) == null || Emitter.ReadCall(field.Type) == null)
+            rep.IsMessage = IsMessageType(field.Type);
+            if (!rep.IsMessage && (Emitter.WriteCall(field.Type) == null || Emitter.ReadCall(field.Type) == null))
             {
                 Report(Diagnostics.UnsupportedType, field.Locations[0], field.Type.ToDisplayString(), field.Name);
                 return;
@@ -209,6 +211,25 @@ namespace UniNet.CodeGenerator
                 case Accessibility.ProtectedAndInternal: return "private protected";
                 default: return "private";
             }
+        }
+
+        /// <summary>
+        /// [Message] 마킹 타입 여부 — object 직렬화 경로(MessageId 헤더 디스패치)로 직렬화 가능한 타입.
+        /// MessageKind.NonId(4)는 헤더에 ID가 없어 object 디스패치 불가 → 미지원(UNINET002).
+        /// </summary>
+        internal static bool IsMessageType(ITypeSymbol type)
+        {
+            if (type is not INamedTypeSymbol named) return false;
+            foreach (var attr in named.GetAttributes())
+            {
+                if (attr.AttributeClass?.ToDisplayString() != "MessageProtocol.MessageAttribute") continue;
+                if (attr.ConstructorArguments.Length > 0
+                    && attr.ConstructorArguments[0].Value is int kind
+                    && kind == 4)   // MessageKind.NonId
+                    return false;
+                return true;
+            }
+            return false;
         }
 
         private static bool IsNetworkBehaviour(INamedTypeSymbol type)
@@ -302,6 +323,7 @@ namespace UniNet.CodeGenerator
     {
         public string Name = "";
         public ITypeSymbol Type = null!;
+        public bool IsMessage;
     }
 
     internal sealed class FieldModel
@@ -310,6 +332,7 @@ namespace UniNet.CodeGenerator
         public ITypeSymbol Type = null!;
         public int Index;
         public string? NotifyMethod;
+        public bool IsMessage;
     }
 
     internal static class StringBuilderCache
@@ -351,7 +374,7 @@ namespace UniNet.CodeGenerator
             Make(3, "RPC 메서드는 partial 선언이어야 함", "RPC 메서드 '{0}' ({1}) 은(는) 본문 없이 partial 로 선언하고 구현은 {0}_Implementation 에 작성해야 합니다", DiagnosticSeverity.Error);
 
         public static readonly DiagnosticDescriptor UnsupportedType =
-            Make(2, "지원하지 않는 타입", "타입 '{0}' 은(는) RPC/리플리케이션 매개변수로 지원되지 않습니다 ('{1}')", DiagnosticSeverity.Error);
+            Make(2, "지원하지 않는 타입", "타입 '{0}' 은(는) RPC/리플리케이션 매개변수로 지원되지 않습니다 ('{1}') — 기본형·string 또는 [Message] 마킹 타입(NonId 제외)만 지원", DiagnosticSeverity.Error);
 
         public static readonly DiagnosticDescriptor ImplementationMissing =
             Make(4, "_Implementation 누락/불일치", "RPC '{0}' 에 대응하는 '{0}_Implementation' 메서드가 없거나 시그니처가 일치하지 않습니다", DiagnosticSeverity.Error);

@@ -16,7 +16,7 @@ description: UniNet 품질 게이트. 코드나 개발 환경이 수정되었을
 ## Procedure
 
 1. **변경 수집**: `git diff HEAD` + 추적되지 않은 신규 파일 목록으로 변경 범위를 정리한다.
-2. **리뷰 요청**: `subagent` 도구로 `reviewer` 에이전트(프로젝트 스코프)를 실행한다. 태스크에 포함할 것:
+2. **리뷰 요청**: 검토를 위해 reviewer 서브에이전트를 호출하는 이유를 사용자에게 알리고 호출 여부를 질문한 뒤, 허락한 경우에만 `subagent` 도구로 `reviewer` 에이전트(프로젝트 스코프)를 실행한다. 태스크에 포함할 것:
    - 변경 목적 (사용자 요청 요약)
    - 변경된 파일 목록과 diff (`git diff HEAD` 출력, 신규 파일은 전문 또는 요약)
    - 검토 기준: 정확성/구조/보안/속도/규약/문서 동기화(README 포함) — 차원별 상세 기준은 reviewer가 스킬(review-structure / review-security / review-performance)을 읽어 적용

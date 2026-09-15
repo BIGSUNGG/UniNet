@@ -12,7 +12,7 @@
 
 - 사용은 간단하게: 속성 + partial 선언만 (사용법: `Sandbox/Assets/Scripts/Player.cs`)
 - 서버 권위: ServerRpc/리플리케이션 주도권은 서버. MulticastRpc 클라 호출은 로컬 전용·비전파
-- 기본형(string 포함) 매개변수·필드 지원, 잘못된 선언은 컴파일 타임 진단(UNINET0xx)
+- 기본형·string·[Message] 타입 매개변수·필드 지원(다형성 공식 계약), 잘못된 선언은 컴파일 타임 진단(UNINET0xx)
 
 ## 설계
 
@@ -31,20 +31,46 @@
 - **보안·속도 설정** — `UniNetEndpointOptions`(연결 키·타임아웃·연결 상한·CRC32c·DTLS 인증서/핀닝)가 DRPC 옵션으로 매핑. 게임 코드는 DRPC·MP 타입 노출 없음
 - **스레딩** — DRPC 수신은 네트워크 스레드→메인 큐 적재→UniNetDriver.Update에서 실행 (Unity 스레드 안전)
 
+## 메시지 타입 파라미터 (MP [Message] 지원)
+
+RPC 매개변수와 [Replicated] 필드에 MessageProtocol 메시지 타입을 쓸 수 있다 — object 직렬화 경로(MessageId 헤더 디스패치)로 **다형성을 공식 지원**한다:
+
+```csharp
+[Message] public partial class DamageMsg { public int Amount { get; set; } }
+[Message] public partial class CriticalHitMsg : DamageMsg { public float Multiplier { get; set; } = 2f; }
+
+[ServerRpc]
+private partial void RpcApplyDamage(DamageMsg damage);   // 부모 타입 선언
+
+RpcApplyDamage(new CriticalHitMsg { Amount = 20 });       // 자식 인스턴스 전달
+
+private void RpcApplyDamage_Implementation(DamageMsg damage)
+{
+    if (damage is CriticalHitMsg crit)   // ✅ 수신측에서 자식 캐스팅·자식 필드 온전
+        ...
+}
+```
+
+- 직렬화: 송신 `MessageSerializer.SerializeToWriter`(MessageId 헤더 포함) / 수신 `DeserializeFromReader`(헤더로 구체 타입 복원 후 선언 타입으로 캐스팅)
+- 전달하는 **모든 구체 타입에 [Message] 마킹 필요** (MessageKind.NonId는 object 디스패치 불가 → 미지원)
+- [Replicated] 메시지 필드의 dirty 비교는 `object.Equals`(참조 비교) — 값 동일성이 필요하면 Equals 오버라이드. RepNotify는 이전 인스턴스 참조를 받는다
+- 검증: EditMode(MessageSupportTests — 다형성 보존·메시지 필드 델타) + PlayMode 호스트 왕복(네트워크 경로 전체)
+
 ## 알려진 한계 (신뢰 경계 포함)
 
 - **ServerRpc 발신자 미검증** — 수신 핸들은 페이로드의 netId만으로 대상을 찾아 `_Implementation`를 실행한다. 악의적 클라가 다른 오브젝트의 netId로 페이로드를 조립하면 피해자 오브젝트의 ServerRpc가 실행될 수 있다. `_Validate`는 인자만 검증 가능(발신자 불가). 완화 플러밍은 마련됐다 — 연결별 허브가 발신 connId를 주입하고 디스패치까지 전달되므로(`senderConnId`), 소유권 대조 강화는 후속 과제다.
 - **접속 직후 첫 전송 레이스** — 접속 완료 직후(Welcome/소유권 수신 전) 즉발 one-way RPC가 유실될 수 있음 (ADR-0008 알려진 한계 — 상류 조사 후보). 연결 확정 후 전송하는 자연 패턴은 무영향.
 - **연결 종료 수명주기 미구현** — `Stop`/`Shutdown`이 없고 `ServerAsync` 재호출 시 이전 리슨 핸들이 교체만 된다. P1 범위 밖 — 후속 구현.
 - **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가).
-- **RPC 매개변수·리플리케이션 필드는 기본형 + string만** (진단 UNINET002·UNINET008 — 32필드 상한).
+- **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 컬렉션(List<T> 등)의 직접 파라미터는 여전히 미지원 — 메시지 내부 필드로 담아 전달(MP가 처리). 32필드 상한(UNINET008) 유지.
 
 ## 테스트 / 검증
 
-- EditMode 유닛 4종: `Sandbox/Assets/Tests/EditMode/` — FNV 안정성·옵션 매핑·소유권 정책·델타/RepNotify 이전값 (`tests-editmode.xml`)
+- EditMode 유닛 6종: `Sandbox/Assets/Tests/EditMode/` — FNV 안정성·옵션 매핑·소유권 정책·델타/RepNotify 이전값 + MessageSupportTests(다형성 보존·메시지 필드 델타/이전 참조) (`tests-editmode.xml`)
 - PlayMode 호스트 왕복: `Sandbox/Assets/Tests/PlayMode/HostRoundtripTests.cs` — 루프백 RUDP 전 경로 (`[UNINET-VERIFY]` 마커)
 - 2-프로세스 왕복: `Sandbox/Assets/Tests/Fixtures/TwoProcessRunner.cs` (`--uninet-role=server|client`) — 프로세스 간 RUDP (`[UNINET-2PROC]` 마커, 로그: `Sandbox-2proc-*.log`)
 
 ## 변경 이력
 
 - 2026-09-14 — 최초 작성 (구현 완료와 함께)
+- 2026-09-15 — [Message] 타입 매개변수·필드 지원 추가 (다형성 공식 계약 — MessageSupportTests·호스트 왕복 검증)
