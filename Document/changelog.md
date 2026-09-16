@@ -3,6 +3,20 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-16]
+
+### Added (P2 완결 — 동적 스폰/파괴·조건부·InitialOnly)
+
+- **P2 잔여 기능 전부 구현으로 P2 완결** (ADR-0009, 기능 문서 갱신)
+  - **동적 스폰/파괴 — 명시적 API**: `UniNetManager.Spawn(instance)`(netId 할당·소유권 배정·전 클라 스폰 전파) / `UniNetManager.NetworkDestroy(instance)`(파괴 전파+로컬 파괴). 서버 netId 증번(씬 해시와 공간 분리), 클라 생성은 `RegisterPrefab<T>` 타입 카탈로그 → 소스젠 팩토리(GameObject+AddComponent) 폴백. 스폰 메시지=[netId][typeKey][변환 7값][전체 상태]. **후발 접속 캐치업** — Welcome→소유권 재배정→기존 오브젝트 일괄 합류(동적=스폰, 씬=전체 상태). 호스트는 서버 인스턴스 클라 등록 재사용(이중 생성 방지)
+  - **조건부 리플리케이션 + InitialOnly**: `[Replicated(ReplicateCondition.OwnerOnly, Notify=...)]` — flags enum(OwnerOnly/SkipOwner/InitialOnly 조합). 수신 그룹별(소유자/비소유자) 페이로드 분리 — 조건 필드 없는 타입은 단일 페이로드 재사용(핫패스 불변). InitialOnly는 델타 추적 제외·스폰/캐치업 전체 상태에만 포함. OwnerOnly|SkipOwner 모순 진단 **UNINET010** 신규
+  - **호스트 권위 원본 보존**(버그 수정 동반): 리플리케이션 적용 시 IsServer 인스턴스는 값 재기록 스킵(Notify 유지) — [Message] 참조 필드가 역직렬화 사본으로 교체되며 스냅샷 dirty가 매 틱 재발하던 무한 churn 발견·해소(캐치업 전체 상태 적용에서 재현, PlayMode로 검증)
+  - **고스트 등록 방어**: 드라이버가 일반 Destroy로 사라진 등록 오브젝트를 감지해 파괴 전파(리소스 소진 방어)
+  - **API 정리**: `NetworkClient.RegisterSceneObject` → `Register`/`Unregister` 통일. 시스템 채널에 SendSpawn/SendDestroy 확장. 생성 코드: 조건 마스크 상수·그룹별 델타·WriteFull·스폰 팩토리 등록 방출, `_Validate` 없는 RPC의 async 무경고 제거(CS1998)
+  - **Sandbox 예제**: `Scripts/Weapon.cs`·`Projectile.cs` — ServerRpc 발사→Instantiate+Spawn·조건 3종(무조건/OwnerOnly/InitialOnly)·수명 만료 NetworkDestroy·RegisterPrefab 사용법
+  - **검증**: 배치 컴파일 녹색(run140) · EditMode 13/13(SpawnConditionTests 7종 신규) · PlayMode 2/2(DynamicSpawnDestroy 신규, [UNINET-VERIFY] 2종) · 2-프로세스 DYNAMIC-SPAWN-DESTROY PASS — 캐치업/브로드캐스트/OwnerOnly 전파·SkipOwner·InitialOnly 미전파/파괴
+  - **리뷰 라운드 1 반영 (ISSUES 6건 → 전부 수용)**: 캐치업 씬 전체 상태 WriteFull null NRE 방지(전 필드 조건 제외 타입) · Spawn 무효 호출 시 인스턴스 파괴 제거(ADR 계약과 일치 — 경고 후 무동작) · 프레임당 오브젝트 스냅샷 1회 공유(고스트 스윕×틱 복사 2회 → 1회) · __Destroy_Requested 악성 페이로드 try/catch 격리(Spawn 핸들과 대칭) · 다중 NetworkBehaviour 프리팹 제약 경고+문서화 · 스크래치 정리(.tmp-p*/·GenDump 산출물 gitignore) — 재검증 전량 통과(run140-142 + 2proc)
+
 ## [2026-09-15]
 
 ### Added (MP 메시지 타입 지원)
@@ -13,8 +27,6 @@
   - [Replicated] 메시지 필드: dirty 비교는 object.Equals(참조 비교) — 값 동일성 필요 시 Equals 오버라이드, RepNotify는 이전 인스턴스 참조 전달
   - 검증: EditMode 6/6(신규 MessageSupportTests — 다형성 보존·메시지 필드 델타/이전 참조) + PlayMode 호스트 왕복(네트워크 전 경로 — [UNINET-VERIFY] 마커 갱신) + 배치 컴파일 녹색(run53 — 해시 검증 배포 빌드)
   - 상류 무수정(MP 런타임 공개 API로 해결)
-
-
 
 ### Changed (개발 환경 — sln 브라우징)
 

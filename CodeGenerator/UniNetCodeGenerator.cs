@@ -171,7 +171,15 @@ namespace UniNet.CodeGenerator
                 Name = field.Name,
                 Type = field.Type,
                 Index = model.ReplicatedFields.Count,
+                Condition = ParseCondition(attr),
             };
+
+            if ((rep.Condition & (FieldModel.CondOwnerOnly | FieldModel.CondSkipOwner))
+                == (FieldModel.CondOwnerOnly | FieldModel.CondSkipOwner))
+            {
+                Report(Diagnostics.ContradictoryCondition, field.Locations[0], field.Name);
+                return;
+            }
 
             rep.IsMessage = IsMessageType(field.Type);
             if (!rep.IsMessage && (Emitter.WriteCall(field.Type) == null || Emitter.ReadCall(field.Type) == null))
@@ -264,6 +272,10 @@ namespace UniNet.CodeGenerator
             return null;
         }
 
+        /// <summary>ReplicatedAttribute 생성자의 조건 인자를 내부 비트로 변환한다 (ReplicateCondition 값과 1:1).</summary>
+        private static int ParseCondition(AttributeData attr)
+            => attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is int cond ? cond : 0;
+
         private static bool SignatureMatches(IMethodSymbol a, IMethodSymbol b)
         {
             if (a.Parameters.Length != b.Parameters.Length) return false;
@@ -328,11 +340,26 @@ namespace UniNet.CodeGenerator
 
     internal sealed class FieldModel
     {
+        public const int CondNone = 0;
+        public const int CondOwnerOnly = 1;
+        public const int CondSkipOwner = 2;
+        public const int CondInitialOnly = 4;
+
         public string Name = "";
         public ITypeSymbol Type = null!;
         public int Index;
         public string? NotifyMethod;
         public bool IsMessage;
+        public int Condition = CondNone;
+
+        /// <summary>InitialOnly 조건이 있는가 (델타 추적 제외).</summary>
+        public bool IsInitialOnly => (Condition & CondInitialOnly) != 0;
+
+        /// <summary>OwnerOnly 조건이 있는가.</summary>
+        public bool IsOwnerOnly => (Condition & CondOwnerOnly) != 0;
+
+        /// <summary>SkipOwner 조건이 있는가.</summary>
+        public bool IsSkipOwner => (Condition & CondSkipOwner) != 0;
     }
 
     internal static class StringBuilderCache
@@ -393,5 +420,8 @@ namespace UniNet.CodeGenerator
 
         public static readonly DiagnosticDescriptor SafeNameCollision =
             Make(9, "생성명 충돌", "타입 '{0}' 와(과) '{1}' 의 생성 코드 심볼명이 충돌합니다", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor ContradictoryCondition =
+            Make(10, "모순된 리플리케이션 조건", "필드 '{0}' 의 조건 OwnerOnly|SkipOwner 는 모순입니다 — 소유자에게도 보내지 않는 필드가 된다", DiagnosticSeverity.Error);
     }
 }

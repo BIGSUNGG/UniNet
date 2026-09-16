@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="2" result="Passed" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:38Z" duration="5.7931372">
+  <test-suite type="TestSuite" id="1008" name="Sandbox" fullname="Sandbox" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:38Z" duration="5.793137" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1004" name="UniNet.Tests.PlayMode.dll" fullname="C:/Projects/DS/UniNet/.tmp-p2/Library/ScriptAssemblies/UniNet.Tests.PlayMode.dll" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:38Z" duration="5.785399" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="40804" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestSuite" id="1005" name="UniNet" fullname="UniNet" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:38Z" duration="5.784809" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1006" name="Tests" fullname="UniNet.Tests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:38Z" duration="5.784499" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1001" name="HostRoundtripTests" fullname="UniNet.Tests.HostRoundtripTests" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:38Z" duration="5.783182" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1003" name="호스트_동적_스폰_파괴_조건부_리플리케이션" fullname="UniNet.Tests.HostRoundtripTests.호스트_동적_스폰_파괴_조건부_리플리케이션" methodname="호스트_동적_스폰_파괴_조건부_리플리케이션" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" seed="373377982" result="Passed" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:32Z" duration="0.182243" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[UNINET-VERIFY] DynamicSpawnDestroy PASS — Spawn/HostReuse/Ownership/OwnerOnly/NetworkDestroy
+]]></output>
+            </test-case>
+            <test-case id="1002" name="호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" fullname="UniNet.Tests.HostRoundtripTests.호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" methodname="호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" seed="727039841" result="Passed" start-time="2026-09-16 06:37:32Z" end-time="2026-09-16 06:37:38Z" duration="5.587336" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[UNINET-VERIFY] HostRoundtrip PASS — ServerRpc/Validate/ClientRpc/Multicast/Replicated/RepNotify/MessageParam/MessageReplicate
+Saving results to: C:/Projects/DS/UniNet/Sandbox/tests-playmode-p2.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

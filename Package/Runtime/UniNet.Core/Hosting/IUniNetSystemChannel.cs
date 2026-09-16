@@ -15,6 +15,12 @@ public interface IUniNetSystemChannel
     /// <summary>리플리케이션 델타를 전송한다 (methodId는 타입별 생성 값).</summary>
     void SendReplicate(ulong netId, int methodId, byte[] payload);
 
+    /// <summary>동적 오브젝트 스폰을 전송한다 — typeKey로 클라가 생성할 타입을, 변환 7값과 state(전체 상태 페이로드)로 초기 배치를 정한다.</summary>
+    void SendSpawn(ulong netId, ulong typeKey, float px, float py, float pz, float qx, float qy, float qz, float qw, byte[] state);
+
+    /// <summary>동적 오브젝트 파괴를 전송한다.</summary>
+    void SendDestroy(ulong netId);
+
     /// <summary>일반 RPC 페이로드 전송 (어셈블리 무관 송신 경로).</summary>
     void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode);
 }

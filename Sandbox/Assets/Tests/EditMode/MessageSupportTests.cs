@@ -46,11 +46,11 @@ namespace UniNet.Tests
                 var entry = new NetworkServer.ServerObjectEntry(player);
                 handler.InitSnapshot(entry);
                 handler.InitClientSnapshot(player);
-                Assert.AreEqual(0, handler.CompareAndWriteDelta(entry).Length, "초기 상태는 변경 없음");
+                Assert.IsNull(handler.CompareAndWriteDelta(entry).Owner, "초기 상태는 변경 없음");
 
                 // 새 인스턴스 교체(참조 비교 dirty) — 값 복사가 아니어도 전송된다
                 player.StateMsg = new PayloadMsg { Value = 99 };
-                byte[] delta = handler.CompareAndWriteDelta(entry);
+                byte[] delta = handler.CompareAndWriteDelta(entry).Owner;
                 Assert.Greater(delta.Length, 0, "메시지 필드 델타 생성");
 
                 // 클라 적용 — MessageId 경유 복원 + RepNotify(이전 참조)

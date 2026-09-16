@@ -8,7 +8,7 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 | 단계 | 범위 | 상태 |
 | --- | --- | --- |
 | **P1** | MonoBehaviour 기준 RPC (핵심 기능 1) | **구현됨** (2026-09-14, [[0008-구현-아키텍처]]) |
-| **P2** | 변수 자동 Replicate — 기본 (핵심 기능 2) | **기본 구현됨** (델타·RepNotify·소유권·초기 전송 — 스폰/파괴 동기화·조건부·InitialOnly 잔여) |
+| **P2** | 변수 자동 Replicate — 기본 (핵심 기능 2) | **구현됨** (2026-09-16, [[0009-동적-스폰-조건부-리플리케이션]] — 스폰/파괴·조건부·InitialOnly 완결) |
 | **P3** | Replicate 고급 — 가시성·우선순위·최적화 | 미착수 |
 | **P4** | 고급 — 예측·래그컴펜세이션·커스텀 드라이버 | 미착수 |
 
@@ -30,14 +30,14 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 
 | UE 기능 | 설명 | 매핑 | 단계 |
 | --- | --- | --- | --- |
-| Property Replication | 멤버 변수 자동 동기화 | UniNet + MP | P2 |
-| 조건부 리플리케이션 | COND_OwnerOnly 등 조건 | UniNet | P2 |
-| RepNotify | 값 변경 시 클라이언트 콜백 | UniNet | P2 |
-| 델타 직렬화 | 변경분만 전송 | UniNet + MP | P2 |
-| 스폰/파괴 동기화 | 동적 오브젝트 생성·제거 반영 | UniNet + DRPC | P2 |
-| 소유권(Ownership) | 연결-오브젝트 소유 관계 | UniNet | P2 |
-| 네트워크 역할 | Authority/AutonomousProxy/SimulatedProxy 개념 | UniNet | P2 |
-| 초기 전송(InitialOnly) | 첫 동기화 시 전체 전송 | UniNet | P2 |
+| Property Replication | 멤버 변수 자동 동기화 | UniNet + MP | P2 ✅ |
+| 조건부 리플리케이션 | COND_OwnerOnly 등 조건 | UniNet (ReplicateCondition — OwnerOnly/SkipOwner) | P2 ✅ |
+| RepNotify | 값 변경 시 클라이언트 콜백 | UniNet | P2 ✅ |
+| 델타 직렬화 | 변경분만 전송 | UniNet + MP | P2 ✅ |
+| 스폰/파괴 동기화 | 동적 오브젝트 생성·제거 반영 | UniNet + DRPC (Spawn/NetworkDestroy 명시적 API) | P2 ✅ |
+| 소유권(Ownership) | 연결-오브젝트 소유 관계 | UniNet | P2 ✅ (라운드로빈 최소) |
+| 네트워크 역할 | Authority/AutonomousProxy/SimulatedProxy 개념 | UniNet (불린 3종 — ADR-0009) | P2 ✅ |
+| 초기 전송(InitialOnly) | 첫 동기화 시 전체 전송 | UniNet (ReplicateCondition.InitialOnly) | P2 ✅ |
 
 ### 리플리케이션 — 고급 (P3)
 

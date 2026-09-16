@@ -33,7 +33,7 @@
 
 **완료 정의**: 오브젝트 대상 Server/Client/Multicast RPC가 양방향 왕복하고, 유닛 테스트가 이를 검증한다.
 
-## Phase 2 — 변수 Replicate (핵심 기능 2, 상태: **기본 구현됨 — 델타·RepNotify·소유권·초기 전송(씬 오브젝트 기준). 잔여: 동적 스폰/파괴 동기화·조건부(COND_OwnerOnly)·InitialOnly 스폰 시 전체 전송**)
+## Phase 2 — 변수 Replicate (핵심 기능 2, 상태: **구현됨 — 2026-09-16, ADR-0009. 델타·RepNotify·소유권·초기 전송 + 동적 스폰/파괴(명시적 Spawn/NetworkDestroy)·조건부(OwnerOnly/SkipOwner)·InitialOnly·후발 접속 캐치업 완결**)
 
 변경 감지(dirty) → 델타 직렬화(MessageProtocol 위) → `[Replicated]` 마킹과 코드 생성 → 조건(OwnerOnly 등)·소유권·RepNotify → 스폰 시 초기 전송.
 

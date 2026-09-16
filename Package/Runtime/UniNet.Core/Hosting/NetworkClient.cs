@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// 클라이언트 런타임 — 씬 오브젝트 등록, 서버가 알려준 연결 ID·소유권 맵 보관.
+    /// 클라이언트 런타임 — 씬·동적 스폰 오브젝트 등록, 서버가 알려준 연결 ID·소유권 맵 보관.
     /// </summary>
     public sealed class NetworkClient
     {
@@ -14,10 +14,16 @@ namespace UniNet.Core.Hosting
         /// <summary>서버가 부여한 내 연결 ID (Welcome 수신 시 설정).</summary>
         public long LocalConnId { get; private set; }
 
-        /// <summary>씬 오브젝트를 등록한다 (netId는 서버와 같은 씬 경로 해시).</summary>
-        public void RegisterSceneObject(ulong netId, object instance)
+        /// <summary>오브젝트를 등록한다 — 씬 오브젝트(netId=씬 경로 해시)와 동적 스폰 오브젝트(netId=서버 할당) 모두.</summary>
+        public void Register(ulong netId, object instance)
         {
             lock (_gate) _objects[netId] = instance;
+        }
+
+        /// <summary>등록을 해제한다 (파괴 동기화). 등록이 있었으면 true.</summary>
+        public bool Unregister(ulong netId)
+        {
+            lock (_gate) return _objects.Remove(netId);
         }
 
         /// <summary>netId로 등록된 인스턴스를 조회한다.</summary>

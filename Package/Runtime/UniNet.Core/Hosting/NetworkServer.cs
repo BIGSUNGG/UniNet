@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// 서버 런타임 — 씬 오브젝트 등록, 연결별 허브 보관, 소유권 최소 정책, 리플리케이션 틱.
-    /// 네트워크 스레드에서 호출될 수 있어 상태 접근은 락으로 보호한다.
+    /// 서버 런타임 — 씬/동적 오브젝트 등록, 연결별 허브 보관, 소유권 최소 정책, 리플리케이션 틱, 스폰/파괴 전파, 후발 접속 캐치업.
+    /// 네트워크 스레드에서 호출될 수 있어 상태 접근은 락으로 보호한다. 브로드캐스트·캐치업은 메인 스레드에서 호출한다.
     /// </summary>
     public sealed class NetworkServer
     {
@@ -13,6 +13,8 @@ namespace UniNet.Core.Hosting
         private readonly Dictionary<ulong, ServerObjectEntry> _objects = new();
         private readonly List<ServerConnection> _connections = new();
         private long _nextConnId = 1;
+        private ulong _nextDynamicNetId = 1;
+        private int _rrCursor;
 
         /// <summary>네트워크 오브젝트 1개의 서버 측 상태 — 인스턴스와 소유 연결·리플리케이션 스냅샷.</summary>
         public sealed class ServerObjectEntry
@@ -28,6 +30,12 @@ namespace UniNet.Core.Hosting
 
             /// <summary>서버 측 마지막 전송 스냅샷 (dirty 비교 기준).</summary>
             public object[] Snapshot = Array.Empty<object>();
+
+            /// <summary>동적 스폰 오브젝트인가 (후발 접속 캐치업에서 스폰 메시지로 재전달된다).</summary>
+            public bool IsDynamic;
+
+            /// <summary>동적 스폰 오브젝트의 타입 식별자 (UniNetSpawnRegistry — 클라 생성용).</summary>
+            public ulong TypeKey;
 
             public ServerObjectEntry(object instance) => Instance = instance;
         }
@@ -56,8 +64,74 @@ namespace UniNet.Core.Hosting
         {
             lock (_gate)
             {
-                _objects[netId] = new ServerObjectEntry(instance);
+                var entry = new ServerObjectEntry(instance);
+                AttachReplication(entry);
+                _objects[netId] = entry;
             }
+        }
+
+        /// <summary>
+        /// 동적 오브젝트를 등록하고 서버가 할당한 netId를 반환한다. 소유 연결은 라운드로빈으로 즉시 배정한다.
+        /// 이후 BroadcastSpawn(netId)로 클라 전체에 전파한다 (메인 스레드).
+        /// </summary>
+        public ulong RegisterDynamicObject(object instance)
+        {
+            lock (_gate)
+            {
+                ulong netId = _nextDynamicNetId;
+                while (_objects.ContainsKey(netId)) netId++;   // 씬 해시와의 충돌 회피 — 등록 불변식 보장
+                _nextDynamicNetId = netId + 1;
+
+                var entry = new ServerObjectEntry(instance)
+                {
+                    IsDynamic = true,
+                    TypeKey = UniNetSpawnRegistry.TypeKeyOf(instance.GetType()),
+                };
+                AttachReplication(entry);
+                if (_connections.Count > 0)
+                {
+                    entry.OwnerConnId = _connections[_rrCursor % _connections.Count].ConnId;
+                    _rrCursor++;
+                }
+                _objects[netId] = entry;
+                return netId;
+            }
+        }
+
+        /// <summary>등록된 오브젝트를 제거하고 전 연결에 파괴를 전파한다. 등록이 없으면 false (메인 스레드).</summary>
+        public bool DestroyObject(ulong netId)
+        {
+            lock (_gate)
+            {
+                if (!_objects.Remove(netId)) return false;
+            }
+
+            foreach (var conn in SnapshotConnections())
+                if (!conn.Disconnected)
+                    conn.Channel.SendDestroy(netId);
+            return true;
+        }
+
+        /// <summary>동적 스폰을 전 연결에 전파한다 — 스폰 메시지(타입·변환·전체 상태) + 소유권 알림 (메인 스레드).</summary>
+        public void BroadcastSpawn(ulong netId)
+        {
+            var entry = GetEntry(netId);
+            if (entry == null) return;
+
+            GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
+            foreach (var conn in SnapshotConnections())
+            {
+                if (conn.Disconnected) continue;
+                bool isOwner = conn.ConnId == entry.OwnerConnId;
+                byte[] state = entry.Replication != null && entry.Replication.HasFields
+                    ? entry.Replication.WriteFull(entry.Instance, isOwner)
+                    : Array.Empty<byte>();
+                conn.Channel.SendSpawn(netId, entry.TypeKey, px, py, pz, qx, qy, qz, qw, state);
+            }
+            if (entry.OwnerConnId != 0)
+                foreach (var conn in SnapshotConnections())
+                    if (!conn.Disconnected)
+                        conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
         }
 
         /// <summary>netId로 등록된 인스턴스를 조회한다.</summary>
@@ -66,7 +140,7 @@ namespace UniNet.Core.Hosting
             lock (_gate) return _objects.TryGetValue(netId, out var e) ? e.Instance : null;
         }
 
-        /// <summary>서버 측 오브젝트 엔트리를 조회한다 (등록 직후 핸들 부착용).</summary>
+        /// <summary>서버 측 오브젝트 엔트리를 조회한다.</summary>
         public ServerObjectEntry GetEntry(ulong netId)
         {
             lock (_gate) return _objects.TryGetValue(netId, out var e) ? e : null;
@@ -84,7 +158,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>새 연결을 붙인다 — 연결 ID 부여·소유권 재배정·알림을 메인 큐로 예약한다.</summary>
+        /// <summary>새 연결을 붙인다 — 연결 ID 부여·소유권 재배정·기존 상태 캐치업을 메인 큐로 예약한다.</summary>
         public long AttachConnection(IUniNetSystemChannel channel)
         {
             lock (_gate)
@@ -97,6 +171,7 @@ namespace UniNet.Core.Hosting
                 {
                     channel.SendWelcome(connId);
                     ReassignOwnership();
+                    SendCatchup(conn);
                 });
                 return conn.ConnId;
             }
@@ -127,7 +202,7 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// 소유권 최소 정책 — 연결 순서대로 씬 오브젝트(netId 오름차순)를 한 바퀴씩 배정하고 전 클라에 알린다.
+        /// 소유권 최소 정책 — 연결 순서대로 오브젝트(netId 오름차순)를 한 바퀴씩 배정하고 전 클라에 알린다.
         /// ponytail: 라운드로빈 최소 정책, 실서비스 요구 시 명시적 소유권 이전 API로 대체.
         /// </summary>
         private void ReassignOwnership()
@@ -148,26 +223,77 @@ namespace UniNet.Core.Hosting
             }
         }
 
+        /// <summary>후발 접속 캐치업 — 동적 오브젝트는 스폰으로, 씬 오브젝트는 전체 상태 리플리케이션으로 뒤늦게 합류시킨다.</summary>
+        private void SendCatchup(ServerConnection conn)
+        {
+            bool isOwner;
+            foreach (var (netId, entry) in SnapshotObjects())
+            {
+                isOwner = entry.OwnerConnId == conn.ConnId;
+                if (entry.IsDynamic)
+                {
+                    GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
+                    byte[] state = entry.Replication != null && entry.Replication.HasFields
+                        ? entry.Replication.WriteFull(entry.Instance, isOwner)
+                        : Array.Empty<byte>();
+                    conn.Channel.SendSpawn(netId, entry.TypeKey, px, py, pz, qx, qy, qz, qw, state);
+                }
+                else if (entry.Replication != null && entry.Replication.HasFields)
+                {
+                    byte[] state = entry.Replication.WriteFull(entry.Instance, isOwner);
+                    if (state != null && state.Length > 0)   // 전 필드가 조건으로 제외되면 null — 캐치업 생략
+                        conn.Channel.SendReplicate(netId, entry.Replication.MethodId, state);
+                }
+            }
+        }
+
         /// <summary>
-        /// 리플리케이션 틱(드라이버 Update에서 호출) — 변경된 [Replicated] 필드만 골라 델타를 전 클라에 전송한다.
+        /// 리플리케이션 틱(드라이버 Update에서 호출) — 변경된 [Replicated] 필드만 골라 수신 그룹별(OwnerOnly/SkipOwner) 델타를 전송한다.
+        /// 드라이버는 고스트 스윕과 스냅샷을 공유해 프레임당 복사를 1회로 제한할 수 있다.
         /// </summary>
         public void TickReplication()
+            => TickReplication(SnapshotObjects());
+
+        /// <summary>스냅샷을 받는 틱 오버로드 — 드라이버가 같은 프레임의 스윕과 공유한다.</summary>
+        public void TickReplication(IReadOnlyList<(ulong NetId, ServerObjectEntry Entry)> objects)
         {
             var connections = SnapshotConnections();   // 틱당 1회 캡처 (오브젝트마다 복사 방지)
             if (connections.Count == 0) return;
 
-            foreach (var (netId, entry) in SnapshotObjects())
+            foreach (var (netId, entry) in objects)
             {
                 var handler = entry.Replication;
                 if (handler == null || !handler.HasFields) continue;
 
-                byte[] payload = handler.CompareAndWriteDelta(entry);
-                if (payload.Length == 0) continue;
+                var (toOwner, toOthers) = handler.CompareAndWriteDelta(entry);
+                if (IsEmpty(toOwner) && IsEmpty(toOthers)) continue;
 
                 foreach (var conn in connections)
-                    if (!conn.Disconnected)
+                {
+                    if (conn.Disconnected) continue;
+                    var payload = conn.ConnId == entry.OwnerConnId ? toOwner : toOthers;
+                    if (!IsEmpty(payload))
                         conn.Channel.SendReplicate(netId, handler.MethodId, payload);
+                }
             }
+        }
+
+        private static bool IsEmpty(byte[] payload) => payload == null || payload.Length == 0;
+
+        private static void AttachReplication(ServerObjectEntry entry)
+        {
+            entry.Replication = UniNetTypeRegistry.Find(entry.Instance.GetType());
+            entry.Replication?.InitSnapshot(entry);
+        }
+
+        private static void GetSpawnTransform(ServerObjectEntry entry,
+            out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw)
+        {
+            px = py = pz = 0f;
+            qx = qy = qz = 0f;
+            qw = 1f;
+            if (entry.Instance is IUniNetSpawnTransform provider)
+                provider.GetSpawnTransform(out px, out py, out pz, out qx, out qy, out qz, out qw);
         }
     }
 }

@@ -13,7 +13,7 @@ RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Frame
 | `Sandbox/` | Unity 6000.0.83f1(6.0 LTS) 샌드박스 프로젝트 — 스파이크·데모·테스트 (폐기 가능) |
 | `Document/` | Obsidian Vault — 정의·구조·플랜·결정 기록 (SSoT) |
 
-## 사용법 (구현됨 — P1 전체 + P2 기본)
+## 사용법 (구현됨 — P1 전체 + P2 전체)
 
 RPC 메서드는 `partial` 선언 + 본문은 `{Name}_Implementation`에, 선택 검증은 `{Name}_Validate`에 작성한다 (ADR-0007 변경 이력·ADR-0008).
 
@@ -66,6 +66,34 @@ public sealed partial class Player : NetworkBehaviour
 await UniNetManager.HostAsync(7777);          // 서버+클라 한 프로세스 (개발용)
 // await UniNetManager.ServerAsync(7777);     // 전용 서버
 // await UniNetManager.ClientAsync("127.0.0.1", 7777);  // 클라이언트
+```
+
+### 동적 스폰/파괴 + 조건부 리플리케이션 (P2)
+
+```csharp
+// 서버에서 일반 Instantiate 후 Spawn 한 줄 — 전 클라에 스폰 전파 (사용법: Scripts/Weapon.cs)
+var projectile = Instantiate(_projectilePrefab, pos, rot);
+UniNetManager.Spawn(projectile.gameObject);
+UniNetManager.NetworkDestroy(projectile.gameObject);   // 파괴 동기화
+
+// 클라 생성용 프리팹 카탈로그 (미등록 시 빈 GameObject+AddComponent로 생성)
+UniNetManager.RegisterPrefab<Projectile>(projectilePrefab);
+
+public sealed partial class Projectile : NetworkBehaviour
+{
+    [Replicated] private float _x;                                              // 전 클라 항상
+    [Replicated(ReplicateCondition.OwnerOnly, Notify = nameof(OnDamageChanged))]
+    private int _damage;                                                        // 소유 클라만
+    [Replicated(ReplicateCondition.InitialOnly)] private int _seed;            // 스폰 시 1회만
+
+    private void Update()
+    {
+        if (!IsServer) return;            // 서버 권위 시뮬레이션
+        _x += 8f * Time.deltaTime;
+        if (_age >= _lifetime) UniNetManager.NetworkDestroy(gameObject);
+    }
+}
+// 후발 접속 클라에는 기존 동적 오브젝트가 자동 합류된다 (캐치업)
 ```
 
 전체 사용법: `Sandbox/Assets/Scripts/` · 검증: EditMode/PlayMode 유닛 테스트 + 2-프로세스 RUDP 왕복 (`Sandbox/Assets/Tests/`)

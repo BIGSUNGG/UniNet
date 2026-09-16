@@ -84,6 +84,46 @@ namespace UniNet.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator 호스트_동적_스폰_파괴_조건부_리플리케이션()
+        {
+            var hostTask = UniNetManager.HostAsync(7792);
+            while (!hostTask.IsCompleted) yield return null;
+            Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
+            yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
+
+            // 1) 동적 스폰 — 서버에서 생성 후 Spawn 호출 (위치·초기 상태는 스폰 메시지로 전파)
+            var go = new GameObject("spawned");
+            var spawned = go.AddComponent<SpawnablePlayer>();
+            go.transform.position = new Vector3(10f, 20f, 30f);
+            UniNetManager.Spawn(go);
+            Assert.AreNotEqual(0ul, spawned.NetId, "동적 netId 할당");
+            Assert.IsTrue(spawned.IsServer, "서버 등록");
+
+            // 2) 호스트 클라 — 스폰 브로드캐스트 수신 → 같은 인스턴스 재사용 등록 (이중 생성 없음)
+            yield return WaitUntil(() => UniNetEnvironment.Client.Get(spawned.NetId) != null, 5);
+            Assert.AreSame(spawned, (SpawnablePlayer)UniNetEnvironment.Client.Get(spawned.NetId), "호스트 — 서버 인스턴스 재사용");
+            Assert.IsTrue(spawned.IsClient, "클라 등록");
+            yield return WaitUntil(() => spawned.IsOwner, 5);
+            Assert.IsTrue(spawned.IsOwner, "동적 오브젝트 소유권 — 유일 연결이 소유");
+
+            // 3) 조건부 델타 — 호스트(=소유자)는 OwnerOnly 필드 수신: RepNotify 이전값으로 검증
+            spawned.Score = 5;
+            spawned.SecretHp = 40;
+            yield return WaitUntil(() => spawned.SecretNotified, 5);
+            Assert.AreEqual(50, spawned.LastPrevSecret, "OwnerOnly 델타 수신 — RepNotify 이전값 50");
+
+            // 4) 네트워크 파괴 — 서버·클라 등록 모두 해제
+            ulong netId = spawned.NetId;
+            UniNetManager.NetworkDestroy(go);
+            yield return WaitUntil(() => UniNetEnvironment.Client.Get(netId) == null
+                && UniNetEnvironment.Server.GetEntry(netId) == null, 5);
+            Assert.IsNull(UniNetEnvironment.Client.Get(netId), "클라 등록 해제");
+            Assert.IsNull(UniNetEnvironment.Server.GetEntry(netId), "서버 등록 해제");
+
+            UnityEngine.Debug.Log("[UNINET-VERIFY] DynamicSpawnDestroy PASS — Spawn/HostReuse/Ownership/OwnerOnly/NetworkDestroy");
+        }
+
         /// <summary>[netId][int amount] 페이로드 — 생성 인코더와 동일 형식.</summary>
         private static byte[] EncodePing(ulong netId, int amount)
         {

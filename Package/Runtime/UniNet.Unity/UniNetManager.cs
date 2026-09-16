@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using DRPC.Client.Network;
 using DRPC.Server.Network;
@@ -72,6 +73,49 @@ namespace UniNet.Unity
             await ClientAsync("127.0.0.1", port, clientOptions);
         }
 
+        /// <summary>클라 생성용 프리팹 카탈로그 등록 — T 타입 동적 스폰 시 클라에서 이 프리팹으로 생성한다 (미등록 시 빈 GameObject+AddComponent). 양단 같은 코드로 호출하면 된다.</summary>
+        public static void RegisterPrefab<T>(GameObject prefab) where T : NetworkBehaviour
+        {
+            if (prefab == null) throw new ArgumentNullException(nameof(prefab));
+            UniNetSpawnRegistry.Override(typeof(T), () => UnityEngine.Object.Instantiate(prefab).GetComponent<T>());
+        }
+
+        /// <summary>
+        /// 서버 동적 스폰 — Instantiate 후 호출하면 netId 할당·소유권 배정·전 클라 스폰 전파(타입·변환·전체 상태)가 일어난다.
+        /// 클라 생성은 RegisterPrefab 카탈로그 우선, 없으면 타입 기본 팩토리. 서버 권위 — 서버/호스트에서만 유효.
+        /// </summary>
+        public static void Spawn(GameObject instance)
+        {
+            var server = UniNetEnvironment.Server;
+            var nb = instance != null ? instance.GetComponent<NetworkBehaviour>() : null;
+            if (server == null || nb == null)
+            {
+                Debug.LogWarning("[UniNet] Spawn 은 서버에서 NetworkBehaviour 컴포넌트가 있는 오브젝트에만 유효하다 (호출 무시 — 인스턴스는 호출측 소유)");
+                return;
+            }
+            if (instance.GetComponents<NetworkBehaviour>().Length > 1)
+                Debug.LogWarning("[UniNet] Spawn 은 오브젝트의 첫 NetworkBehaviour만 등록한다 — 프리팩에는 NetworkBehaviour를 1개만 두거나 별도 오브젝트로 분리하세요 (나머지 컴포넌트는 RPC·리플리케이션 대상이 되지 않는다)");
+
+            nb.AssignNetId(server.RegisterDynamicObject(nb));
+            nb.MarkServerRegistered();
+            server.BroadcastSpawn(nb.NetId);
+        }
+
+        /// <summary>서버 네트워크 파괴 — 전 클라에 파괴를 전파하고 로컬도 파괴한다. Spawn 으로 스폰한 오브젝트에 사용.</summary>
+        public static void NetworkDestroy(GameObject instance)
+        {
+            var server = UniNetEnvironment.Server;
+            var nb = instance != null ? instance.GetComponent<NetworkBehaviour>() : null;
+            if (server == null || nb == null)
+            {
+                Debug.LogWarning("[UniNet] NetworkDestroy 는 서버에서 NetworkBehaviour 컴포넌트가 있는 오브젝트에만 유효하다");
+                return;
+            }
+
+            server.DestroyObject(nb.NetId);
+            UnityEngine.Object.Destroy(instance);
+        }
+
         private static UniNetHubFactory RequireFactory()
             => UniNetEnvironment.HubFactory
                ?? throw new InvalidOperationException(
@@ -109,7 +153,24 @@ namespace UniNet.Unity
         private void Update()
         {
             UniNetEnvironment.PumpMain();
-            UniNetEnvironment.Server?.TickReplication();
+            var server = UniNetEnvironment.Server;
+            if (server != null)
+            {
+                var objects = server.SnapshotObjects();   // 프레임당 1회 — 스윕·틱 공유 (복사 2회 방지)
+                SweepDestroyed(objects);
+                server.TickReplication(objects);
+            }
+        }
+
+        /// <summary>
+        /// 일반 Destroy로 사라진 네트워크 오브젝트를 감지해 파괴를 전파한다 (고스트 등록 방지 — 리소스 소진 방어).
+        /// ponytail: 매 프레임 전체 순회(O(n)), 오브젝트 수가 커지면 파괴 이벤트 후크로 교체.
+        /// </summary>
+        private static void SweepDestroyed(IReadOnlyList<(ulong NetId, NetworkServer.ServerObjectEntry Entry)> objects)
+        {
+            foreach (var (netId, entry) in objects)
+                if (entry.Instance is UnityEngine.Object u && u == null)
+                    UniNetEnvironment.Server.DestroyObject(netId);
         }
     }
 }

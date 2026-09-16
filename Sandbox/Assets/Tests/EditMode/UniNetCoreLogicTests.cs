@@ -82,10 +82,10 @@ namespace UniNet.Tests
                 // 서버: 스냅샷 → 변경 없으면 빈 델타 → 변경 시 델타
                 handler.InitSnapshot(entry);
                 handler.InitClientSnapshot(player);   // 클라 이전값 스냅샷(100)도 변경 전에 초기화
-                Assert.AreEqual(0, handler.CompareAndWriteDelta(entry).Length, "변경 없으면 빈 델타");
+                Assert.IsNull(handler.CompareAndWriteDelta(entry).Owner, "변경 없으면 델타 없음");
 
                 player.Score = 93;
-                byte[] delta = handler.CompareAndWriteDelta(entry);
+                byte[] delta = handler.CompareAndWriteDelta(entry).Owner;
                 Assert.Greater(delta.Length, 0, "변경분이 있으면 델타 생성");
 
                 // 클라: 적용 → RepNotify(이전값)
@@ -107,10 +107,15 @@ namespace UniNet.Tests
             public long UniNetConnId { get; set; }
             internal long WelcomeConnId;
             internal readonly System.Collections.Generic.List<(ulong, long)> OwnerUpdates = new();
+            internal readonly System.Collections.Generic.List<(ulong NetId, ulong TypeKey)> Spawns = new();
+            internal readonly System.Collections.Generic.List<ulong> Destroys = new();
 
             public void SendWelcome(long connId) => WelcomeConnId = connId;
             public void SendOwnerUpdate(ulong netId, long ownerConnId) => OwnerUpdates.Add((netId, ownerConnId));
             public void SendReplicate(ulong netId, int methodId, byte[] payload) { }
+            public void SendSpawn(ulong netId, ulong typeKey, float px, float py, float pz, float qx, float qy, float qz, float qw, byte[] state)
+                => Spawns.Add((netId, typeKey));
+            public void SendDestroy(ulong netId) => Destroys.Add(netId);
             public void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode) { }
         }
     }

@@ -20,7 +20,7 @@
 
 ### features/ — 기능 문서
 
-- [[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]] — MonoBehaviour RPC 3종 + [Replicated]/RepNotify (P1 전체 + P2 기본, 구현됨)
+- [[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]] — MonoBehaviour RPC 3종 + [Replicated]/RepNotify + 동적 스폰/파괴·조건부 (P1 전체 + P2 전체, 구현됨)
 
 ### decisions/ — 아키텍처 결정 기록 (ADR)
 
@@ -32,6 +32,7 @@
 - [[0006-리뷰-품질-게이트-확대]] — 리뷰 품질 게이트 확대: 트리거 확대·차원 스킬 3종(구조/보안/속도)·README 갱신 규칙
 - [[0007-사용법-우선-api-확정]] — 사용법 우선 개발 + 공개 API 스타일 확정 (Mirror/Netcode류 속성; 변경 이력 — partial 재구조화로 ADR-0008 승계)
 - [[0008-구현-아키텍처]] — P1 RPC + Replicate 기본 구현: 소스젠(로슬린 4.3) 직접 배선·다중 어셈블리·씬경로 netId·라운드로빈 소유권·검증 증거
+- [[0009-동적-스폰-조건부-리플리케이션]] — P2 완결: 명시적 Spawn/NetworkDestroy·타입 카탈로그·캐치업·ReplicateCondition(OwnerOnly/SkipOwner/InitialOnly)·호스트 권위 원본 보존
 
 ### _templates/ — 문서 템플릿
 
@@ -40,6 +41,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-16 — **P2 완결 — 동적 스폰/파괴·조건부 리플리케이션·InitialOnly 구현 완료** (ADR-0009: 명시적 Spawn/NetworkDestroy API·타입 카탈로그·후발 접속 캐치업·호스트 권위 원본 보존. EditMode 13종·PlayMode 2종·2-프로세스 DYNAMIC-SPAWN-DESTROY PASS)
 - 2026-09-14 — **P1 RPC + P2 Replicate 기본 구현 완료** (ADR-0008: 소스젠·런타임·2-프로세스 RUDP 왕복 검증 포함. 첫 기능 문서 등재)
 - 2026-09-14 — 사용법 우선 API 확정 (ADR-0007: 공개 API 스타일 Mirror/Netcode류·Sandbox 사용법 예제·Package API 스텁 · 변경 이력 — RepNotify·MulticastRpc 확장 후 partial 재구조화)
 - 2026-09-14 — 기반 패키지 최신화: DRPC 3.5.0 / MessageProtocol 3.2.0 / Communication(RUDP) 2.7.0 (ADR-0005 변경 이력)

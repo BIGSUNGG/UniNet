@@ -133,6 +133,24 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            FireAndForget(SendRPC(methodId, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered));");
             sb.AppendLine("        }");
             sb.AppendLine();
+            sb.AppendLine("        public void SendSpawn(ulong netId, ulong typeKey, float px, float py, float pz, float qx, float qy, float qz, float qw, byte[] state)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var w = {Writer}.Create();");
+            sb.AppendLine("            w.WriteUInt64(netId);");
+            sb.AppendLine("            w.WriteUInt64(typeKey);");
+            sb.AppendLine("            w.WriteSingle(px); w.WriteSingle(py); w.WriteSingle(pz);");
+            sb.AppendLine("            w.WriteSingle(qx); w.WriteSingle(qy); w.WriteSingle(qz); w.WriteSingle(qw);");
+            sb.AppendLine("            w.WriteBytes(state);");
+            sb.AppendLine("            FireAndForget(SendRPC(3, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered));");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        public void SendDestroy(ulong netId)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var w = {Writer}.Create();");
+            sb.AppendLine("            w.WriteUInt64(netId);");
+            sb.AppendLine("            FireAndForget(SendRPC(4, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered));");
+            sb.AppendLine("        }");
+            sb.AppendLine();
             sb.AppendLine("        public void UniNetSend(int methodId, byte[] payload, global::DRPC.RpcDeliveryMode mode)");
             sb.AppendLine("            => FireAndForget(SendRPC(methodId, payload, mode));");
             sb.AppendLine();
@@ -150,6 +168,10 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            MethodDeliveryModes[1] = global::DRPC.RpcDeliveryMode.ReliableOrdered;");
             sb.AppendLine("            MethodCallActions.Add(2, __OwnerUpdate_Requested);");
             sb.AppendLine("            MethodDeliveryModes[2] = global::DRPC.RpcDeliveryMode.ReliableOrdered;");
+            sb.AppendLine("            MethodCallActions.Add(3, __Spawn_Requested);");
+            sb.AppendLine("            MethodDeliveryModes[3] = global::DRPC.RpcDeliveryMode.ReliableOrdered;");
+            sb.AppendLine("            MethodCallActions.Add(4, __Destroy_Requested);");
+            sb.AppendLine("            MethodDeliveryModes[4] = global::DRPC.RpcDeliveryMode.ReliableOrdered;");
             sb.AppendLine($"            foreach (var kv in {Dispatch}.ClientHandlers())");
             sb.AppendLine("            {");
             sb.AppendLine("                MethodCallActions.Add(kv.Key, data => kv.Value.Handler(0, data));   // 서버 발신은 신뢰 원점");
@@ -172,6 +194,46 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            long owner = r.ReadInt64();");
             sb.AppendLine($"            {Env}.Client?.ApplyOwner(netId, owner);");
             sb.AppendLine("            return EmptyResponse();");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine($"        private static {TaskOfBytes} __Spawn_Requested(byte[] data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            try");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var r = new {Reader}(data);");
+            sb.AppendLine("                ulong netId = r.ReadUInt64();");
+            sb.AppendLine("                ulong typeKey = r.ReadUInt64();");
+            sb.AppendLine("                float px = r.ReadSingle(); float py = r.ReadSingle(); float pz = r.ReadSingle();");
+            sb.AppendLine("                float qx = r.ReadSingle(); float qy = r.ReadSingle(); float qz = r.ReadSingle(); float qw = r.ReadSingle();");
+            sb.AppendLine("                byte[] state = r.ReadBytes(r.Remaining).ToArray();");
+            sb.AppendLine($"                {Env}.QueueOnMain(() =>");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    try { global::UniNet.Unity.UniNetSpawn.Apply(netId, typeKey, px, py, pz, qx, qy, qz, qw, state); }");
+            sb.AppendLine("                    catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }   // 메인 펌프 보호");
+            sb.AppendLine("                });");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
+            sb.AppendLine("            catch (global::System.Exception ex)   // 악성/짧은 페이로드 — 연결 단위 격리");
+            sb.AppendLine("            {");
+            sb.AppendLine("                UnityEngine.Debug.LogException(ex);");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine($"        private static {TaskOfBytes} __Destroy_Requested(byte[] data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            try");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var r = new {Reader}(data);");
+            sb.AppendLine("                ulong netId = r.ReadUInt64();");
+            sb.AppendLine($"                {Env}.QueueOnMain(() => global::UniNet.Unity.UniNetSpawn.Remove(netId));");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
+            sb.AppendLine("            catch (global::System.Exception ex)   // 악성/짧은 페이로드 — Spawn 핸들과 동일 격리");
+            sb.AppendLine("            {");
+            sb.AppendLine("                UnityEngine.Debug.LogException(ex);");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
             sb.AppendLine("        }");
             sb.AppendLine();
 
@@ -242,6 +304,8 @@ namespace UniNet.CodeGenerator
                     sb.AppendLine($"            {Dispatch}.RegisterClient({Fnv.MethodId(m.FullName + ".__Replicate")}, UniNetClientHub.__Replicate_{SafeNameOf(m)}_Requested, global::DRPC.RpcDeliveryMode.ReliableOrdered);");
                     sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetTypeRegistry.Register(typeof({TypeDisplay2(m)}), new __{SafeNameOf(m)}Replication());");
                 }
+                sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetSpawnRegistry.Register(typeof({TypeDisplay2(m)}), global::UniNet.Core.Hosting.Fnv1a.Hash64(\"{m.FullName}\"),");
+                sb.AppendLine($"                () => new global::UnityEngine.GameObject(\"{m.Name}\").AddComponent<{TypeDisplay2(m)}>());");
             }
 
             sb.AppendLine("        }");
@@ -272,7 +336,13 @@ namespace UniNet.CodeGenerator
             sb.AppendLine($"                var o = {envSlot}?.Get(netId) as {TypeDisplay2(m)};");
             sb.AppendLine("                if (o != null)");
             if (rpc.Kind == RpcKind.Server)
-                sb.AppendLine($"                    {Env}.QueueOnMain(async () => await {TypeDisplay2(m)}.__UniNetServerDispatch_{rpc.Name}(o, senderConnId{callArgs}));");
+            {
+                string dispatchCall = $"{TypeDisplay2(m)}.__UniNetServerDispatch_{rpc.Name}(o, senderConnId{callArgs})";
+                if (rpc.HasValidate)
+                    sb.AppendLine($"                    {Env}.QueueOnMain(async () => await {dispatchCall});");
+                else
+                    sb.AppendLine($"                    {Env}.QueueOnMain(() => {dispatchCall});");
+            }
             else
                 sb.AppendLine($"                    {Env}.QueueOnMain(() => {TypeDisplay2(m)}.{dispatchPrefix}{rpc.Name}(o{callArgs}));");
             sb.AppendLine($"                return global::System.Threading.Tasks.Task.FromResult({Empty});");
@@ -315,14 +385,19 @@ namespace UniNet.CodeGenerator
                 sb.AppendLine("        public override void InitClientSnapshot(object instance)");
                 sb.AppendLine($"            => {TypeDisplay2(m)}.__UniNetInitSeen(({TypeDisplay2(m)})instance);");
                 sb.AppendLine();
-                sb.AppendLine("        public override byte[] CompareAndWriteDelta(global::UniNet.Core.Hosting.NetworkServer.ServerObjectEntry entry)");
+                sb.AppendLine("        public override (byte[] Owner, byte[] Others) CompareAndWriteDelta(global::UniNet.Core.Hosting.NetworkServer.ServerObjectEntry entry)");
                 sb.AppendLine("        {");
                 sb.AppendLine($"            var o = ({TypeDisplay2(m)})entry.Instance;");
-                sb.AppendLine($"            byte[] delta = {TypeDisplay2(m)}.__UniNetWriteDelta(o, entry.Snapshot);");
-                sb.AppendLine($"            if (delta == null) return {Empty};");
-                sb.AppendLine($"            entry.Snapshot = {TypeDisplay2(m)}.__UniNetSnapshot(o);");
-                sb.AppendLine("            return delta;");
+                sb.AppendLine($"            byte[] owner = {TypeDisplay2(m)}.__UniNetWriteDelta(o, entry.Snapshot, {TypeDisplay2(m)}.__UniNetDeltaMaskOwner);");
+                sb.AppendLine($"            byte[] others = {TypeDisplay2(m)}.__UniNetDeltaMaskOther == {TypeDisplay2(m)}.__UniNetDeltaMaskOwner");
+                sb.AppendLine($"                ? owner   // 조건 필드 없음 — 동일 페이로드 재사용 (핫패스 계산 1회)");
+                sb.AppendLine($"                : {TypeDisplay2(m)}.__UniNetWriteDelta(o, entry.Snapshot, {TypeDisplay2(m)}.__UniNetDeltaMaskOther);");
+                sb.AppendLine($"            if (owner != null || others != null) entry.Snapshot = {TypeDisplay2(m)}.__UniNetSnapshot(o);");
+                sb.AppendLine("            return (owner, others);");
                 sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        public override byte[] WriteFull(object instance, bool isOwner)");
+                sb.AppendLine($"            => {TypeDisplay2(m)}.__UniNetWriteFull(({TypeDisplay2(m)})instance, isOwner ? {TypeDisplay2(m)}.__UniNetFullMaskOwner : {TypeDisplay2(m)}.__UniNetFullMaskOther);");
                 sb.AppendLine();
                 sb.AppendLine("        public override void ApplyDelta(object instance, ref global::MessageProtocol.Serialize.MessageBufferReader reader)");
                 sb.AppendLine($"            => {TypeDisplay2(m)}.__UniNetApplyIn(({TypeDisplay2(m)})instance, ref reader);");
@@ -338,6 +413,21 @@ namespace UniNet.CodeGenerator
             foreach (var f in m.ReplicatedFields)
                 parts.Add($"o.{f.Name}");
             return string.Join(", ", parts);
+        }
+
+        internal enum MaskUse { Delta, Full }
+
+        /// <summary>수신 그룹별 전송 가능 필드 마스크 — 델타는 InitialOnly 제외, 전체 상태는 포함.</summary>
+        static uint DeltaMask(TypeModel m, MaskUse use, bool owner)
+        {
+            uint mask = 0;
+            foreach (var f in m.ReplicatedFields)
+            {
+                if (use == MaskUse.Delta && f.IsInitialOnly) continue;
+                if (owner ? f.IsSkipOwner : f.IsOwnerOnly) continue;
+                mask |= 1u << f.Index;
+            }
+            return mask;
         }
 
         // ── 사용자 타입 partial 확장 ─────────────────────────────
@@ -385,7 +475,10 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine($"            var server = {Env}.Server;");
                         sb.AppendLine("            if (server != null && IsServer)");
                         sb.AppendLine("            {");
-                        sb.AppendLine($"                {Env}.QueueOnMain(async () => await __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs}));");
+                        if (rpc.HasValidate)
+                            sb.AppendLine($"                {Env}.QueueOnMain(async () => await __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs}));");
+                        else
+                            sb.AppendLine($"                {Env}.QueueOnMain(() => __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs}));");
                         sb.AppendLine("                return;");
                         sb.AppendLine("            }");
                         sb.AppendLine($"            var sender = {Env}.ClientSender;");
@@ -395,10 +488,13 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine("                return;");
                         sb.AppendLine("            }");
                         sb.AppendLine("            // 오프라인 — 구현을 로컬 실행");
-                        sb.AppendLine($"            _ = __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs});");
+                        if (rpc.HasValidate)
+                            sb.AppendLine($"            _ = __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs});");
+                        else
+                            sb.AppendLine($"            __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs});");
                         sb.AppendLine("        }");
                         sb.AppendLine();
-                        sb.AppendLine($"        internal static async global::System.Threading.Tasks.Task __UniNetServerDispatch_{rpc.Name}({m.Name} o, long senderConnId{ParamsSignature(rpc)})");
+                        sb.AppendLine($"        internal static {(rpc.HasValidate ? "async global::System.Threading.Tasks.Task" : "void")} __UniNetServerDispatch_{rpc.Name}({m.Name} o, long senderConnId{ParamsSignature(rpc)})");
                         sb.AppendLine("        {");
                         sb.AppendLine("            try");
                         sb.AppendLine("            {");
@@ -463,14 +559,20 @@ sb.AppendLine("        }");
 
                 if (m.HasReplicatedFields)
                 {
+                    sb.AppendLine($"        internal const uint __UniNetDeltaMaskOwner = {DeltaMask(m, MaskUse.Delta, owner: true)}u;");
+                    sb.AppendLine($"        internal const uint __UniNetDeltaMaskOther = {DeltaMask(m, MaskUse.Delta, owner: false)}u;");
+                    sb.AppendLine($"        internal const uint __UniNetFullMaskOwner = {DeltaMask(m, MaskUse.Full, owner: true)}u;");
+                    sb.AppendLine($"        internal const uint __UniNetFullMaskOther = {DeltaMask(m, MaskUse.Full, owner: false)}u;");
+                    sb.AppendLine();
                     sb.AppendLine($"        internal static object[] __UniNetSnapshot({m.Name} o)");
                     sb.AppendLine($"            => new object[] {{ {SnapshotFields(m)} }};");
                     sb.AppendLine();
-                    sb.AppendLine($"        internal static byte[] __UniNetWriteDelta({m.Name} o, object[] seen)");
+                    sb.AppendLine($"        internal static byte[] __UniNetWriteDelta({m.Name} o, object[] seen, uint includeMask)");
                     sb.AppendLine("        {");
                     sb.AppendLine("            uint mask = 0;");
                     foreach (var f in m.ReplicatedFields)
                         sb.AppendLine($"            if (!object.Equals(o.{f.Name}, seen != null && seen.Length > {f.Index} ? seen[{f.Index}] : null)) mask |= {1u << f.Index}u;");
+                    sb.AppendLine("            mask &= includeMask;   // 수신 그룹 조건(OwnerOnly/SkipOwner) + InitialOnly 제외");
                     sb.AppendLine("            if (mask == 0) return null;");
                     sb.AppendLine($"            var w = {Writer}.Create();");
                     sb.AppendLine("            w.WriteUInt32(mask);");
@@ -480,6 +582,21 @@ sb.AppendLine("        }");
                             sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter(o.{f.Name}, ref w);");
                         else
                             sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(o.{f.Name});");
+                    }
+                    sb.AppendLine("            return w.ToArray();");
+                    sb.AppendLine("        }");
+                    sb.AppendLine();
+                    sb.AppendLine($"        internal static byte[] __UniNetWriteFull({m.Name} o, uint includeMask)");
+                    sb.AppendLine("        {");
+                    sb.AppendLine("            if (includeMask == 0) return null;");
+                    sb.AppendLine($"            var w = {Writer}.Create();");
+                    sb.AppendLine("            w.WriteUInt32(includeMask);");
+                    foreach (var f in m.ReplicatedFields)
+                    {
+                        if (f.IsMessage)
+                            sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter(o.{f.Name}, ref w);");
+                        else
+                            sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(o.{f.Name});");
                     }
                     sb.AppendLine("            return w.ToArray();");
                     sb.AppendLine("        }");
@@ -494,9 +611,15 @@ sb.AppendLine("        }");
                         sb.AppendLine("            {");
                         sb.AppendLine($"                {t} prev = o.__uninetSeen != null && o.__uninetSeen.Length > {f.Index} && o.__uninetSeen[{f.Index}] != null ? ({t})o.__uninetSeen[{f.Index}] : o.{f.Name};");
                         if (f.IsMessage)
-                            sb.AppendLine($"                o.{f.Name} = ({t})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref reader);");
+                        {
+                            sb.AppendLine($"                var __v = ({t})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref reader);");
+                            sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // 호스트는 서버 권위 원본 유지 — 참조 교체 churn 방지");
+                        }
                         else
-                            sb.AppendLine($"                o.{f.Name} = reader.{ReadCall(f.Type)}();");
+                        {
+                            sb.AppendLine($"                var __v = reader.{ReadCall(f.Type)}();");
+                            sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // 호스트는 서버 권위 원본 유지");
+                        }
                         if (f.NotifyMethod != null)
                             sb.AppendLine($"                o.{f.NotifyMethod}(prev);");
                         sb.AppendLine("            }");

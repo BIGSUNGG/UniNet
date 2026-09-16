@@ -33,15 +33,22 @@ namespace UniNet.Tests
         private static void RunServer()
         {
             var player = CreatePlayer();
+
+            // 캐치업 검증 대상 — 클라 접속 *전* 동적 스폰 (후발 접속이 스폰+전체 상태로 합류해야 한다)
+            var a = CreateSpawnable(seed: 1001, score: 11, secret: 21, pos: new Vector3(10f, 20f, 30f));
             var serverTask = UniNetManager.ServerAsync(Port);
             Wait(serverTask, 15, "서버 리슨");
             if (serverTask.IsFaulted) { Debug.LogError("[UNINET-2PROC] SERVER-ABORT"); return; }
-            Debug.Log("[UNINET-2PROC] server-ready");
+            UniNetManager.Spawn(a.gameObject);   // 접속 전 스폰 — 브로드캐스트 대상 없음, 캐치업 대기
+            Debug.Log("[UNINET-2PROC] server-ready (pre-spawned A netId=" + a.NetId + ")");
             var keys = string.Join(",", global::System.Linq.Enumerable.Select(UniNetDispatch.ServerHandlers().Keys, k => k.ToString()));
             Debug.Log("[UNINET-2PROC] server-table=[" + keys + "] factory=" + (UniNetEnvironment.HubFactory != null));
 
-            var deadline = DateTime.UtcNow.AddSeconds(25);
+            // 클라이언트는 신규 프로젝트 사본일 수 있어 첫 import에 수 분 — attach 대기는 넉넉히
+            var deadline = DateTime.UtcNow.AddSeconds(240);
             bool loggedAttach = false;
+            bool spawnedB = false;
+            bool destroyed = false;
             while (DateTime.UtcNow < deadline)
             {
                 UniNetEnvironment.PumpMain();
@@ -56,9 +63,29 @@ namespace UniNet.Tests
                     LoggedPing = true;
                     Debug.Log("[UNINET-2PROC] SERVER-RCVD-PING count=" + player.ServerPingCount);
                 }
-                if (player.ServerPingCount > 0 && player.Score != 100)
+                // 핑 수신 후: 라이브 브로드캐스트 스폰 B + 조건부 값 변경 (OwnerOnly 전파 / InitialOnly·SkipOwner 비전파)
+                if (!spawnedB && player.ServerPingCount > 0)
                 {
-                    Thread.Sleep(500);   // 클라 수신 여유
+                    spawnedB = true;
+                    _b = CreateSpawnable(seed: 2002, score: 22, secret: 32, pos: new Vector3(-5f, 0f, 0f));
+                    UniNetManager.Spawn(_b.gameObject);
+                    _b.Score = 66;      // 무조건 — 전파
+                    _b.SecretHp = 33;   // OwnerOnly — 소유자(유일 연결) 전파
+                    _b.SpawnSeed = 42;  // InitialOnly — 미전파 (스폰값 2002 유지)
+                    _b.TeamId = 8;      // SkipOwner — 미전파 (초기값 3 유지)
+                    Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-B netId=" + _b.NetId);
+                }
+                // 값 전파 여유 후 파괴 — 클라가 등록 해제 관찰
+                if (spawnedB && !destroyed && DateTime.UtcNow > DeadlineAfter(3))
+                {
+                    destroyed = true;
+                    UniNetManager.NetworkDestroy(a.gameObject);
+                    if (_b != null) UniNetManager.NetworkDestroy(_b.gameObject);
+                    Debug.Log("[UNINET-2PROC] SERVER-DESTROYED-AB");
+                }
+                if (destroyed && DateTime.UtcNow > DeadlineAfter(5))
+                {
+                    Thread.Sleep(500);   // 클라 파괴 관찰 여유
                     UniNetEnvironment.PumpMain();
                     Debug.Log("[UNINET-2PROC] SERVER-DONE score=" + player.Score);
                     return;
@@ -66,6 +93,27 @@ namespace UniNet.Tests
                 Thread.Sleep(30);
             }
             Debug.LogError("[UNINET-2PROC] SERVER-TIMEOUT ping=" + player.ServerPingCount);
+        }
+
+        private static DateTime _phaseMark;
+        private static SpawnablePlayer _b;
+
+        private static DateTime DeadlineAfter(double seconds)
+        {
+            if (_phaseMark == default) _phaseMark = DateTime.UtcNow;
+            return _phaseMark.AddSeconds(seconds);
+        }
+
+        /// <summary>동적 스폰 검증용 픽스처 생성 — 스폰 전에 초기 상태를 세팅한다 (InitialOnly 값이 스폰에 실린다).</summary>
+        private static SpawnablePlayer CreateSpawnable(int seed, int score, int secret, Vector3 pos)
+        {
+            var go = new GameObject("Dyn" + seed);
+            var s = go.AddComponent<SpawnablePlayer>();
+            go.transform.position = pos;
+            s.Score = score;
+            s.SecretHp = secret;
+            s.SpawnSeed = seed;
+            return s;
         }
 
         private static bool LoggedPing;
@@ -119,6 +167,76 @@ namespace UniNet.Tests
                       + " fx=" + player.ClientFxRan
                       + " multicast=" + player.MulticastCount
                       + " notified=" + player.ScoreNotified);
+
+            VerifyDynamicSpawn();
+        }
+
+        /// <summary>동적 스폰·조건부·파괴 검증 — A(캐치업: 접속 전 스폰)와 B(브로드캐스트: 핑 후 스폰)를 값으로 식별한다.</summary>
+        private static void VerifyDynamicSpawn()
+        {
+            // A+B 발견 대기 — A는 접속 캐치업, B는 서버가 핑 후 스폰
+            SpawnablePlayer a = null, b = null;
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < deadline && (a == null || b == null))
+            {
+                UniNetEnvironment.PumpMain();
+                foreach (var s in UnityEngine.Object.FindObjectsByType<SpawnablePlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                {
+                    if (s.SpawnSeed == 1001) a = s;
+                    if (s.SpawnSeed == 2002) b = s;
+                }
+                Thread.Sleep(20);
+            }
+            if (a == null || b == null)
+            {
+                Debug.LogError($"[UNINET-2PROC] SPAWN-MISS a={(a != null)} b={(b != null)} — 캐치업/브로드캐스트 실패");
+                return;
+            }
+
+            // A (캐치업) — 위치·초기 상태·소유자 전용/스킵 조건
+            var pos = a.transform.position;
+            bool posOk = pos.x == 10f && pos.y == 20f && pos.z == 30f;
+            Debug.Log("[UNINET-2PROC] SPAWN-A pos-ok=" + posOk
+                      + " score=" + a.Score + "(11) secret=" + a.SecretHp + "(21)"
+                      + " team=" + a.TeamId + "(3: SkipOwner 미수신) seed=" + a.SpawnSeed + "(1001)");
+            if (!posOk || a.Score != 11 || a.SecretHp != 21 || a.TeamId != 3)
+            {
+                Debug.LogError("[UNINET-2PROC] SPAWN-A-FAIL");
+                return;
+            }
+
+            // B (브로드캐스트) — 최종값 대기: 무조건 66·OwnerOnly 33 / InitialOnly 2002 유지·SkipOwner 3 유지
+            deadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < deadline && (b.Score != 66 || b.SecretHp != 33))
+            {
+                UniNetEnvironment.PumpMain();
+                Thread.Sleep(20);
+            }
+            Debug.Log("[UNINET-2PROC] SPAWN-B score=" + b.Score + "(66) secret=" + b.SecretHp + "(33: OwnerOnly)"
+                      + " team=" + b.TeamId + "(3: SkipOwner 미전파) seed=" + b.SpawnSeed + "(2002: InitialOnly 미전파)");
+            if (b.Score != 66 || b.SecretHp != 33 || b.TeamId != 3 || b.SpawnSeed != 2002)
+            {
+                Debug.LogError("[UNINET-2PROC] SPAWN-B-FAIL");
+                return;
+            }
+
+            // 파괴 — 등록 해제 + 인스턴스 제거
+            ulong aNet = a.NetId, bNet = b.NetId;
+            deadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < deadline
+                   && (UniNetEnvironment.Client.Get(aNet) != null || UniNetEnvironment.Client.Get(bNet) != null))
+            {
+                UniNetEnvironment.PumpMain();
+                Thread.Sleep(20);
+            }
+            bool aGone = UniNetEnvironment.Client.Get(aNet) == null;
+            bool bGone = UniNetEnvironment.Client.Get(bNet) == null;
+            if (!aGone || !bGone)
+            {
+                Debug.LogError("[UNINET-2PROC] DESTROY-FAIL aGone=" + aGone + " bGone=" + bGone);
+                return;
+            }
+            Debug.Log("[UNINET-2PROC] DYNAMIC-SPAWN-DESTROY PASS — 캐치업/브로드캐스트/조건부(OwnerOnly·SkipOwner·InitialOnly)/파괴");
         }
 
         private static void RunHost()

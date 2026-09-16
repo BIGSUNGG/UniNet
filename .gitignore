@@ -484,3 +484,5 @@ Sandbox-*.log
 /Sandbox/Assets/Plugins/Editor/JetBrains*.meta
 .tmp-2proc/
 .idea/
+.tmp-p*/
+.gendump-fixture.cs
