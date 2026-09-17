@@ -125,22 +125,28 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            FireAndForget(SendRPC(2, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered));");
             sb.AppendLine("        }");
             sb.AppendLine();
-            sb.AppendLine("        public void SendReplicate(ulong netId, int methodId, byte[] payload)");
+            sb.AppendLine("        public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload)");
             sb.AppendLine("        {");
             sb.AppendLine($"            var w = {Writer}.Create();");
             sb.AppendLine("            w.WriteUInt64(netId);");
+            sb.AppendLine("            w.WriteByte(subId);");
             sb.AppendLine("            w.WriteBytes(payload);");
             sb.AppendLine("            FireAndForget(SendRPC(methodId, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered));");
             sb.AppendLine("        }");
             sb.AppendLine();
-            sb.AppendLine("        public void SendSpawn(ulong netId, ulong typeKey, float px, float py, float pz, float qx, float qy, float qz, float qw, byte[] state)");
+            sb.AppendLine("        public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)");
             sb.AppendLine("        {");
             sb.AppendLine($"            var w = {Writer}.Create();");
             sb.AppendLine("            w.WriteUInt64(netId);");
-            sb.AppendLine("            w.WriteUInt64(typeKey);");
             sb.AppendLine("            w.WriteSingle(px); w.WriteSingle(py); w.WriteSingle(pz);");
             sb.AppendLine("            w.WriteSingle(qx); w.WriteSingle(qy); w.WriteSingle(qz); w.WriteSingle(qw);");
-            sb.AppendLine("            w.WriteBytes(state);");
+            sb.AppendLine("            w.WriteByte(subCount);");
+            sb.AppendLine("            for (int i = 0; i < subCount; i++)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                w.WriteUInt64(typeKeys[i]);");
+            sb.AppendLine("                w.WriteInt32(states[i] != null ? states[i].Length : 0);");
+            sb.AppendLine("                if (states[i] != null) w.WriteBytes(states[i]);");
+            sb.AppendLine("            }");
             sb.AppendLine("            FireAndForget(SendRPC(3, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered));");
             sb.AppendLine("        }");
             sb.AppendLine();
@@ -202,13 +208,20 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            {");
             sb.AppendLine($"                var r = new {Reader}(data);");
             sb.AppendLine("                ulong netId = r.ReadUInt64();");
-            sb.AppendLine("                ulong typeKey = r.ReadUInt64();");
             sb.AppendLine("                float px = r.ReadSingle(); float py = r.ReadSingle(); float pz = r.ReadSingle();");
             sb.AppendLine("                float qx = r.ReadSingle(); float qy = r.ReadSingle(); float qz = r.ReadSingle(); float qw = r.ReadSingle();");
-            sb.AppendLine("                byte[] state = r.ReadBytes(r.Remaining).ToArray();");
+            sb.AppendLine("                byte subCount = r.ReadByte();");
+            sb.AppendLine("                var typeKeys = new ulong[subCount];");
+            sb.AppendLine("                var states = new byte[subCount][];");
+            sb.AppendLine("                for (int i = 0; i < subCount; i++)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    typeKeys[i] = r.ReadUInt64();");
+            sb.AppendLine("                    int len = r.ReadInt32();");
+            sb.AppendLine("                    states[i] = len > 0 ? r.ReadBytes(len).ToArray() : global::System.Array.Empty<byte>();");
+            sb.AppendLine("                }");
             sb.AppendLine($"                {Env}.QueueOnMain(() =>");
             sb.AppendLine("                {");
-            sb.AppendLine("                    try { global::UniNet.Unity.UniNetSpawn.Apply(netId, typeKey, px, py, pz, qx, qy, qz, qw, state); }");
+            sb.AppendLine("                    try { global::UniNet.Unity.UniNetSpawn.Apply(netId, px, py, pz, qx, qy, qz, qw, subCount, typeKeys, states); }");
             sb.AppendLine("                    catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }   // 메인 펌프 보호");
             sb.AppendLine("                });");
             sb.AppendLine("                return EmptyResponse();");
@@ -249,8 +262,9 @@ namespace UniNet.CodeGenerator
                 sb.AppendLine("        {");
                 sb.AppendLine($"            var r = new {Reader}(data);");
                 sb.AppendLine("            ulong netId = r.ReadUInt64();");
+                sb.AppendLine("            byte subId = r.ReadByte();");
                 sb.AppendLine("            byte[] delta = r.ReadBytes(r.Remaining).ToArray();");
-                sb.AppendLine($"            var o = {Env}.Client?.Get(netId) as {TypeDisplay2(m)};");
+                sb.AppendLine($"            var o = {Env}.Client?.Get(netId, subId) as {TypeDisplay2(m)};");
                 sb.AppendLine("            if (o != null)");
                 sb.AppendLine($"                {Env}.QueueOnMain(() =>");
             sb.AppendLine("                {");
@@ -326,6 +340,7 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            {");
             sb.AppendLine($"                var r = new {Reader}(data);");
             sb.AppendLine("                ulong netId = r.ReadUInt64();");
+            sb.AppendLine("                byte subId = r.ReadByte();");
             foreach (var p in rpc.Parameters)
             {
                 if (p.IsMessage)
@@ -333,7 +348,7 @@ namespace UniNet.CodeGenerator
                 else
                     sb.AppendLine($"                var {p.Name} = r.{ReadCall(p.Type)}();");
             }
-            sb.AppendLine($"                var o = {envSlot}?.Get(netId) as {TypeDisplay2(m)};");
+            sb.AppendLine($"                var o = {envSlot}?.Get(netId, subId) as {TypeDisplay2(m)};");
             sb.AppendLine("                if (o != null)");
             if (rpc.Kind == RpcKind.Server)
             {
@@ -379,20 +394,20 @@ namespace UniNet.CodeGenerator
                 sb.AppendLine("            HasFields = true;");
                 sb.AppendLine("        }");
                 sb.AppendLine();
-                sb.AppendLine("        public override void InitSnapshot(global::UniNet.Core.Hosting.NetworkServer.ServerObjectEntry entry)");
-                sb.AppendLine($"            => entry.Snapshot = {TypeDisplay2(m)}.__UniNetSnapshot(({TypeDisplay2(m)})entry.Instance);");
+                sb.AppendLine("        public override void InitSnapshot(global::UniNet.Core.Hosting.NetworkServer.SubObjectEntry sub)");
+                sb.AppendLine($"            => sub.Snapshot = {TypeDisplay2(m)}.__UniNetSnapshot(({TypeDisplay2(m)})sub.Instance);");
                 sb.AppendLine();
                 sb.AppendLine("        public override void InitClientSnapshot(object instance)");
                 sb.AppendLine($"            => {TypeDisplay2(m)}.__UniNetInitSeen(({TypeDisplay2(m)})instance);");
                 sb.AppendLine();
-                sb.AppendLine("        public override (byte[] Owner, byte[] Others) CompareAndWriteDelta(global::UniNet.Core.Hosting.NetworkServer.ServerObjectEntry entry)");
+                sb.AppendLine("        public override (byte[] Owner, byte[] Others) CompareAndWriteDelta(global::UniNet.Core.Hosting.NetworkServer.SubObjectEntry sub)");
                 sb.AppendLine("        {");
-                sb.AppendLine($"            var o = ({TypeDisplay2(m)})entry.Instance;");
-                sb.AppendLine($"            byte[] owner = {TypeDisplay2(m)}.__UniNetWriteDelta(o, entry.Snapshot, {TypeDisplay2(m)}.__UniNetDeltaMaskOwner);");
+                sb.AppendLine($"            var o = ({TypeDisplay2(m)})sub.Instance;");
+                sb.AppendLine($"            byte[] owner = {TypeDisplay2(m)}.__UniNetWriteDelta(o, sub.Snapshot, {TypeDisplay2(m)}.__UniNetDeltaMaskOwner);");
                 sb.AppendLine($"            byte[] others = {TypeDisplay2(m)}.__UniNetDeltaMaskOther == {TypeDisplay2(m)}.__UniNetDeltaMaskOwner");
                 sb.AppendLine($"                ? owner   // 조건 필드 없음 — 동일 페이로드 재사용 (핫패스 계산 1회)");
-                sb.AppendLine($"                : {TypeDisplay2(m)}.__UniNetWriteDelta(o, entry.Snapshot, {TypeDisplay2(m)}.__UniNetDeltaMaskOther);");
-                sb.AppendLine($"            if (owner != null || others != null) entry.Snapshot = {TypeDisplay2(m)}.__UniNetSnapshot(o);");
+                sb.AppendLine($"                : {TypeDisplay2(m)}.__UniNetWriteDelta(o, sub.Snapshot, {TypeDisplay2(m)}.__UniNetDeltaMaskOther);");
+                sb.AppendLine($"            if (owner != null || others != null) sub.Snapshot = {TypeDisplay2(m)}.__UniNetSnapshot(o);");
                 sb.AppendLine("            return (owner, others);");
                 sb.AppendLine("        }");
                 sb.AppendLine();
@@ -453,10 +468,11 @@ namespace UniNet.CodeGenerator
                     string callArgs = rpc.Parameters.Count > 0 ? ", " + ArgList(rpc) : "";
 
                     // 인자 인코더 (모든 RPC 종류 공통)
-                    sb.AppendLine($"        internal static byte[] __UniNetEncode_{rpc.Name}(ulong netId{ParamsSignature(rpc)})");
+                    sb.AppendLine($"        internal static byte[] __UniNetEncode_{rpc.Name}(ulong netId, byte subId{ParamsSignature(rpc)})");
                     sb.AppendLine("        {");
                     sb.AppendLine($"            var w = {Writer}.Create();");
                     sb.AppendLine("            w.WriteUInt64(netId);");
+                    sb.AppendLine("            w.WriteByte(subId);");
                     foreach (var p in rpc.Parameters)
                     {
                         if (p.IsMessage)
@@ -484,7 +500,7 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine($"            var sender = {Env}.ClientSender;");
                         sb.AppendLine("            if (sender != null)");
                         sb.AppendLine("            {");
-                        sb.AppendLine($"                sender.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine($"                sender.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("                return;");
                         sb.AppendLine("            }");
                         sb.AppendLine("            // 오프라인 — 구현을 로컬 실행");
@@ -515,7 +531,7 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine("            {");
                         sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
                         sb.AppendLine("                    if (!conn.Disconnected && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)");
-                        sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("            }");
                         sb.AppendLine("            // 클라에서 호출: 서버 권위 — 전송 없음");
                         sb.AppendLine("        }");
@@ -540,7 +556,7 @@ sb.AppendLine("        }");
                         sb.AppendLine("            {");
                         sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
                         sb.AppendLine("                    if (!conn.Disconnected && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)");
-                        sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("            }");
                         sb.AppendLine("        }");
                         sb.AppendLine();

@@ -96,6 +96,23 @@ public sealed partial class Projectile : NetworkBehaviour
 // 후발 접속 클라에는 기존 동적 오브젝트가 자동 합류된다 (캐치업)
 ```
 
+### 다중 NetworkBehaviour — 한 오브젝트에 여러 네트워크 컴포넌트 (2층 식별자)
+
+```csharp
+// 이동·체력 서브오브젝트를 한 오브젝트에 — 각자 RPC·[Replicated] 선언 가능 (ADR-0010)
+public sealed partial class MovementBrain : NetworkBehaviour { [Replicated] public int Speed; ... }
+public sealed partial class HealthTank : NetworkBehaviour
+{
+    [Replicated(ReplicateCondition.OwnerOnly)] public int Armor;
+}
+
+var go = new GameObject("robot");
+go.AddComponent<MovementBrain>();
+go.AddComponent<HealthTank>();
+UniNetManager.Spawn(go);   // 전 컴포넌트가 서브 테이블(SubId 슬롯)로 등록된다
+// 다중 컴포넌트 동적 스폰은 RegisterPrefab 필수 — 소유권·파괴는 오브젝트 단위
+```
+
 전체 사용법: `Sandbox/Assets/Scripts/` · 검증: EditMode/PlayMode 유닛 테스트 + 2-프로세스 RUDP 왕복 (`Sandbox/Assets/Tests/`)
 
 ## 개발 환경

@@ -1,6 +1,6 @@
 # MonoBehaviour RPC & 변수 Replicate
 
-- **상태**: 구현됨 (P1 전체 + P2 전체 — [[0008-구현-아키텍처]]·[[0009-동적-스폰-조건부-리플리케이션]] 참조)
+- **상태**: 구현됨 (P1 전체 + P2 전체 + 다중 컴포넌트 — [[0008-구현-아키텍처]]·[[0009-동적-스폰-조건부-리플리케이션]]·[[0010-2층-식별자-다중-컴포넌트]] 참조)
 - **최초 작성**: 2026-09-14
 - **마지막 갱신**: 2026-09-16
 
@@ -90,6 +90,26 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 - **스냅샷 계약** — 서버 스냅샷은 수신 그룹별로 분리하지 않는다: 소유자가 없는 상태에서 변경된 OwnerOnly 필드는 새 소유자에게 중간값이 유실될 수 있다 (ADR-0009)
 - **호스트 RepNotify** — 호스트(서버=클라 동일 인스턴스)는 권위 원본이라 값 재기록 없이 Notify만 호출된다
 
+## 다중 NetworkBehaviour (2층 식별자)
+
+한 게임오브젝트에 여러 NetworkBehaviour가 있으면 각자 `SubId`(슬롯 = GetComponents 순서)를 받아 **독립적으로 RPC·리플리케이션**된다 (ADR-0010 — UE Actor/Component 상당). 소유권·파괴는 오브젝트 단위:
+
+```csharp
+// 한 오브젝트에 이동·체력 서브오브젝트 — 각자 [Replicated]·[ServerRpc] 선언 가능
+public sealed partial class MovementBrain : NetworkBehaviour { [Replicated] public int Speed; ... }
+public sealed partial class HealthTank : NetworkBehaviour { [Replicated(ReplicateCondition.OwnerOnly)] public int Armor; ... }
+
+// 스폰 — 전 컴포넌트가 서브 테이블로 등록된다
+var go = new GameObject("robot");
+go.AddComponent<MovementBrain>();
+go.AddComponent<HealthTank>();
+UniNetManager.Spawn(go);   // 다중 컴포넌트는 RegisterPrefab 필수 (기본 팩토리는 단일 생성)
+```
+
+- **슬롯 불변식**: 슬롯 순서는 GetComponents 순서 — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다 (양단 같은 프리팩/씬이 전제). 클라는 스폰 메시지의 서브 구성과 생성 오브젝트를 슬롯·타입별 대조해 불일치 시 거부(진단)
+- **같은 타입 중복 허용** — 슬롯이 구분한다
+- 예제: `Scripts/GadgetCarrier.cs`(Weapon과 같은 오브젝트)
+
 ## 알려진 한계 (신뢰 경계 포함)
 
 - **ServerRpc 발신자 미검증** — 수신 핸들은 페이로드의 netId만으로 대상을 찾아 `_Implementation`를 실행한다. 악의적 클라가 다른 오브젝트의 netId로 페이로드를 조립하면 피해자 오브젝트의 ServerRpc가 실행될 수 있다. `_Validate`는 인자만 검증 가능(발신자 불가). 완화 플러밍은 마련됐다 — 연결별 허브가 발신 connId를 주입하고 디스패치까지 전달되므로(`senderConnId`), 소유권 대조 강화는 후속 과제다.
@@ -97,18 +117,20 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 - **연결 종료 수명주기 미구현** — `Stop`/`Shutdown`이 없고 `ServerAsync` 재호출 시 이전 리슨 핸들이 교체만 된다. P1 범위 밖 — 후속 구현.
 - **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가).
 - **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 컬렉션(List<T> 등)의 직접 파라미터는 여전히 미지원 — 메시지 내부 필드로 담아 전달(MP가 처리). 32필드 상한(UNINET008) 유지.
-- **동적 스폰 제약** — 한 오브젝트의 **첫 NetworkBehaviour만** 스폰·리플리케이션 대상(프리팹에 NetworkBehaviour를 2개 이상 두면 나머지는 조용히 제외 — Spawn 시 경고 로그), 타입-프리팹 카탈로그 1:1(한 타입에 프리팹 여러 개 불가), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
+- **동적 스폰 제약** — 다중 컴포넌트 오브젝트의 동적 스폰은 RegisterPrefab 필수(기본 팩토리는 단일 컴포넌트만 생성 — 슬롯 불일치로 거부), 타입-프리팹 카탈로그 1:1(카탈로그 키=첫 NetworkBehaviour 타입), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
+- **슬롯 불변식** — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다(ADR-0010). 씬 오브젝트의 증감은 감지 창구가 없어 계약으로만 방어, 동적 스폰은 구성 대조로 거부. 오브젝트당 NetworkBehaviour 상한 **255개**(SubId byte — 초과 시 등록·스폰 거부)
 - **같은 프로세스 재시작 미지원** — 호스트/서버 재시작은 이전 스택 미정리(Stop 미구현의 연장 — ADR-0009 알려진 한계)
 
 ## 테스트 / 검증
 
 - EditMode 유닛 13종: `Sandbox/Assets/Tests/EditMode/` — FNV 안정성·옵션 매핑·소유권 정책·델타/RepNotify 이전값 + MessageSupportTests(다형성 보존·메시지 필드 델타/이전 참조) + SpawnConditionTests 7종(그룹별 마스크·수신자 적용·InitialOnly·동적 netId·스폰 브로드캐스트·파괴·후발 캐치업) (`tests-editmode-p2.xml`)
-- PlayMode 호스트 왕복 2종: `Sandbox/Assets/Tests/PlayMode/HostRoundtripTests.cs` — 루프백 RUDP 전 경로 + 동적 스폰/파괴·조건부 (`[UNINET-VERIFY]` 마커 2종)
-- 2-프로세스 왕복: `Sandbox/Assets/Tests/Fixtures/TwoProcessRunner.cs` (`--uninet-role=server|client`) — 프로세스 간 RUDP — RPC·리플리케이션 + `[UNINET-2PROC] DYNAMIC-SPAWN-DESTROY PASS`(캐치업·브로드캐스트·조건 3종·파괴) (로그: `Sandbox-2proc-*.log`)
-- 사용법 예제: `Sandbox/Assets/Scripts/` — Player(RPC 3종·메시지 파라미터)·Weapon(스폰 발사)·Projectile(조건 3종·NetworkDestroy)
+- PlayMode 호스트 왕복 3종: `Sandbox/Assets/Tests/PlayMode/HostRoundtripTests.cs` — 루프백 RUDP 전 경로 + 동적 스폰/파괴·조건부 + 다중 컴포넌트 (`[UNINET-VERIFY]` 마커 3종)
+- 2-프로세스 왕복: `Sandbox/Assets/Tests/Fixtures/TwoProcessRunner.cs` (`--uninet-role=server|client`) — 프로세스 간 RUDP — RPC·리플리케이션 + `[UNINET-2PROC] DYNAMIC-SPAWN-DESTROY PASS`(캐치업·브로드캐스트·조건 3종·파괴) + `[UNINET-2PROC] MULTI-COMPONENT PASS`(다중 서브 스폰·서브별 델타·슬롯·파괴) (로그: `Sandbox-2proc-*.log`)
+- 사용법 예제: `Sandbox/Assets/Scripts/` — Player(RPC 3종·메시지 파라미터)·Weapon(스폰 발사)·Projectile(조건 3종·NetworkDestroy)·GadgetCarrier(다중 컴포넌트 서브오브젝트)
 
 ## 변경 이력
 
 - 2026-09-14 — 최초 작성 (구현 완료와 함께)
 - 2026-09-15 — [Message] 타입 매개변수·필드 지원 추가 (다형성 공식 계약 — MessageSupportTests·호스트 왕복 검증)
-- 2026-09-16 — P2 완결 — 동적 스폰/파괴(Spawn/NetworkDestroy)·조건부(ReplicateCondition 3종)·후발 접속 캐치업 추가 (ADR-0009 — SpawnConditionTests·DynamicSpawnDestroy·2-프로세스 DYNAMIC-SPAWN-DESTROY 검증)
+- 2026-09-16 — P2 완결 — 동적 스폰/파괴(Spawn/NetworkDestroy)·조건부(ReplicateCondition 3종)·후발 접속 캐치업 추가 (ADR-0009)
+- 2026-09-16 — 다중 NetworkBehaviour 지원 — 2층 식별자(netId+SubId)·다중 서브 스폰/델타·슬롯 대조 (ADR-0010 — MultiComponentTests·PlayMode·2-프로세스 검증)

@@ -20,11 +20,12 @@ namespace UniNet.Tests
         {
             // 생성된 인코더로 [netId][Message: DerivedPayloadMsg] 페이로드 생성
             var msg = new DerivedPayloadMsg { Value = 42, Bonus = 7 };
-            byte[] payload = VerifyPlayer.__UniNetEncode_RpcDeliver(1234UL, msg);
+            byte[] payload = VerifyPlayer.__UniNetEncode_RpcDeliver(1234UL, 0, msg);   // [netId][subId][Message]
 
-            // 수신측과 동일한 순서로 개봉: netId → MessageId 디스패치
+            // 수신측과 동일한 순서로 개봉: netId → subId → MessageId 디스패치
             var r = new MessageBufferReader(payload);
             Assert.AreEqual(1234UL, r.ReadUInt64(), "페이로드 앞은 netId");
+            Assert.AreEqual(0, r.ReadByte(), "그 다음은 subId");
 
             object decoded = MessageSerializer.DeserializeFromReader(ref r);
             Assert.IsInstanceOf<DerivedPayloadMsg>(decoded, "구체 타입 복원 — 다형성");
@@ -43,7 +44,7 @@ namespace UniNet.Tests
                 var handler = UniNetTypeRegistry.Find(player.GetType());
                 Assert.IsNotNull(handler);
 
-                var entry = new NetworkServer.ServerObjectEntry(player);
+                var entry = new NetworkServer.SubObjectEntry(player);
                 handler.InitSnapshot(entry);
                 handler.InitClientSnapshot(player);
                 Assert.IsNull(handler.CompareAndWriteDelta(entry).Owner, "초기 상태는 변경 없음");

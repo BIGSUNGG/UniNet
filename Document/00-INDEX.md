@@ -33,6 +33,7 @@
 - [[0007-사용법-우선-api-확정]] — 사용법 우선 개발 + 공개 API 스타일 확정 (Mirror/Netcode류 속성; 변경 이력 — partial 재구조화로 ADR-0008 승계)
 - [[0008-구현-아키텍처]] — P1 RPC + Replicate 기본 구현: 소스젠(로슬린 4.3) 직접 배선·다중 어셈블리·씬경로 netId·라운드로빈 소유권·검증 증거
 - [[0009-동적-스폰-조건부-리플리케이션]] — P2 완결: 명시적 Spawn/NetworkDestroy·타입 카탈로그·캐치업·ReplicateCondition(OwnerOnly/SkipOwner/InitialOnly)·호스트 권위 원본 보존
+- [[0010-2층-식별자-다중-컴포넌트]] — 다중 NetworkBehaviour 지원: GameObject 단위 netId + SubId 슬롯·다중 서브 스폰·슬롯 대조
 
 ### _templates/ — 문서 템플릿
 
@@ -41,6 +42,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-16 — **다중 NetworkBehaviour 지원 — 2층 식별자(netId+SubId) 구현** (ADR-0010: 다중 서브 스폰·subId RPC 라우팅·슬롯 대조. EditMode 19종·PlayMode 3종·2-프로세스 MULTI-COMPONENT PASS)
 - 2026-09-16 — **P2 완결 — 동적 스폰/파괴·조건부 리플리케이션·InitialOnly 구현 완료** (ADR-0009: 명시적 Spawn/NetworkDestroy API·타입 카탈로그·후발 접속 캐치업·호스트 권위 원본 보존. EditMode 13종·PlayMode 2종·2-프로세스 DYNAMIC-SPAWN-DESTROY PASS)
 - 2026-09-14 — **P1 RPC + P2 Replicate 기본 구현 완료** (ADR-0008: 소스젠·런타임·2-프로세스 RUDP 왕복 검증 포함. 첫 기능 문서 등재)
 - 2026-09-14 — 사용법 우선 API 확정 (ADR-0007: 공개 API 스타일 Mirror/Netcode류·Sandbox 사용법 예제·Package API 스텁 · 변경 이력 — RepNotify·MulticastRpc 확장 후 partial 재구조화)

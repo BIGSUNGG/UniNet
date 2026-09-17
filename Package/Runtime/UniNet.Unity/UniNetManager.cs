@@ -81,27 +81,36 @@ namespace UniNet.Unity
         }
 
         /// <summary>
-        /// 서버 동적 스폰 — Instantiate 후 호출하면 netId 할당·소유권 배정·전 클라 스폰 전파(타입·변환·전체 상태)가 일어난다.
-        /// 클라 생성은 RegisterPrefab 카탈로그 우선, 없으면 타입 기본 팩토리. 서버 권위 — 서버/호스트에서만 유효.
+        /// 서버 동적 스폰 — Instantiate 후 호출하면 netId 할당·소유권 배정·전 클라 스폰 전파가 일어난다.
+        /// 오브젝트의 NetworkBehaviour **전체**가 슬롯으로 등록된다 (다중 컴포넌트 지원 — 슬롯 = GetComponents 순서).
+        /// 다중 컴포넌트 오브젝트는 RegisterPrefab으로 양단 같은 프리팹을 등록해야 한다 (기본 팩토리는 단일 컴포넌트만 생성). 서버 권위 — 서버/호스트에서만 유효.
         /// </summary>
         public static void Spawn(GameObject instance)
         {
             var server = UniNetEnvironment.Server;
-            var nb = instance != null ? instance.GetComponent<NetworkBehaviour>() : null;
-            if (server == null || nb == null)
+            var comps = instance != null ? instance.GetComponents<NetworkBehaviour>() : null;
+            if (server == null || comps == null || comps.Length == 0)
             {
                 Debug.LogWarning("[UniNet] Spawn 은 서버에서 NetworkBehaviour 컴포넌트가 있는 오브젝트에만 유효하다 (호출 무시 — 인스턴스는 호출측 소유)");
                 return;
             }
-            if (instance.GetComponents<NetworkBehaviour>().Length > 1)
-                Debug.LogWarning("[UniNet] Spawn 은 오브젝트의 첫 NetworkBehaviour만 등록한다 — 프리팩에는 NetworkBehaviour를 1개만 두거나 별도 오브젝트로 분리하세요 (나머지 컴포넌트는 RPC·리플리케이션 대상이 되지 않는다)");
+            if (comps.Length > byte.MaxValue)
+            {
+                Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 스폰 거부: {instance.name}");
+                return;
+            }
 
-            nb.AssignNetId(server.RegisterDynamicObject(nb));
-            nb.MarkServerRegistered();
-            server.BroadcastSpawn(nb.NetId);
+            var netId = server.RegisterDynamicObject(comps);
+            for (byte i = 0; i < comps.Length; i++)
+            {
+                comps[i].AssignNetId(netId);
+                comps[i].AssignSubId(i);
+                comps[i].MarkServerRegistered();
+            }
+            server.BroadcastSpawn(netId);
         }
 
-        /// <summary>서버 네트워크 파괴 — 전 클라에 파괴를 전파하고 로컬도 파괴한다. Spawn 으로 스폰한 오브젝트에 사용.</summary>
+        /// <summary>서버 네트워크 파괴 — 전 클라에 파괴를 전파하고 로컬도 파괴한다. Spawn 으로 스폰한 오브젝트에 사용 (오브젝트 전체·전 서브).</summary>
         public static void NetworkDestroy(GameObject instance)
         {
             var server = UniNetEnvironment.Server;

@@ -6,17 +6,19 @@ namespace UniNet.Unity
 {
     /// <summary>
     /// 네트워크 오브젝트 기반 클래스 — RPC·리플리케이션의 대상이 되는 MonoBehaviour.
-    /// 씬 오브젝트의 네트워크 ID는 씬 경로 해시로 양단이 같은 규칙으로 계산한다 (무합의 일치).
-    /// 동적 스폰 오브젝트는 서버가 할당한 ID를 받는다 (UniNetManager.Spawn).
+    /// 네트워크 엔티티는 GameObject 단위다 (netId 1개 — 씬 오브젝트는 씬 경로 해시, 동적 스폰은 서버 할당).
+    /// 오브젝트에 여러 NetworkBehaviour가 있으면 각자 SubId(슬롯)를 받아 독립적으로 RPC·리플리케이션된다 (ADR-0010).
+    /// 슬롯 순서는 GetComponents 순서 — 런타임 컴포넌트 증감은 금지(양단 슬롯 불변식).
     /// </summary>
     public abstract partial class NetworkBehaviour : MonoBehaviour, IUniNetSpawnTransform
     {
         private ulong _netId;
         private bool _netIdComputed;
+        private byte _subId;
         private bool _registeredServer;
         private bool _registeredClient;
 
-        /// <summary>네트워크 오브젝트 ID — 씬 오브젝트는 씬 이름+계층 경로(형제 인덱스 포함)의 FNV-1a 64bit, 동적 스폰은 서버 할당값.</summary>
+        /// <summary>네트워크 오브젝트 ID — 오브젝트(게임오브젝트) 단위. 씬 오브젝트는 씬 이름+계층 경로(형제 인덱스 포함)의 FNV-1a 64bit, 동적 스폰은 서버 할당값.</summary>
         public ulong NetId
         {
             get
@@ -30,13 +32,16 @@ namespace UniNet.Unity
             }
         }
 
+        /// <summary>오브젝트 내 이 컴포넌트의 서브슬롯 — GetComponents 순서 (등록 시 주입).</summary>
+        public byte SubId => _subId;
+
         /// <summary>서버 권위로 동작 중인가 (서버/호스트에서 true).</summary>
         public bool IsServer => UniNetEnvironment.Server != null && _registeredServer;
 
         /// <summary>클라이언트로 접속 중인가 (클라/호스트에서 true).</summary>
         public bool IsClient => UniNetEnvironment.Client != null && _registeredClient;
 
-        /// <summary>이 오브젝트를 로컬 플레이어의 연결이 소유하는가 (입력·권위 판단용).</summary>
+        /// <summary>이 오브젝트를 로컬 플레이어의 연결이 소유하는가 (입력·권위 판단용 — 오브젝트 단위).</summary>
         public bool IsOwner
         {
             get
@@ -52,6 +57,9 @@ namespace UniNet.Unity
             _netId = netId;
             _netIdComputed = true;
         }
+
+        /// <summary>등록 시 오브젝트 내 슬롯을 주입한다.</summary>
+        internal void AssignSubId(byte subId) => _subId = subId;
 
         /// <summary>서버 등록 완료 표시 (IsServer 활성화).</summary>
         internal void MarkServerRegistered() => _registeredServer = true;
@@ -69,31 +77,60 @@ namespace UniNet.Unity
             qx = r.x; qy = r.y; qz = r.z; qw = r.w;
         }
 
-        /// <summary>씬 로드 시 전체 등록 (UniNetManager 시작 시 1회 호출). 리플리케이션 핸들 부착은 서버 등록이 처리한다.</summary>
+        /// <summary>씬 로드 시 전체 등록 (UniNetManager 시작 시 1회 호출) — 오브젝트당 1회, 컴포넌트 전체를 슬롯으로.</summary>
         internal static void RegisterAllToServer()
         {
             var server = UniNetEnvironment.Server;
             if (server == null) return;
 
-            foreach (var nb in FindObjectsByType<NetworkBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var comps in CollectSceneObjects())
             {
-                server.RegisterSceneObject(nb.NetId, nb);
-                nb._registeredServer = true;
+                if (comps.Length > byte.MaxValue)
+                {
+                    Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 등록 건너뜀: {comps[0].gameObject.name}");
+                    continue;
+                }
+                server.RegisterSceneObject(comps[0].NetId, comps);
+                for (byte i = 0; i < comps.Length; i++)
+                {
+                    comps[i].AssignSubId(i);
+                    comps[i]._registeredServer = true;
+                }
             }
         }
 
-        /// <summary>클라 측 전체 등록.</summary>
+        /// <summary>클라 측 전체 등록 — 서버와 같은 구성(슬롯 순서)으로.</summary>
         internal static void RegisterAllToClient()
         {
             var client = UniNetEnvironment.Client;
             if (client == null) return;
 
-            foreach (var nb in FindObjectsByType<NetworkBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var comps in CollectSceneObjects())
             {
-                client.Register(nb.NetId, nb);
-                UniNetTypeRegistry.Find(nb.GetType())?.InitClientSnapshot(nb);
-                nb._registeredClient = true;
+                if (comps.Length > byte.MaxValue)
+                {
+                    Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 등록 건너뜀: {comps[0].gameObject.name}");
+                    continue;
+                }
+                client.Register(comps[0].NetId, comps);
+                for (byte i = 0; i < comps.Length; i++)
+                {
+                    comps[i].AssignSubId(i);
+                    comps[i]._registeredClient = true;
+                    UniNetTypeRegistry.Find(comps[i].GetType())?.InitClientSnapshot(comps[i]);
+                }
             }
+        }
+
+        /// <summary>씬의 NetworkBehaviour를 게임오브젝트 단위로 묶는다 (GetComponents 순서 = 슬롯).</summary>
+        private static List<NetworkBehaviour[]> CollectSceneObjects()
+        {
+            var result = new List<NetworkBehaviour[]>();
+            var seen = new HashSet<GameObject>();
+            foreach (var nb in FindObjectsByType<NetworkBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (seen.Add(nb.gameObject))
+                    result.Add(nb.gameObject.GetComponents<NetworkBehaviour>());
+            return result;
         }
 
         private string BuildHierarchyPath()

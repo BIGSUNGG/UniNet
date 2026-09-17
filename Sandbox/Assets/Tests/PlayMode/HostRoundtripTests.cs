@@ -63,7 +63,7 @@ namespace UniNet.Tests
                 int deliverId = Fnv1a.MethodId("UniNet.Tests.VerifyPlayer.RpcDeliver");
                 var msg = new DerivedPayloadMsg { Value = 5, Bonus = 3 };
                 UniNetEnvironment.ClientSender.UniNetSend(deliverId,
-                    VerifyPlayer.__UniNetEncode_RpcDeliver(player.NetId, msg), RpcDeliveryMode.ReliableOrdered);
+                    VerifyPlayer.__UniNetEncode_RpcDeliver(player.NetId, player.SubId, msg), RpcDeliveryMode.ReliableOrdered);
                 yield return WaitUntil(() => player.LastMsg != null, 5);
                 Assert.IsInstanceOf<DerivedPayloadMsg>(player.LastMsg, "다형성 — 자식 타입 복원");
                 Assert.AreEqual(3, ((DerivedPayloadMsg)player.LastMsg).Bonus, "자식 고유 필드 온전");
@@ -102,7 +102,7 @@ namespace UniNet.Tests
 
             // 2) 호스트 클라 — 스폰 브로드캐스트 수신 → 같은 인스턴스 재사용 등록 (이중 생성 없음)
             yield return WaitUntil(() => UniNetEnvironment.Client.Get(spawned.NetId) != null, 5);
-            Assert.AreSame(spawned, (SpawnablePlayer)UniNetEnvironment.Client.Get(spawned.NetId), "호스트 — 서버 인스턴스 재사용");
+            Assert.AreSame(spawned, (SpawnablePlayer)UniNetEnvironment.Client.Get(spawned.NetId, spawned.SubId), "호스트 — 서버 인스턴스 재사용");
             Assert.IsTrue(spawned.IsClient, "클라 등록");
             yield return WaitUntil(() => spawned.IsOwner, 5);
             Assert.IsTrue(spawned.IsOwner, "동적 오브젝트 소유권 — 유일 연결이 소유");
@@ -124,11 +124,60 @@ namespace UniNet.Tests
             UnityEngine.Debug.Log("[UNINET-VERIFY] DynamicSpawnDestroy PASS — Spawn/HostReuse/Ownership/OwnerOnly/NetworkDestroy");
         }
 
+        [UnityTest]
+        public IEnumerator 호스트_다중_컴포넌트_오브젝트_왕복()
+        {
+            var hostTask = UniNetManager.HostAsync(7793);
+            while (!hostTask.IsCompleted) yield return null;
+            Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
+            yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
+
+            // 1) 다중 컴포넌트 오브젝트 스폰 — MovementBrain + HealthTank가 한 게임오브젝트에
+            var go = new GameObject("multi-host");
+            var brain = go.AddComponent<MovementBrain>();
+            var tank = go.AddComponent<HealthTank>();
+            brain.Speed = 10;
+            tank.Armor = 20;
+            UniNetManager.Spawn(go);
+            yield return WaitUntil(() => UniNetEnvironment.Client.Get(brain.NetId) != null, 5);
+
+            var clientComps = UniNetEnvironment.Client.Get(brain.NetId);
+            Assert.AreEqual(2, clientComps.Length, "호스트 — 서브 2개 등록(재사용)");
+            Assert.AreSame(brain, clientComps[0], "슬롯 0 = MovementBrain");
+            Assert.AreSame(tank, clientComps[1], "슬롯 1 = HealthTank");
+            Assert.AreEqual(0, brain.SubId);
+            Assert.AreEqual(1, tank.SubId);
+            yield return WaitUntil(() => brain.IsOwner, 5);
+
+            // 2) subId별 RPC — 같은 netId에서 각 컴포넌트의 ServerRpc가 서로 간섭 없이 실행
+            brain.RpcMove(5);   // 클라→서버 경로 (호스트 클라 송신 → 서버 수신 → 슬롯 0 디스패치)
+            yield return WaitUntil(() => brain.MoveCalls >= 1, 5);
+            tank.RpcHeal(7);
+            yield return WaitUntil(() => tank.HealCalls >= 1, 5);
+            Assert.AreEqual(1, brain.MoveCalls, "subId 0 — MovementBrain만");
+            Assert.AreEqual(1, tank.HealCalls, "subId 1 — HealthTank만");
+
+            // 3) 서브별 리플리케이션 — 서버 값 변경이 서브별 델타로 전파(호스트는 원본 그대로)
+            brain.Speed = 42;
+            tank.Armor = 77;
+            yield return WaitUntil(() => brain.Speed == 42 && tank.Armor == 77, 5);   // 호스트 원본 — 값 자체는 이미 42/77
+            Assert.IsTrue(brain.IsServer && tank.IsServer, "두 서브 모두 서버 등록");
+
+            // 4) 파괴 — 오브젝트 전체
+            ulong netId = brain.NetId;
+            UniNetManager.NetworkDestroy(go);
+            yield return WaitUntil(() => UniNetEnvironment.Client.Get(netId) == null
+                && UniNetEnvironment.Server.GetEntry(netId) == null, 5);
+
+            UnityEngine.Debug.Log("[UNINET-VERIFY] MultiComponent PASS — Spawn(2 subs)/SubIdRouting/PerSubReplication/Destroy");
+        }
+
         /// <summary>[netId][int amount] 페이로드 — 생성 인코더와 동일 형식.</summary>
         private static byte[] EncodePing(ulong netId, int amount)
         {
             var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
             w.WriteUInt64(netId);
+            w.WriteByte(0);   // SubId — 단일 컴포넌트 오브젝트 슬롯 0
             w.WriteInt32(amount);
             return w.ToArray();
         }

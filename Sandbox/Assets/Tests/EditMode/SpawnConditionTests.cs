@@ -37,7 +37,7 @@ namespace UniNet.Tests
                 var handler = UniNetTypeRegistry.Find(player.GetType());
                 Assert.IsNotNull(handler, "픽스처 리플리케이션 핸들(생성 코드)");
 
-                var entry = new NetworkServer.ServerObjectEntry(player);
+                var entry = new NetworkServer.SubObjectEntry(player);
                 handler.InitSnapshot(entry);
 
                 player.Score = 5;
@@ -75,7 +75,7 @@ namespace UniNet.Tests
             try
             {
                 var handler = UniNetTypeRegistry.Find(player.GetType());
-                var entry = new NetworkServer.ServerObjectEntry(player);
+                var entry = new NetworkServer.SubObjectEntry(player);
                 handler.InitSnapshot(entry);
                 handler.InitClientSnapshot(ownerRecv);
                 handler.InitClientSnapshot(otherRecv);
@@ -113,7 +113,7 @@ namespace UniNet.Tests
             try
             {
                 var handler = UniNetTypeRegistry.Find(player.GetType());
-                var entry = new NetworkServer.ServerObjectEntry(player);
+                var entry = new NetworkServer.SubObjectEntry(player);
                 handler.InitSnapshot(entry);
 
                 player.SpawnSeed = 42;   // 스폰 이후 값 변경
@@ -169,20 +169,21 @@ namespace UniNet.Tests
                 server.AttachConnection(ch2);
                 UniNetEnvironment.PumpMain();   // Welcome·재배정 실행 — 연결 2개 확정
 
-                ulong netId = server.RegisterDynamicObject(player);
+                ulong netId = server.RegisterDynamicObject(new object[] { player });
                 Assert.AreNotEqual(0ul, netId, "동적 netId 할당");
                 var entry = server.GetEntry(netId);
                 Assert.IsNotNull(entry, "동적 등록 엔트리");
                 Assert.IsTrue(entry.IsDynamic, "동적 플래그");
-                Assert.AreNotEqual(0ul, entry.TypeKey, "스폰 타입 키");
+                Assert.AreEqual(1, entry.Subs.Length, "서브 테이블");
+                Assert.AreNotEqual(0ul, entry.Subs[0].TypeKey, "스폰 타입 키");
                 Assert.AreNotEqual(0, entry.OwnerConnId, "스폰 즉시 소유자 배정");
 
                 server.BroadcastSpawn(netId);
                 Assert.AreEqual(1, ch1.Spawns.Count, "전 연결 스폰 1회");
                 Assert.AreEqual(1, ch2.Spawns.Count, "전 연결 스폰 1회");
                 Assert.AreEqual(netId, ch1.Spawns[0].NetId, "스폰 netId");
-                Assert.AreEqual(entry.TypeKey, ch1.Spawns[0].TypeKey, "스폰 타입 키 일치");
-                Assert.Greater(ch1.Spawns[0].State.Length, 0, "전체 상태 페이로드 동봉");
+                Assert.AreEqual(entry.Subs[0].TypeKey, ch1.Spawns[0].TypeKeys[0], "스폰 타입 키 일치");
+                Assert.Greater(ch1.Spawns[0].States[0].Length, 0, "전체 상태 페이로드 동봉");
                 Assert.AreEqual(1, ch1.OwnerUpdates.FindAll(u => u.Item1 == netId).Count, "소유권 알림 1회");
             }
             finally
@@ -204,7 +205,7 @@ namespace UniNet.Tests
                 server.AttachConnection(ch2);
                 UniNetEnvironment.PumpMain();
 
-                ulong netId = server.RegisterDynamicObject(player);
+                ulong netId = server.RegisterDynamicObject(new object[] { player });
                 server.BroadcastSpawn(netId);
 
                 Assert.IsTrue(server.DestroyObject(netId), "등록된 오브젝트 파괴 성공");
@@ -232,7 +233,7 @@ namespace UniNet.Tests
                 UniNetEnvironment.PumpMain();   // 첫 연결 확정
 
                 player.Score = 77;
-                ulong netId = server.RegisterDynamicObject(player);
+                ulong netId = server.RegisterDynamicObject(new object[] { player });
                 server.BroadcastSpawn(netId);
                 Assert.AreEqual(1, ch1.Spawns.Count);
 
@@ -242,7 +243,7 @@ namespace UniNet.Tests
 
                 Assert.AreEqual(1, late.Spawns.Count, "후발 접속 — 동적 오브젝트 스폰 1회");
                 Assert.AreEqual(netId, late.Spawns[0].NetId, "캐치업 스폰 netId");
-                uint mask = BitConverter.ToUInt32(late.Spawns[0].State, 0);
+                uint mask = BitConverter.ToUInt32(late.Spawns[0].States[0], 0);
                 Assert.AreEqual(ScoreBit, mask & ScoreBit, "캐치업 전체 상태에 현재값 포함");
             }
             finally
@@ -256,16 +257,16 @@ namespace UniNet.Tests
         {
             public long UniNetConnId { get; set; }
             internal long WelcomeConnId;
-            internal readonly System.Collections.Generic.List<(ulong NetId, ulong TypeKey, byte[] State)> Spawns = new();
+            internal readonly System.Collections.Generic.List<(ulong NetId, byte SubCount, ulong[] TypeKeys, byte[][] States)> Spawns = new();
             internal readonly System.Collections.Generic.List<ulong> Destroys = new();
             internal readonly System.Collections.Generic.List<(ulong, long)> OwnerUpdates = new();
             internal int Replicates;
 
             public void SendWelcome(long connId) => WelcomeConnId = connId;
             public void SendOwnerUpdate(ulong netId, long ownerConnId) => OwnerUpdates.Add((netId, ownerConnId));
-            public void SendReplicate(ulong netId, int methodId, byte[] payload) => Replicates++;
-            public void SendSpawn(ulong netId, ulong typeKey, float px, float py, float pz, float qx, float qy, float qz, float qw, byte[] state)
-                => Spawns.Add((netId, typeKey, state));
+            public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) => Replicates++;
+            public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)
+                => Spawns.Add((netId, subCount, typeKeys, states));
             public void SendDestroy(ulong netId) => Destroys.Add(netId);
             public void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode) { }
         }

@@ -1,101 +1,150 @@
 <?xml version="1.0" encoding="utf-8"?>
-<test-run id="2" testcasecount="13" result="Passed" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.1020536">
-  <test-suite type="TestSuite" id="1000" name="Sandbox" fullname="Sandbox" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.102054" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+<test-run id="2" testcasecount="20" result="Passed" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.1169051">
+  <test-suite type="TestSuite" id="1000" name="Sandbox" fullname="Sandbox" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.116905" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
     <properties>
       <property name="platform" value="EditMode" />
     </properties>
-    <test-suite type="Assembly" id="1017" name="UniNet.Tests.EditMode.dll" fullname="C:/Projects/DS/UniNet/.tmp-p2/Library/ScriptAssemblies/UniNet.Tests.EditMode.dll" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.093408" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <test-suite type="Assembly" id="1025" name="UniNet.Tests.EditMode.dll" fullname="C:/Projects/DS/UniNet/.tmp-p2/Library/ScriptAssemblies/UniNet.Tests.EditMode.dll" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.109797" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
       <properties>
-        <property name="_PID" value="70272" />
+        <property name="_PID" value="67112" />
         <property name="_APPDOMAIN" value="Unity Child Domain" />
         <property name="platform" value="EditMode" />
         <property name="EditorOnly" value="True" />
       </properties>
-      <test-suite type="TestSuite" id="1018" name="UniNet" fullname="UniNet" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.092861" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestSuite" id="1026" name="UniNet" fullname="UniNet" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.109501" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-suite type="TestSuite" id="1019" name="Tests" fullname="UniNet.Tests" runstate="Runnable" testcasecount="13" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.092693" total="13" passed="13" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <test-suite type="TestSuite" id="1027" name="Tests" fullname="UniNet.Tests" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.109383" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
           <properties />
-          <test-suite type="TestFixture" id="1001" name="MessageSupportTests" fullname="UniNet.Tests.MessageSupportTests" classname="UniNet.Tests.MessageSupportTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.063291" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1001" name="MessageSupportTests" fullname="UniNet.Tests.MessageSupportTests" classname="UniNet.Tests.MessageSupportTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.051746" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1003" name="리플리케이션_메시지_필드는_참조_교체시_델타가_전송되고_이전값으로_알린다" fullname="UniNet.Tests.MessageSupportTests.리플리케이션_메시지_필드는_참조_교체시_델타가_전송되고_이전값으로_알린다" methodname="리플리케이션_메시지_필드는_참조_교체시_델타가_전송되고_이전값으로_알린다" classname="UniNet.Tests.MessageSupportTests" runstate="Runnable" seed="1508182841" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.027813" asserts="0">
+            <test-case id="1003" name="리플리케이션_메시지_필드는_참조_교체시_델타가_전송되고_이전값으로_알린다" fullname="UniNet.Tests.MessageSupportTests.리플리케이션_메시지_필드는_참조_교체시_델타가_전송되고_이전값으로_알린다" methodname="리플리케이션_메시지_필드는_참조_교체시_델타가_전송되고_이전값으로_알린다" classname="UniNet.Tests.MessageSupportTests" runstate="Runnable" seed="1995815981" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.026522" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1002" name="메시지_파라미터_인코딩은_MessageId_헤더로_다형성을_보존한다" fullname="UniNet.Tests.MessageSupportTests.메시지_파라미터_인코딩은_MessageId_헤더로_다형성을_보존한다" methodname="메시지_파라미터_인코딩은_MessageId_헤더로_다형성을_보존한다" classname="UniNet.Tests.MessageSupportTests" runstate="Runnable" seed="89397570" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.022210" asserts="0">
+            <test-case id="1002" name="메시지_파라미터_인코딩은_MessageId_헤더로_다형성을_보존한다" fullname="UniNet.Tests.MessageSupportTests.메시지_파라미터_인코딩은_MessageId_헤더로_다형성을_보존한다" methodname="메시지_파라미터_인코딩은_MessageId_헤더로_다형성을_보존한다" classname="UniNet.Tests.MessageSupportTests" runstate="Runnable" seed="982547094" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.014055" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1004" name="SpawnConditionTests" fullname="UniNet.Tests.SpawnConditionTests" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" testcasecount="7" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.022749" total="7" passed="7" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1004" name="MultiComponentTests" fullname="UniNet.Tests.MultiComponentTests" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" testcasecount="7" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.040438" total="7" passed="7" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1007" name="InitialOnly는_초기_전송에만_포함된다" fullname="UniNet.Tests.SpawnConditionTests.InitialOnly는_초기_전송에만_포함된다" methodname="InitialOnly는_초기_전송에만_포함된다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="325769648" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.003572" asserts="0">
+            <test-case id="1007" name="subId별_RPC는_해당_컴포넌트로만_라우팅된다" fullname="UniNet.Tests.MultiComponentTests.subId별_RPC는_해당_컴포넌트로만_라우팅된다" methodname="subId별_RPC는_해당_컴포넌트로만_라우팅된다" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" seed="1327143311" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.007250" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1009" name="동적_등록은_netId를_할당하고_스폰을_전파한다" fullname="UniNet.Tests.SpawnConditionTests.동적_등록은_netId를_할당하고_스폰을_전파한다" methodname="동적_등록은_netId를_할당하고_스폰을_전파한다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="370718288" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.009011" asserts="0">
+            <test-case id="1006" name="같은_타입_컴포넌트_중복도_슬롯으로_구분된다" fullname="UniNet.Tests.MultiComponentTests.같은_타입_컴포넌트_중복도_슬롯으로_구분된다" methodname="같은_타입_컴포넌트_중복도_슬롯으로_구분된다" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" seed="1222459637" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.002643" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1008" name="전체_상태_페이로드도_수신_그룹별_조건을_반영한다" fullname="UniNet.Tests.SpawnConditionTests.전체_상태_페이로드도_수신_그룹별_조건을_반영한다" methodname="전체_상태_페이로드도_수신_그룹별_조건을_반영한다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="781819304" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.000999" asserts="0">
+            <test-case id="1009" name="다중_서브_스폰은_전체_구성과_상태를_전달한다" fullname="UniNet.Tests.MultiComponentTests.다중_서브_스폰은_전체_구성과_상태를_전달한다" methodname="다중_서브_스폰은_전체_구성과_상태를_전달한다" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" seed="757876387" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.003755" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1006" name="조건_델타는_각_수신자에게_올바르게_적용된다" fullname="UniNet.Tests.SpawnConditionTests.조건_델타는_각_수신자에게_올바르게_적용된다" methodname="조건_델타는_각_수신자에게_올바르게_적용된다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1292561770" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.002311" asserts="0">
+            <test-case id="1008" name="서브별_델타는_독립적으로_계산된다" fullname="UniNet.Tests.MultiComponentTests.서브별_델타는_독립적으로_계산된다" methodname="서브별_델타는_독립적으로_계산된다" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" seed="1327119031" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.001586" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1005" name="조건_델타는_수신_그룹별로_필드를_가른다" fullname="UniNet.Tests.SpawnConditionTests.조건_델타는_수신_그룹별로_필드를_가른다" methodname="조건_델타는_수신_그룹별로_필드를_가른다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1425439722" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.000763" asserts="0">
+            <test-case id="1005" name="오브젝트_등록은_컴포넌트_전체를_슬롯으로_등록한다" fullname="UniNet.Tests.MultiComponentTests.오브젝트_등록은_컴포넌트_전체를_슬롯으로_등록한다" methodname="오브젝트_등록은_컴포넌트_전체를_슬롯으로_등록한다" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" seed="940303920" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.000469" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1010" name="파괴는_등록을_해제하고_전_연결에_전달한다" fullname="UniNet.Tests.SpawnConditionTests.파괴는_등록을_해제하고_전_연결에_전달한다" methodname="파괴는_등록을_해제하고_전_연결에_전달한다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1172324789" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.001674" asserts="0">
+            <test-case id="1011" name="컴포넌트_256개_초과는_거부되고_서버_방어가_예외를_던진다" fullname="UniNet.Tests.MultiComponentTests.컴포넌트_256개_초과는_거부되고_서버_방어가_예외를_던진다" methodname="컴포넌트_256개_초과는_거부되고_서버_방어가_예외를_던진다" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" seed="1108379980" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.014313" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 스폰 거부: too-many
+]]></output>
+            </test-case>
+            <test-case id="1010" name="클라_스폰_적용은_슬롯을_대조해_전_서브를_구성한다" fullname="UniNet.Tests.MultiComponentTests.클라_스폰_적용은_슬롯을_대조해_전_서브를_구성한다" methodname="클라_스폰_적용은_슬롯을_대조해_전_서브를_구성한다" classname="UniNet.Tests.MultiComponentTests" runstate="Runnable" seed="783345355" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.008716" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[UniNet] 스폰 슬롯 불일치 (netId=2) — 서버 서브 2개/클라 1개. 다중 컴포넌트 오브젝트는 RegisterPrefab으로 양단 같은 프리팹을 등록해야 한다 (기본 팩토리는 단일 컴포넌트만 생성)
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1012" name="SpawnConditionTests" fullname="UniNet.Tests.SpawnConditionTests" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" testcasecount="7" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.011030" total="7" passed="7" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1015" name="InitialOnly는_초기_전송에만_포함된다" fullname="UniNet.Tests.SpawnConditionTests.InitialOnly는_초기_전송에만_포함된다" methodname="InitialOnly는_초기_전송에만_포함된다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1551747355" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.003089" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1011" name="후발_접속_캐치업은_기존_상태를_합류시킨다" fullname="UniNet.Tests.SpawnConditionTests.후발_접속_캐치업은_기존_상태를_합류시킨다" methodname="후발_접속_캐치업은_기존_상태를_합류시킨다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="2114369563" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.002359" asserts="0">
+            <test-case id="1017" name="동적_등록은_netId를_할당하고_스폰을_전파한다" fullname="UniNet.Tests.SpawnConditionTests.동적_등록은_netId를_할당하고_스폰을_전파한다" methodname="동적_등록은_netId를_할당하고_스폰을_전파한다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1516106277" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.001702" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1016" name="전체_상태_페이로드도_수신_그룹별_조건을_반영한다" fullname="UniNet.Tests.SpawnConditionTests.전체_상태_페이로드도_수신_그룹별_조건을_반영한다" methodname="전체_상태_페이로드도_수신_그룹별_조건을_반영한다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1364754306" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.000490" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1014" name="조건_델타는_각_수신자에게_올바르게_적용된다" fullname="UniNet.Tests.SpawnConditionTests.조건_델타는_각_수신자에게_올바르게_적용된다" methodname="조건_델타는_각_수신자에게_올바르게_적용된다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1988498390" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.001500" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1013" name="조건_델타는_수신_그룹별로_필드를_가른다" fullname="UniNet.Tests.SpawnConditionTests.조건_델타는_수신_그룹별로_필드를_가른다" methodname="조건_델타는_수신_그룹별로_필드를_가른다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1448319182" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.000514" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1018" name="파괴는_등록을_해제하고_전_연결에_전달한다" fullname="UniNet.Tests.SpawnConditionTests.파괴는_등록을_해제하고_전_연결에_전달한다" methodname="파괴는_등록을_해제하고_전_연결에_전달한다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="1304575152" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.001148" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1019" name="후발_접속_캐치업은_기존_상태를_합류시킨다" fullname="UniNet.Tests.SpawnConditionTests.후발_접속_캐치업은_기존_상태를_합류시킨다" methodname="후발_접속_캐치업은_기존_상태를_합류시킨다" classname="UniNet.Tests.SpawnConditionTests" runstate="Runnable" seed="51408374" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.001062" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
           </test-suite>
-          <test-suite type="TestFixture" id="1012" name="UniNetCoreLogicTests" fullname="UniNet.Tests.UniNetCoreLogicTests" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.005429" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1020" name="UniNetCoreLogicTests" fullname="UniNet.Tests.UniNetCoreLogicTests" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.005100" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1013" name="Fnv1a_메서드ID는_안정적이고_시스템예약을_피한다" fullname="UniNet.Tests.UniNetCoreLogicTests.Fnv1a_메서드ID는_안정적이고_시스템예약을_피한다" methodname="Fnv1a_메서드ID는_안정적이고_시스템예약을_피한다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="542221683" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.000960" asserts="0">
+            <test-case id="1021" name="Fnv1a_메서드ID는_안정적이고_시스템예약을_피한다" fullname="UniNet.Tests.UniNetCoreLogicTests.Fnv1a_메서드ID는_안정적이고_시스템예약을_피한다" methodname="Fnv1a_메서드ID는_안정적이고_시스템예약을_피한다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="1868589389" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.000357" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1016" name="리플리케이션_델타는_변경분만_담고_이전값으로_알림한다" fullname="UniNet.Tests.UniNetCoreLogicTests.리플리케이션_델타는_변경분만_담고_이전값으로_알림한다" methodname="리플리케이션_델타는_변경분만_담고_이전값으로_알림한다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="2024517489" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.000868" asserts="0">
+            <test-case id="1024" name="리플리케이션_델타는_변경분만_담고_이전값으로_알림한다" fullname="UniNet.Tests.UniNetCoreLogicTests.리플리케이션_델타는_변경분만_담고_이전값으로_알림한다" methodname="리플리케이션_델타는_변경분만_담고_이전값으로_알림한다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="1578133315" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.000659" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1015" name="소유권_라운드로빈_정책이_연결순서대로_배정된다" fullname="UniNet.Tests.UniNetCoreLogicTests.소유권_라운드로빈_정책이_연결순서대로_배정된다" methodname="소유권_라운드로빈_정책이_연결순서대로_배정된다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="1035387917" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.001229" asserts="0">
+            <test-case id="1023" name="소유권_라운드로빈_정책이_연결순서대로_배정된다" fullname="UniNet.Tests.UniNetCoreLogicTests.소유권_라운드로빈_정책이_연결순서대로_배정된다" methodname="소유권_라운드로빈_정책이_연결순서대로_배정된다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="1269593306" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.000808" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
             </test-case>
-            <test-case id="1014" name="엔드포인트_옵션은_DRPC_옵션으로_동등하게_매핑된다" fullname="UniNet.Tests.UniNetCoreLogicTests.엔드포인트_옵션은_DRPC_옵션으로_동등하게_매핑된다" methodname="엔드포인트_옵션은_DRPC_옵션으로_동등하게_매핑된다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="1333657925" result="Passed" start-time="2026-09-16 06:37:17Z" end-time="2026-09-16 06:37:17Z" duration="0.000539" asserts="0">
+            <test-case id="1022" name="엔드포인트_옵션은_DRPC_옵션으로_동등하게_매핑된다" fullname="UniNet.Tests.UniNetCoreLogicTests.엔드포인트_옵션은_DRPC_옵션으로_동등하게_매핑된다" methodname="엔드포인트_옵션은_DRPC_옵션으로_동등하게_매핑된다" classname="UniNet.Tests.UniNetCoreLogicTests" runstate="Runnable" seed="740140528" result="Passed" start-time="2026-09-16 08:09:35Z" end-time="2026-09-16 08:09:35Z" duration="0.000423" asserts="0">
               <properties>
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />

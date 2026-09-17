@@ -4,7 +4,8 @@ using System.Collections.Generic;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// 서버 런타임 — 씬/동적 오브젝트 등록, 연결별 허브 보관, 소유권 최소 정책, 리플리케이션 틱, 스폰/파괴 전파, 후발 접속 캐치업.
+    /// 서버 런타임 — 씬/동적 오브젝트 등록(오브젝트당 1 netId + NetworkBehaviour 서브 테이블), 연결별 허브 보관,
+    /// 소유권 최소 정책, 리플리케이션 틱, 스폰/파괴 전파, 후발 접속 캐치업.
     /// 네트워크 스레드에서 호출될 수 있어 상태 접근은 락으로 보호한다. 브로드캐스트·캐치업은 메인 스레드에서 호출한다.
     /// </summary>
     public sealed class NetworkServer
@@ -16,28 +17,40 @@ namespace UniNet.Core.Hosting
         private ulong _nextDynamicNetId = 1;
         private int _rrCursor;
 
-        /// <summary>네트워크 오브젝트 1개의 서버 측 상태 — 인스턴스와 소유 연결·리플리케이션 스냅샷.</summary>
+        /// <summary>네트워크 오브젝트 1개의 서버 측 상태 — 오브젝트(게임오브젝트) 단위. 소유권·파괴·가시성의 단위다.</summary>
         public sealed class ServerObjectEntry
         {
-            /// <summary>네트워크 ID로 조회된 실제 인스턴스 (NetworkBehaviour).</summary>
+            /// <summary>대표 인스턴스 (첫 NetworkBehaviour — 고스트 스윕·변환 조회용).</summary>
             public object Instance { get; }
 
             /// <summary>소유 클라이언트 연결 ID (0 = 미할당).</summary>
             public long OwnerConnId;
 
+            /// <summary>동적 스폰 오브젝트인가 (후발 접속 캐치업에서 스폰 메시지로 재전달된다).</summary>
+            public bool IsDynamic;
+
+            /// <summary>서브오브젝트 테이블 — 슬롯(SubId)순. 각 NetworkBehaviour의 리플리케이션 상태를 가진다.</summary>
+            public SubObjectEntry[] Subs = Array.Empty<SubObjectEntry>();
+
+            public ServerObjectEntry(object instance) => Instance = instance;
+        }
+
+        /// <summary>서브오브젝트 1개(NetworkBehaviour)의 서버 측 리플리케이션 상태.</summary>
+        public sealed class SubObjectEntry
+        {
+            /// <summary>이 슬롯의 인스턴스 (NetworkBehaviour).</summary>
+            public object Instance { get; }
+
             /// <summary>이 타입의 리플리케이션 핸들러 (Replicated 필드가 있을 때만).</summary>
             public UniNetReplicationHandler Replication;
+
+            /// <summary>클라 생성용 타입 식별자 (UniNetSpawnRegistry).</summary>
+            public ulong TypeKey;
 
             /// <summary>서버 측 마지막 전송 스냅샷 (dirty 비교 기준).</summary>
             public object[] Snapshot = Array.Empty<object>();
 
-            /// <summary>동적 스폰 오브젝트인가 (후발 접속 캐치업에서 스폰 메시지로 재전달된다).</summary>
-            public bool IsDynamic;
-
-            /// <summary>동적 스폰 오브젝트의 타입 식별자 (UniNetSpawnRegistry — 클라 생성용).</summary>
-            public ulong TypeKey;
-
-            public ServerObjectEntry(object instance) => Instance = instance;
+            public SubObjectEntry(object instance) => Instance = instance;
         }
 
         /// <summary>연결별 서버 상태 — 허브와 시스템 전송 채널(생성 허브가 구현)을 함께 보관.</summary>
@@ -59,22 +72,22 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>씬 오브젝트를 등록한다. netId는 양단이 같은 규칙(씬 경로 해시)으로 계산한다.</summary>
-        public void RegisterSceneObject(ulong netId, object instance)
+        /// <summary>씬 오브젝트를 등록한다 — 오브젝트당 1회, 컴포넌트 전체를 슬롯 순서로. netId는 양단이 같은 규칙(씬 경로 해시)으로 계산한다.</summary>
+        public void RegisterSceneObject(ulong netId, IReadOnlyList<object> components)
         {
             lock (_gate)
             {
-                var entry = new ServerObjectEntry(instance);
-                AttachReplication(entry);
+                var entry = new ServerObjectEntry(components[0]);
+                AttachSubs(entry, components);
                 _objects[netId] = entry;
             }
         }
 
         /// <summary>
-        /// 동적 오브젝트를 등록하고 서버가 할당한 netId를 반환한다. 소유 연결은 라운드로빈으로 즉시 배정한다.
-        /// 이후 BroadcastSpawn(netId)로 클라 전체에 전파한다 (메인 스레드).
+        /// 동적 오브젝트를 등록하고 서버가 할당한 netId를 반환한다. 컴포넌트 전체를 슬롯 순서로 받는다.
+        /// 소유 연결은 라운드로빈으로 즉시 배정한다. 이후 BroadcastSpawn(netId)로 클라 전체에 전파한다 (메인 스레드).
         /// </summary>
-        public ulong RegisterDynamicObject(object instance)
+        public ulong RegisterDynamicObject(IReadOnlyList<object> components)
         {
             lock (_gate)
             {
@@ -82,12 +95,8 @@ namespace UniNet.Core.Hosting
                 while (_objects.ContainsKey(netId)) netId++;   // 씬 해시와의 충돌 회피 — 등록 불변식 보장
                 _nextDynamicNetId = netId + 1;
 
-                var entry = new ServerObjectEntry(instance)
-                {
-                    IsDynamic = true,
-                    TypeKey = UniNetSpawnRegistry.TypeKeyOf(instance.GetType()),
-                };
-                AttachReplication(entry);
+                var entry = new ServerObjectEntry(components[0]) { IsDynamic = true };
+                AttachSubs(entry, components);
                 if (_connections.Count > 0)
                 {
                     entry.OwnerConnId = _connections[_rrCursor % _connections.Count].ConnId;
@@ -112,7 +121,7 @@ namespace UniNet.Core.Hosting
             return true;
         }
 
-        /// <summary>동적 스폰을 전 연결에 전파한다 — 스폰 메시지(타입·변환·전체 상태) + 소유권 알림 (메인 스레드).</summary>
+        /// <summary>동적 스폰을 전 연결에 전파한다 — 스폰 메시지(변환·서브 타입·전체 상태) + 소유권 알림 (메인 스레드).</summary>
         public void BroadcastSpawn(ulong netId)
         {
             var entry = GetEntry(netId);
@@ -122,11 +131,7 @@ namespace UniNet.Core.Hosting
             foreach (var conn in SnapshotConnections())
             {
                 if (conn.Disconnected) continue;
-                bool isOwner = conn.ConnId == entry.OwnerConnId;
-                byte[] state = entry.Replication != null && entry.Replication.HasFields
-                    ? entry.Replication.WriteFull(entry.Instance, isOwner)
-                    : Array.Empty<byte>();
-                conn.Channel.SendSpawn(netId, entry.TypeKey, px, py, pz, qx, qy, qz, qw, state);
+                SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, conn.ConnId == entry.OwnerConnId);
             }
             if (entry.OwnerConnId != 0)
                 foreach (var conn in SnapshotConnections())
@@ -134,10 +139,20 @@ namespace UniNet.Core.Hosting
                         conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
         }
 
-        /// <summary>netId로 등록된 인스턴스를 조회한다.</summary>
+        /// <summary>netId로 등록된 오브젝트의 대표 인스턴스를 조회한다 (고스트 스윕 등 오브젝트 단위 조회).</summary>
         public object Get(ulong netId)
         {
             lock (_gate) return _objects.TryGetValue(netId, out var e) ? e.Instance : null;
+        }
+
+        /// <summary>서브슬롯의 인스턴스를 조회한다 (RPC 라우팅).</summary>
+        public object Get(ulong netId, byte subId)
+        {
+            lock (_gate)
+            {
+                return _objects.TryGetValue(netId, out var e)
+                    && subId < e.Subs.Length ? e.Subs[subId].Instance : null;
+            }
         }
 
         /// <summary>서버 측 오브젝트 엔트리를 조회한다.</summary>
@@ -223,7 +238,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>후발 접속 캐치업 — 동적 오브젝트는 스폰으로, 씬 오브젝트는 전체 상태 리플리케이션으로 뒤늦게 합류시킨다.</summary>
+        /// <summary>후발 접속 캐치업 — 동적 오브젝트는 스폰으로, 씬 오브젝트는 서브별 전체 상태 리플리케이션으로 뒤늦게 합류시킨다.</summary>
         private void SendCatchup(ServerConnection conn)
         {
             bool isOwner;
@@ -233,22 +248,24 @@ namespace UniNet.Core.Hosting
                 if (entry.IsDynamic)
                 {
                     GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
-                    byte[] state = entry.Replication != null && entry.Replication.HasFields
-                        ? entry.Replication.WriteFull(entry.Instance, isOwner)
-                        : Array.Empty<byte>();
-                    conn.Channel.SendSpawn(netId, entry.TypeKey, px, py, pz, qx, qy, qz, qw, state);
+                    SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, isOwner);
                 }
-                else if (entry.Replication != null && entry.Replication.HasFields)
+                else
                 {
-                    byte[] state = entry.Replication.WriteFull(entry.Instance, isOwner);
-                    if (state != null && state.Length > 0)   // 전 필드가 조건으로 제외되면 null — 캐치업 생략
-                        conn.Channel.SendReplicate(netId, entry.Replication.MethodId, state);
+                    for (byte subId = 0; subId < entry.Subs.Length; subId++)
+                    {
+                        var handler = entry.Subs[subId].Replication;
+                        if (handler == null || !handler.HasFields) continue;
+                        byte[] state = handler.WriteFull(entry.Subs[subId].Instance, isOwner);
+                        if (state != null && state.Length > 0)   // 전 필드가 조건으로 제외되면 null — 캐치업 생략
+                            conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
+                    }
                 }
             }
         }
 
         /// <summary>
-        /// 리플리케이션 틱(드라이버 Update에서 호출) — 변경된 [Replicated] 필드만 골라 수신 그룹별(OwnerOnly/SkipOwner) 델타를 전송한다.
+        /// 리플리케이션 틱(드라이버 Update에서 호출) — 서브오브젝트별로 변경된 [Replicated] 필드만 골라 수신 그룹별(OwnerOnly/SkipOwner) 델타를 전송한다.
         /// 드라이버는 고스트 스윕과 스냅샷을 공유해 프레임당 복사를 1회로 제한할 수 있다.
         /// </summary>
         public void TickReplication()
@@ -262,28 +279,60 @@ namespace UniNet.Core.Hosting
 
             foreach (var (netId, entry) in objects)
             {
-                var handler = entry.Replication;
-                if (handler == null || !handler.HasFields) continue;
-
-                var (toOwner, toOthers) = handler.CompareAndWriteDelta(entry);
-                if (IsEmpty(toOwner) && IsEmpty(toOthers)) continue;
-
-                foreach (var conn in connections)
+                for (byte subId = 0; subId < entry.Subs.Length; subId++)
                 {
-                    if (conn.Disconnected) continue;
-                    var payload = conn.ConnId == entry.OwnerConnId ? toOwner : toOthers;
-                    if (!IsEmpty(payload))
-                        conn.Channel.SendReplicate(netId, handler.MethodId, payload);
+                    var sub = entry.Subs[subId];
+                    var handler = sub.Replication;
+                    if (handler == null || !handler.HasFields) continue;
+
+                    var (toOwner, toOthers) = handler.CompareAndWriteDelta(sub);
+                    if (IsEmpty(toOwner) && IsEmpty(toOthers)) continue;
+
+                    foreach (var conn in connections)
+                    {
+                        if (conn.Disconnected) continue;
+                        var payload = conn.ConnId == entry.OwnerConnId ? toOwner : toOthers;
+                        if (!IsEmpty(payload))
+                            conn.Channel.SendReplicate(netId, subId, handler.MethodId, payload);
+                    }
                 }
             }
         }
 
         private static bool IsEmpty(byte[] payload) => payload == null || payload.Length == 0;
 
-        private static void AttachReplication(ServerObjectEntry entry)
+        /// <summary>서브 테이블을 구성한다 — 슬롯 순서 = 컴포넌트 순서, 리플리케이션 핸들 부착·스냅샷 초기화 포함.</summary>
+        private static void AttachSubs(ServerObjectEntry entry, IReadOnlyList<object> components)
         {
-            entry.Replication = UniNetTypeRegistry.Find(entry.Instance.GetType());
-            entry.Replication?.InitSnapshot(entry);
+            if (components.Count > byte.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(components), "오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한)");
+            entry.Subs = new SubObjectEntry[components.Count];
+            for (int i = 0; i < components.Count; i++)
+            {
+                var sub = new SubObjectEntry(components[i])
+                {
+                    TypeKey = UniNetSpawnRegistry.TypeKeyOf(components[i].GetType()),
+                };
+                sub.Replication = UniNetTypeRegistry.Find(components[i].GetType());
+                sub.Replication?.InitSnapshot(sub);
+                entry.Subs[i] = sub;
+            }
+        }
+
+        /// <summary>수신자용 스폰 메시지 조립 — [변환 7값][서브 수][서브별 typeKey+전체 상태] (서브슬롯은 순서 암시).</summary>
+        private static void SendSpawnState(IUniNetSystemChannel channel, ulong netId, ServerObjectEntry entry,
+            float px, float py, float pz, float qx, float qy, float qz, float qw, bool isOwner)
+        {
+            var typeKeys = new ulong[entry.Subs.Length];
+            var states = new byte[entry.Subs.Length][];
+            for (int i = 0; i < entry.Subs.Length; i++)
+            {
+                typeKeys[i] = entry.Subs[i].TypeKey;
+                states[i] = entry.Subs[i].Replication != null && entry.Subs[i].Replication.HasFields
+                    ? entry.Subs[i].Replication.WriteFull(entry.Subs[i].Instance, isOwner)
+                    : Array.Empty<byte>();
+            }
+            channel.SendSpawn(netId, px, py, pz, qx, qy, qz, qw, (byte)entry.Subs.Length, typeKeys, states);
         }
 
         private static void GetSpawnTransform(ServerObjectEntry entry,

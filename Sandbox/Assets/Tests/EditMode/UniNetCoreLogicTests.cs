@@ -48,8 +48,8 @@ namespace UniNet.Tests
         public void 소유권_라운드로빈_정책이_연결순서대로_배정된다()
         {
             var server = new NetworkServer();
-            server.RegisterSceneObject(100, new object());
-            server.RegisterSceneObject(200, new object());
+            server.RegisterSceneObject(100, new object[] { new object() });
+            server.RegisterSceneObject(200, new object[] { new object() });
 
             var ch1 = new FakeChannel();
             var ch2 = new FakeChannel();
@@ -76,7 +76,7 @@ namespace UniNet.Tests
                 Assert.IsNotNull(handler, "픽스처 리플리케이션 핸들 등록(생성 코드)");
                 Assert.IsTrue(handler.HasFields);
 
-                var entry = new NetworkServer.ServerObjectEntry(player);
+                var entry = new NetworkServer.SubObjectEntry(player);
                 Assert.AreSame(player, entry.Instance);
 
                 // 서버: 스냅샷 → 변경 없으면 빈 델타 → 변경 시 델타
@@ -107,14 +107,14 @@ namespace UniNet.Tests
             public long UniNetConnId { get; set; }
             internal long WelcomeConnId;
             internal readonly System.Collections.Generic.List<(ulong, long)> OwnerUpdates = new();
-            internal readonly System.Collections.Generic.List<(ulong NetId, ulong TypeKey)> Spawns = new();
+            internal readonly System.Collections.Generic.List<ulong> Spawns = new();
             internal readonly System.Collections.Generic.List<ulong> Destroys = new();
 
             public void SendWelcome(long connId) => WelcomeConnId = connId;
             public void SendOwnerUpdate(ulong netId, long ownerConnId) => OwnerUpdates.Add((netId, ownerConnId));
-            public void SendReplicate(ulong netId, int methodId, byte[] payload) { }
-            public void SendSpawn(ulong netId, ulong typeKey, float px, float py, float pz, float qx, float qy, float qz, float qw, byte[] state)
-                => Spawns.Add((netId, typeKey));
+            public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) { }
+            public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)
+                => Spawns.Add(netId);
             public void SendDestroy(ulong netId) => Destroys.Add(netId);
             public void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode) { }
         }

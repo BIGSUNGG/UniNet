@@ -5,6 +5,18 @@
 
 ## [2026-09-16]
 
+### Added (2층 식별자 — 다중 NetworkBehaviour 지원)
+
+- **한 게임오브젝트에 여러 NetworkBehaviour가 각자 네트워킹되는 2층 식별자 구현** (ADR-0010 — UE Actor/Component·Mirror componentId 선례 채택)
+  - **식별 모델**: 네트워크 엔티티=GameObject 단위 netId 1개(할당 규칙 유지) + NetworkBehaviour별 `SubId`(슬롯 byte). 소유권·파괴·가시성(P3)은 오브젝트 단위, RPC·리플리케이션은 서브 단위. 컴포넌트별 독립 netId는 P3 단위 붕괴로 기각
+  - **와이어**: RPC/리플리케이션에 `[subId]` 추가, 스폰 메시지가 `[subCount][{typeKey, stateLen, state}×N]`로 서브 구성 나열(순서 암시·명시 길이 프레이밍) — 포맷 변경 수용(0.x)
+  - **등록**: 씬 등록 오브젝트당 1회+컴포넌트 배열(경로 해시 충돌 소멸), `Spawn` 전 컴포넌트 등록(“첫 것만” 제약·경고 삭제), 클라 스폰 시 서브 구성·타입 슬롯별 대조(불일치 진단 후 거부). 다중 컴포넌트 동적 스폰은 RegisterPrefab 필수(기본 팩토리 단일 컴포넌트)
+  - **Core**: ServerObjectEntry 서브 테이블(SubObjectEntry — instance·핸들러·typeKey·스냅샷), NetworkClient `object[]` 등록, `Get(netId, subId)` 조회, 캐치업 서브별 전체 상태
+  - **Sandbox 예제**: `GadgetCarrier.cs`(Weapon과 같은 오브젝트에 붙는 장비 서브오브젝트 — OwnerOnly 잔량) + Weapon 다중 컴포넌트 프리팩 등록 안내
+  - **검증**: 배치 컴파일 녹색(run160) · EditMode 20/20(MultiComponentTests 7종 — subId RPC 라우팅·서브별 델타·슬롯 대조·상한 가드 등) · PlayMode 3/3(MultiComponent 왕복 신규, [UNINET-VERIFY] 3종) · 2-프로세스 [UNINET-2PROC] MULTI-COMPONENT PASS(다중 서브 스폰·서브별 델타 무조건+OwnerOnly·슬롯·파괴)
+  - 테스트 함정 2건 발견·해소(ADR-0010 기록): 카탈로그 템플릿의 씬 등록 섞임(접속 후 생성), 검증 대상 파괴 타이밍 경합(파괴 단계 분리)
+  - **리뷰 라운드 1 반영 (ISSUES 1건 → 수용)**: SubId byte 상한 255 미검증 — 256+ 컴포넌트에서 byte 루프 랩어라운드 무한 행업·스폰 subCount 무음 절단 위험 → 3층 방어(Spawn 가드·씬 등록 가드×2·AttachSubs 최종 방어 예외) + ADR-0010 결정 5·feature 문서 계약화 + 회귀 테스트(256개 거부·예외) · 재검증 run170-172
+
 ### Added (P2 완결 — 동적 스폰/파괴·조건부·InitialOnly)
 
 - **P2 잔여 기능 전부 구현으로 P2 완결** (ADR-0009, 기능 문서 갱신)

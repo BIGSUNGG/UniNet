@@ -49,6 +49,7 @@ namespace UniNet.Tests
             bool loggedAttach = false;
             bool spawnedB = false;
             bool destroyed = false;
+            bool destroyedMulti = false;
             while (DateTime.UtcNow < deadline)
             {
                 UniNetEnvironment.PumpMain();
@@ -74,6 +75,20 @@ namespace UniNet.Tests
                     _b.SpawnSeed = 42;  // InitialOnly — 미전파 (스폰값 2002 유지)
                     _b.TeamId = 8;      // SkipOwner — 미전파 (초기값 3 유지)
                     Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-B netId=" + _b.NetId);
+
+                    // 다중 컴포넌트 오브젝트 — MovementBrain + HealthTank가 한 게임오브젝트 (ADR-0010)
+                    var template = new GameObject("MultiTemplate");
+                    template.AddComponent<MovementBrain>();
+                    template.AddComponent<HealthTank>();
+                    UniNetManager.RegisterPrefab<MovementBrain>(template);   // 카탈로그 — 클라가 같은 구성으로 생성
+                    _multi = new GameObject("DynMulti");
+                    var mb = _multi.AddComponent<MovementBrain>();
+                    var ht = _multi.AddComponent<HealthTank>();
+                    mb.Speed = 10; ht.Armor = 20;
+                    UniNetManager.Spawn(_multi);
+                    mb.Speed = 99;    // 무조건 델타
+                    ht.Armor = 88;    // OwnerOnly 델타
+                    Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-MULTI netId=" + mb.NetId);
                 }
                 // 값 전파 여유 후 파괴 — 클라가 등록 해제 관찰
                 if (spawnedB && !destroyed && DateTime.UtcNow > DeadlineAfter(3))
@@ -83,7 +98,13 @@ namespace UniNet.Tests
                     if (_b != null) UniNetManager.NetworkDestroy(_b.gameObject);
                     Debug.Log("[UNINET-2PROC] SERVER-DESTROYED-AB");
                 }
-                if (destroyed && DateTime.UtcNow > DeadlineAfter(5))
+                if (destroyed && !destroyedMulti && DateTime.UtcNow > DeadlineAfter(9))
+                {
+                    destroyedMulti = true;
+                    if (_multi != null) UniNetManager.NetworkDestroy(_multi);
+                    Debug.Log("[UNINET-2PROC] SERVER-DESTROYED-MULTI");
+                }
+                if (destroyedMulti && DateTime.UtcNow > DeadlineAfter(11))
                 {
                     Thread.Sleep(500);   // 클라 파괴 관찰 여유
                     UniNetEnvironment.PumpMain();
@@ -97,6 +118,7 @@ namespace UniNet.Tests
 
         private static DateTime _phaseMark;
         private static SpawnablePlayer _b;
+        private static GameObject _multi;
 
         private static DateTime DeadlineAfter(double seconds)
         {
@@ -138,6 +160,12 @@ namespace UniNet.Tests
                 return;
             }
 
+            // 다중 컴포넌트 클라 생성용 카탈로그 — 접속 확정 뒤 생성해야 RegisterAllToClient가 템플릿을 씬 오브젝트로 등록하지 않는다
+            var template = new GameObject("MultiTemplate");
+            template.AddComponent<MovementBrain>();
+            template.AddComponent<HealthTank>();
+            UniNetManager.RegisterPrefab<MovementBrain>(template);
+
             // 소유권 대기 후 네트워크 경로 ServerRpc 송신 — [netId][int amount]
             deadline = DateTime.UtcNow.AddSeconds(5);
             while (UniNetEnvironment.Client.GetOwner(player.NetId) == 0 && DateTime.UtcNow < deadline)
@@ -151,6 +179,7 @@ namespace UniNet.Tests
             int pingId = Fnv1a.MethodId("UniNet.Tests.VerifyPlayer.RpcPing");
             var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
             w.WriteUInt64(player.NetId);
+            w.WriteByte(0);   // SubId — 단일 컴포넌트 오브젝트 슬롯 0
             w.WriteInt32(11);
             UniNetEnvironment.ClientSender.UniNetSend(pingId, w.ToArray(), RpcDeliveryMode.ReliableOrdered);
 
@@ -169,6 +198,58 @@ namespace UniNet.Tests
                       + " notified=" + player.ScoreNotified);
 
             VerifyDynamicSpawn();
+            VerifyMultiComponent();
+        }
+
+        /// <summary>다중 컴포넌트 오브젝트 검증 — MovementBrain+HealthTank가 한 오브젝트에서 서브별로 동작한다.</summary>
+        private static void VerifyMultiComponent()
+        {
+            MovementBrain mb = null;
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < deadline && mb == null)
+            {
+                UniNetEnvironment.PumpMain();
+                foreach (var c in UnityEngine.Object.FindObjectsByType<MovementBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    if (c.GetComponent<HealthTank>() != null && c.gameObject.name != "MultiTemplate")
+                        mb = c;   // 다중 컴포넌트 오브젝트 식별 (카탈로그 템플릿 제외)
+                Thread.Sleep(20);
+            }
+            if (mb == null)
+            {
+                Debug.LogError("[UNINET-2PROC] MULTI-MISS — 다중 컴포넌트 스폰 실패");
+                return;
+            }
+            var ht = mb.GetComponent<HealthTank>();
+
+            // 서브별 최종값 대기 — 무조건(Speed) + OwnerOnly(Armor — 유일 연결=소유자)
+            deadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < deadline && (mb.Speed != 99 || ht.Armor != 88))
+            {
+                UniNetEnvironment.PumpMain();
+                Thread.Sleep(20);
+            }
+
+            Debug.Log("[UNINET-2PROC] MULTI speed=" + mb.Speed + "(99) armor=" + ht.Armor + "(88: OwnerOnly) sub0=" + mb.SubId + " sub1=" + ht.SubId
+                      + " sameNetId=" + (mb.NetId == ht.NetId));
+            if (mb.Speed != 99 || ht.Armor != 88 || mb.SubId != 0 || ht.SubId != 1 || mb.NetId != ht.NetId)
+            {
+                Debug.LogError("[UNINET-2PROC] MULTI-FAIL");
+                return;
+            }
+
+            ulong netId = mb.NetId;
+            deadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < deadline && UniNetEnvironment.Client.Get(netId) != null)
+            {
+                UniNetEnvironment.PumpMain();
+                Thread.Sleep(20);
+            }
+            if (UniNetEnvironment.Client.Get(netId) != null)
+            {
+                Debug.LogError("[UNINET-2PROC] MULTI-DESTROY-FAIL");
+                return;
+            }
+            Debug.Log("[UNINET-2PROC] MULTI-COMPONENT PASS — 다중 서브 스폰/슬롯/서브별 델타/파괴");
         }
 
         /// <summary>동적 스폰·조건부·파괴 검증 — A(캐치업: 접속 전 스폰)와 B(브로드캐스트: 핑 후 스폰)를 값으로 식별한다.</summary>
@@ -256,6 +337,7 @@ namespace UniNet.Tests
             int pingId = Fnv1a.MethodId("UniNet.Tests.VerifyPlayer.RpcPing");
             var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
             w.WriteUInt64(player.NetId);
+            w.WriteByte(0);   // SubId — 단일 컴포넌트 오브젝트 슬롯 0
             w.WriteInt32(5);
             UniNetEnvironment.ClientSender.UniNetSend(pingId, w.ToArray(), RpcDeliveryMode.ReliableOrdered);
             Debug.Log("[UNINET-2PROC] HOST-PING-SENT");
