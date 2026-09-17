@@ -114,17 +114,38 @@ UniNetManager.Spawn(go);   // 다중 컴포넌트는 RegisterPrefab 필수 (기�
 
 - **ServerRpc 발신자 미검증** — 수신 핸들은 페이로드의 netId만으로 대상을 찾아 `_Implementation`를 실행한다. 악의적 클라가 다른 오브젝트의 netId로 페이로드를 조립하면 피해자 오브젝트의 ServerRpc가 실행될 수 있다. `_Validate`는 인자만 검증 가능(발신자 불가). 완화 플러밍은 마련됐다 — 연결별 허브가 발신 connId를 주입하고 디스패치까지 전달되므로(`senderConnId`), 소유권 대조 강화는 후속 과제다.
 - **접속 직후 첫 전송 레이스** — 접속 완료 직후(Welcome/소유권 수신 전) 즉발 one-way RPC가 유실될 수 있음 (ADR-0008 알려진 한계 — 상류 조사 후보). 연결 확정 후 전송하는 자연 패턴은 무영향.
-- **연결 종료 수명주기 미구현** — `Stop`/`Shutdown`이 없고 `ServerAsync` 재호출 시 이전 리슨 핸들이 교체만 된다. P1 범위 밖 — 후속 구현.
+- **연결 종료 수명주기** — 해소됨: 아래 "수명주기 종료 (Stop API)" 섹션 참조 (2026-09-17 — 명시적 Stop API 구현)
 - **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가).
 - **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 컬렉션(List<T> 등)의 직접 파라미터는 여전히 미지원 — 메시지 내부 필드로 담아 전달(MP가 처리). 32필드 상한(UNINET008) 유지.
 - **동적 스폰 제약** — 다중 컴포넌트 오브젝트의 동적 스폰은 RegisterPrefab 필수(기본 팩토리는 단일 컴포넌트만 생성 — 슬롯 불일치로 거부), 타입-프리팹 카탈로그 1:1(카탈로그 키=첫 NetworkBehaviour 타입), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
 - **슬롯 불변식** — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다(ADR-0010). 씬 오브젝트의 증감은 감지 창구가 없어 계약으로만 방어, 동적 스폰은 구성 대조로 거부. 오브젝트당 NetworkBehaviour 상한 **255개**(SubId byte — 초과 시 등록·스폰 거부)
-- **같은 프로세스 재시작 미지원** — 호스트/서버 재시작은 이전 스택 미정리(Stop 미구현의 연장 — ADR-0009 알려진 한계)
+- **같은 프로세스 재시작** — 해소됨: Stop으로 정리 후 동일 포트 재리슨 검증 (`LifecycleStopTests.호스트_정지후_재시작_성공`)
+
+## 수명주기 종료 (Stop API)
+
+서버/클라/호스트는 시작만큼 명시적으로 정지해야 한다 — 정지하지 않으면 리스너 스레드·소켓이 살아 있어
+동일 포트 재리슨이 "RUDP 리스너 바인딩 실패"로 거부된다. `UniNetManager`는 핸들(“RpcListenHandle”)을
+저장만 하던 이력이 있어, 2026-09-17에 명시적 종료 API를 추가했다:
+
+```csharp
+await UniNetManager.ServerStopAsync();   // 리스너 정지(DisposeAsync) + 환경 상태 정리
+UniNetManager.ServerStop();              // 동기 버전 — 애플리케이션 종료 직전 경로용
+UniNetManager.ClientStop();              // 허브 Disconnect/Dispose + 환경 상태 정리 (동기)
+await UniNetManager.HostStopAsync();     // ClientStop + ServerStopAsync
+UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경로용
+```
+
+- 멱등 — 리슨 중이 아니면 아무것도 하지 않는다
+- 환경 정리 — `UniNetEnvironment`의 Server/Client/ClientSender 참조를 해제해 `IsServer`·`IsClient`가 즉시 false
+- 게임은 `OnApplicationQuit`(또는 컴포넌트 비활성)에서 동기 버전을 호출한다 — 예: Sandbox `ArenaBootstrap`
+- 정지 경로에서는 이미 닫힌 세션으로의 잔여 송신이 InvalidOperationException(“세션이 끊겨…”)로 실패할 수 있다 —
+  생성 코드(FireAndForget)는 이 경우를 예외 대신 경고 로그로 처리한다 (UniNet.CodeGenerator 0.1.1)
 
 ## 테스트 / 검증
 
-- EditMode 유닛 13종: `Sandbox/Assets/Tests/EditMode/` — FNV 안정성·옵션 매핑·소유권 정책·델타/RepNotify 이전값 + MessageSupportTests(다형성 보존·메시지 필드 델타/이전 참조) + SpawnConditionTests 7종(그룹별 마스크·수신자 적용·InitialOnly·동적 netId·스폰 브로드캐스트·파괴·후발 캐치업) (`tests-editmode-p2.xml`)
+- EditMode 유닛 20종: `Sandbox/Assets/Tests/EditMode/` — FNV 안정성·옵션 매핑·소유권 정책·델타/RepNotify 이전값 + MessageSupportTests(다형성 보존·메시지 필드 델타/이전 참조) + SpawnConditionTests 7종(그룹별 마스크·수신자 적용·InitialOnly·동적 netId·스폰 브로드캐스트·파괴·후발 캐치업)
 - PlayMode 호스트 왕복 3종: `Sandbox/Assets/Tests/PlayMode/HostRoundtripTests.cs` — 루프백 RUDP 전 경로 + 동적 스폰/파괴·조건부 + 다중 컴포넌트 (`[UNINET-VERIFY]` 마커 3종)
+- PlayMode 수명주기 3종: `Sandbox/Assets/Tests/PlayMode/LifecycleStopTests.cs` — 리슨→Stop→동일 포트 재리슨·클라 정지/재접속·호스트 재시작 (Stop API 회귀 방지)
 - 2-프로세스 왕복: `Sandbox/Assets/Tests/Fixtures/TwoProcessRunner.cs` (`--uninet-role=server|client`) — 프로세스 간 RUDP — RPC·리플리케이션 + `[UNINET-2PROC] DYNAMIC-SPAWN-DESTROY PASS`(캐치업·브로드캐스트·조건 3종·파괴) + `[UNINET-2PROC] MULTI-COMPONENT PASS`(다중 서브 스폰·서브별 델타·슬롯·파괴) (로그: `Sandbox-2proc-*.log`)
 - 사용법 예제: `Sandbox/Assets/Scripts/` — Player(RPC 3종·메시지 파라미터)·Weapon(스폰 발사)·Projectile(조건 3종·NetworkDestroy)·GadgetCarrier(다중 컴포넌트 서브오브젝트)
 
@@ -134,3 +155,4 @@ UniNetManager.Spawn(go);   // 다중 컴포넌트는 RegisterPrefab 필수 (기�
 - 2026-09-15 — [Message] 타입 매개변수·필드 지원 추가 (다형성 공식 계약 — MessageSupportTests·호스트 왕복 검증)
 - 2026-09-16 — P2 완결 — 동적 스폰/파괴(Spawn/NetworkDestroy)·조건부(ReplicateCondition 3종)·후발 접속 캐치업 추가 (ADR-0009)
 - 2026-09-16 — 다중 NetworkBehaviour 지원 — 2층 식별자(netId+SubId)·다중 서브 스폰/델타·슬롯 대조 (ADR-0010 — MultiComponentTests·PlayMode·2-프로세스 검증)
+- 2026-09-17 — 수명주기 종료 API 추가 — ServerStopAsync/ServerStop/ClientStop/HostStopAsync/HostStop (포트 잔존 바인딩 실패 근본 해소 — LifecycleStopTests 3종·동일 포트 재리슨 검증) + UniNet.CodeGenerator 0.1.1 (정지 경로 잔여 송신 예외를 경고 수준으로)

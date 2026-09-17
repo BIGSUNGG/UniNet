@@ -3,6 +3,28 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-17]
+
+### Fixed (수명주기 종료 API — RUDP 포트 잔존 바인딩 실패 근본 해소)
+
+- **ServerAsync가 RpcListenHandle을 저장만 하고 Dispose하지 않는 결함 해소** — Play 모드 종료·재진입 시 “RUDP 리스너 바인딩 실패 (0.0.0.0:포트)”가 발생하던 문제
+  - **명시적 종료 API 추가** (`UniNetManager`): `ServerStopAsync`(DisposeAsync 기반 리스너 정지 + 환경 정리)·`ServerStop`(동기 — 종료 직전 경로용)·`ClientStop`(HubBase Disconnect/Dispose + 환경 정리)·`HostStopAsync`·`HostStop`. 멱등 — 리슨 중이 아니면 무작동
+  - **Sandbox 아레나 부트스트랩 연결** — `OnApplicationQuit`에서 역할별 동기 Stop 호출 → 서버 재시작 시 동일 포트(7777) 재리슨 성공
+  - **UniNet.CodeGenerator 0.1.1** — FireAndForget continuation에서 정지·재접속 경로의 잔여 송신 실패(InvalidOperationException “세션이 끊겨…”)를 예외 대신 경고 로그로 처리(정상 종료 노이즈 — 삼키지 않고 수준 낮춤)
+  - **테스트**: PlayMode `LifecycleStopTests` 3종 신규(리슨→Stop→동일 포트 재리슨·클라 정지/재접속·호스트 재시작) — PlayMode 7/7×2회·EditMode 20/20 통과. 기존 테스트들도 TearDown에서 Stop 정리해 테스트 간 잔존 리스너 소멸
+- **Sandbox 아레나 예시 게임 테스트 강건화** — 치명타 무작위성에 따른 확률적 실패 제거(사망까지 연사), 게임 시간(dt 합산) 기반 대기(에디터 스로틀링 환경의 deltaTime 왜곡 무관), 씬 부트스트랩 간섭 방지(SetUp 비활성화)
+
+### Added (Sandbox 아레나 슈팅 예시 게임 — 구현 기능 전부 활용)
+
+- **Sandbox에 UniNet 구현 기능(P1 전체 + P2 전체)을 활용하는 탑다운 2~4인 슈팅 아레나 예시 게임 구현** (`Sandbox/Assets/Scripts/Arena/` · 씬 `Sandbox/Assets/Scenes/Arena.unity` · 문서 [[examples/arena-shooter]])
+  - **MPPM 도입**: `com.unity.multiplayer.playmode` 1.6.3 설치. 토폴로지 — 메인 에디터=서버 / MPPM 가상 플레이어 2=클라이언트, 태그(UniNetServer/UniNetClient/UniNetHost)·인스펙터 강제값 오버라이드 (`ArenaRoleResolver`)
+  - **게임 구성**: 에셋 없이 기본 도형·파티클만 — 기둥 4개 아레나, 동적 스폰 플레이어(WASD·마우스 조준·좌클릭 발사·탄약 재생·리스폰), 총알(치명타), 로컬 FX, OnGUI HUD(네임플레이트·킬피드), 탑다운 추적 카메라. 규격은 `ArenaConfig` 단일 진실 공급원
+  - **기능 커버리지**: ServerRpc 3종+검증 후크 / ClientRpc(킬피드) / MulticastRpc(FX — 비신뢰·신뢰 혼용) / [Replicated] 조건 4종(None·OwnerOnly 탄약·SkipOwner 조준각·InitialOnly 이름·색·시드) / RepNotify 3종 / 동적 스폰·파괴 / 소유권(IsOwner)·역할(IsServer·IsClient) 게이트
+  - **서버 관리**: 접속 수 ↔ 동적 플레이어 수 동기화(스폰·잉여 파괴) — 소유권은 라이브러리 라운드로빈 정책에 위임, 게임은 IsOwner 탐색만 사용. 다른 런타임이 환경을 점유하면 관리에서 물러나는 가드
+  - **검증**: PlayMode `ArenaRoundtripTests` (스폰→RPC→리플리케이션→킬플로우→리스폰 단언, 프레임 기반 대기로 스로틀링 환경 강건) — PlayMode 4/4·EditMode 20/20 통과. 2-프로세스 검증기 `ArenaTwoProcessRunner`(사본 2개·batchmode) — 클라 2 접속에서 InitialOnly 전파·SkipOwner 조각(B만 수신)·OwnerOnly 비전파·동적 스폰/파괴·피해 리플리케이션+RepNotify·ClientRpc 킬피드·MulticastRpc FX 전부 관찰 (`[ARENA-2PROC]` HOST-DONE + CLIENT-DONE)
+  - **발견·해소**: ① 소유 클라 로컬 입력 핸들러가 프로그램 입력(테스트·검증기)을 덮어쓰는 문제 → `LocalInputEnabled` 게이트 ② 서버 Update가 스폰 트랜스폼을 흡수하지 않아 플레이어가 원점으로 복귀하는 결함 → `InitServerState`에서 복제 좌표 초기화 ③ 프레임 스파이크(dt 클램프)에서 점 거리 명중 판정이 대상을 터널링으로 통과하는 결함 → 이동 선분 스윕 판정으로 교체 ④ batchmode에서 생성 등록(RuntimeInitializeOnLoadMethod) 미실행 → 러너가 명시 등록
+  - **알려진 한계 문서화**: 생성된 `_Implementation`에 발신 연결 ID 미전달 — 서버가 RPC 발신자-소유자 일치를 검증할 수 없음(값 범위 검증만). 라이브러리 P1 후속 과제로 examples 문서에 기록
+
 ## [2026-09-16]
 
 ### Added (2층 식별자 — 다중 NetworkBehaviour 지원)

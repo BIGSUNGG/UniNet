@@ -373,8 +373,17 @@ namespace UniNet.CodeGenerator
 
         static void EmitFireAndForget(StringBuilder sb)
         {
+            // 정지(Stop)/재접속 경로에서는 이미 닫힌 세션으로의 잔여 송신이 InvalidOperationException으로 실패한다 —
+            // 기능에 영향 없는 정상 종료 노이즈이므로 경고 수준으로 낮추고, 다른 예외는 예외 수준 유지(삼키지 않음).
             sb.AppendLine("        private void FireAndForget(global::System.Threading.Tasks.Task task)");
-            sb.AppendLine("            => task.ContinueWith(t => UnityEngine.Debug.LogException(t.Exception), global::System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);");
+            sb.AppendLine("            => task.ContinueWith(t =>");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var ex = t.Exception?.InnerException ?? (global::System.Exception)t.Exception;");
+            sb.AppendLine("            if (ex is global::System.InvalidOperationException)");
+            sb.AppendLine("                UnityEngine.Debug.LogWarning(\"[UniNet] 송신 실패(정지·재접속 경로의 정상 종료 노이즈): \" + ex.Message);");
+            sb.AppendLine("            else");
+            sb.AppendLine("                UnityEngine.Debug.LogException(ex);");
+            sb.AppendLine("        }, global::System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);");
         }
 
         // ── 리플리케이션 핸들 ─────────────────────────────────────

@@ -115,6 +115,23 @@ UniNetManager.Spawn(go);   // 전 컴포넌트가 서브 테이블(SubId 슬롯)
 
 전체 사용법: `Sandbox/Assets/Scripts/` · 검증: EditMode/PlayMode 유닛 테스트 + 2-프로세스 RUDP 왕복 (`Sandbox/Assets/Tests/`)
 
+## 수명주기 종료 (Stop API)
+
+서버·클라·호스트는 종료 시 명시적으로 정지해야 동일 포트 재리슨이 바인딩 실패 없이 성공한다:
+
+```csharp
+await UniNetManager.ServerStopAsync();   // 리스너 정지 + 환경 정리 (동기 ServerStop / ClientStop / HostStopAsync / HostStop도 제공)
+```
+
+게임은 `OnApplicationQuit` 등 종료 경로에서 동기 버전(`ServerStop`·`ClientStop`·`HostStop`)을 호출한다. 멱등 — 리슨 중이 아니면 무작동.
+
+## 예시 게임 (Sandbox)
+
+**아레나 슈팅** — 구현된 기능 전부(P1 RPC 3종·검증 후크·오브젝트 RPC / P2 조건부 리플리케이션·RepNotify·동적 스폰/파괴)를 활용하는 탑다운 2~4인 슈팅 데모. 에셋 없이 Unity 기본 도형만 사용하며, MPPM(Multiplayer Play Mode)으로 메인 에디터=서버 + 가상 플레이어 2=클라이언트를 한 에디터에서 실행한다.
+
+- 씬: `Sandbox/Assets/Scenes/Arena.unity` · 코드: `Sandbox/Assets/Scripts/Arena/`
+- 실행·기능 매트릭스·자동 검증: [Document/examples/arena-shooter.md](Document/examples/arena-shooter.md)
+
 ## 개발 환경
 
 - 샌드박스가 패키지를 로컬 참조한다: `Sandbox/Packages/manifest.json` → `"com.ds.uninet": "file:../../Package"`

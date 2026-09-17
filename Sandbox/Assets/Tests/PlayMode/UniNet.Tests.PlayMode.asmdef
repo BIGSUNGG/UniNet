@@ -4,6 +4,7 @@
     "references": [
         "UniNet.Core",
         "UniNet.Unity",
+        "Arena",
         "UniNet.Tests.Fixtures",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"

@@ -22,6 +22,10 @@
 
 - [[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]] — MonoBehaviour RPC 3종 + [Replicated]/RepNotify + 동적 스폰/파괴·조건부 (P1 전체 + P2 전체, 구현됨)
 
+### examples/ — 예시 게임 문서
+
+- [[examples/arena-shooter|arena-shooter]] — Sandbox 아레나 슈팅 예시 게임 (구현 기능 전부 활용·MPPM 실행 가이드·기능 매트릭스·2-프로세스 검증, 구현됨)
+
 ### decisions/ — 아키텍처 결정 기록 (ADR)
 
 - [[0001-하네스-엔지니어링-도입]] — AI 협업 하네스와 문서 규칙 도입
@@ -41,6 +45,9 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-09-17 — **수명주기 종료 API 추가 — RUDP 포트 잔존 바인딩 실패 근본 해소** (ServerStopAsync/ServerStop/ClientStop/HostStopAsync/HostStop — LifecycleStopTests 3종·PlayMode 7/7×2회·EditMode 20/20 통과, UniNet.CodeGenerator 0.1.1)
+- 2026-09-17 — **Sandbox 아레나 슈팅 예시 게임 구현** (examples/arena-shooter: 구현 기능 P1+P2 전부 활용 — MPPM 설치·메인=서버/가상 플레이어=클라 토폴로지·Arena 씬·PlayMode 테스트 통과·2-프로세스 클라 2 접속 검증 PASS)
 
 - 2026-09-16 — **다중 NetworkBehaviour 지원 — 2층 식별자(netId+SubId) 구현** (ADR-0010: 다중 서브 스폰·subId RPC 라우팅·슬롯 대조. EditMode 19종·PlayMode 3종·2-프로세스 MULTI-COMPONENT PASS)
 - 2026-09-16 — **P2 완결 — 동적 스폰/파괴·조건부 리플리케이션·InitialOnly 구현 완료** (ADR-0009: 명시적 Spawn/NetworkDestroy API·타입 카탈로그·후발 접속 캐치업·호스트 권위 원본 보존. EditMode 13종·PlayMode 2종·2-프로세스 DYNAMIC-SPAWN-DESTROY PASS)

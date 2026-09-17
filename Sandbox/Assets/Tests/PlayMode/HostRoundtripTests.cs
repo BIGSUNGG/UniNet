@@ -15,6 +15,13 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class HostRoundtripTests
     {
+        [TearDown]
+        public void StopListeners()
+        {
+            // 테스트 간 잔존 리스너/접속 정리 — 포트 잔존으로 인한 후속 테스트 바인딩 실패 방지 (멱등)
+            UniNetManager.HostStop();
+        }
+
         [UnityTest]
         public IEnumerator 호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션()
         {

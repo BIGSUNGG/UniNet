@@ -73,6 +73,52 @@ namespace UniNet.Unity
             await ClientAsync("127.0.0.1", port, clientOptions);
         }
 
+        /// <summary>클라이언트를 정지한다 — 허브 연결 종료(Disconnect·Dispose) + 환경 상태 정리. 미접속이면 아무것도 하지 않는다(멱등). 동기 — 종료 직전 경로에서 안전.</summary>
+        public static void ClientStop()
+        {
+            var sender = UniNetEnvironment.ClientSender;
+            UniNetEnvironment.SetClientSender(null);
+            UniNetEnvironment.SetClient(null);
+            if (sender is global::DRPC.Shared.Network.HubBase hub)
+            {
+                hub.Disconnect();
+                hub.Dispose();
+            }
+        }
+
+        /// <summary>전용 서버를 정지한다 — 리스너 정지(소켓 언바인딩) + 환경 상태 정리. 리슨 중이 아니면 아무것도 하지 않는다(멱등).</summary>
+        public static async Task ServerStopAsync()
+        {
+            var handle = _listenHandle;
+            _listenHandle = null;
+            UniNetEnvironment.SetServer(null);
+            if (handle != null)
+                await handle.DisposeAsync();
+        }
+
+        /// <summary>전용 서버를 정지한다(동기) — 애플리케이션 종료 직전처럼 await가 불가능한 경로용. ServerStopAsync와 동일 정리를 동기 Dispose로 수행.</summary>
+        public static void ServerStop()
+        {
+            var handle = _listenHandle;
+            _listenHandle = null;
+            UniNetEnvironment.SetServer(null);
+            handle?.Dispose();
+        }
+
+        /// <summary>호스트(서버+클라)를 정지한다 — ClientStop + ServerStopAsync. 동기 경로는 HostStop 사용.</summary>
+        public static async Task HostStopAsync()
+        {
+            ClientStop();
+            await ServerStopAsync();
+        }
+
+        /// <summary>호스트(서버+클라)를 정지한다(동기) — 애플리케이션 종료 직전 경로용.</summary>
+        public static void HostStop()
+        {
+            ClientStop();
+            ServerStop();
+        }
+
         /// <summary>클라 생성용 프리팹 카탈로그 등록 — T 타입 동적 스폰 시 클라에서 이 프리팹으로 생성한다 (미등록 시 빈 GameObject+AddComponent). 양단 같은 코드로 호출하면 된다.</summary>
         public static void RegisterPrefab<T>(GameObject prefab) where T : NetworkBehaviour
         {
