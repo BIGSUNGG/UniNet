@@ -9,8 +9,8 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 | --- | --- | --- |
 | **P1** | MonoBehaviour 기준 RPC (핵심 기능 1) | **구현됨** (2026-09-14, [[0008-구현-아키텍처]]) |
 | **P2** | 변수 자동 Replicate — 기본 (핵심 기능 2) | **구현됨** (2026-09-16, [[0009-동적-스폰-조건부-리플리케이션]] — 스폰/파괴·조건부·InitialOnly 완결) |
-| **P3** | Replicate 고급 — 가시성·우선순위·최적화 | 미착수 |
-| **P4** | 고급 — 예측·래그컴펜세이션·커스텀 드라이버 | 미착수 |
+| **P3** | Replicate 고급 — 가시성·우선순위·최적화 | **구현됨** (2026-09-18, [[0011-P3-리플리케이션-고급-정책]] — UniNet 단독 구현분 5종 완결·MP 의존 2종은 P4 이관) |
+| **P4** | 고급 — 예측·래그컴펜세이션·커스텀 드라이버 | 미착수 (P3 이관분: 커스텀 NetSerialize·FastArray 포함) |
 
 ## 매트릭스
 
@@ -43,12 +43,12 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 
 | UE 기능 | 설명 | 매핑 | 단계 |
 | --- | --- | --- | --- |
-| Relevancy/가시성 | 거리·조건 기반 대상 선별 (NetCullDistance 등) | UniNet | P3 |
-| Priority/스타베이션 방지 | 대역폭 할당 우선순위 | UniNet | P3 |
-| Dormancy | 유휴 오브젝트 리플리케이션 중단 | UniNet | P3 |
-| NetUpdateFrequency | 오브젝트별 전송 주기 | UniNet | P3 |
-| 커스텀 NetSerialize | QuantizedVector 등 사용자 직렬화 | MP | P3 |
-| FastArray 직렬화 | 배열 델타 동기화 | UniNet + MP | P3 |
+| Relevancy/가시성 | 거리·조건 기반 대상 선별 (NetCullDistance 등) | UniNet (NetworkCullDistance + IsNetworkRelevant 훅 + SetViewerPosition) | P3 ✅ |
+| Priority/스타베이션 방지 | 대역폭 할당 우선순위 | UniNet (NetworkPriority + 기아 보정 — UE GetNetPriority 공식) | P3 ✅ |
+| Dormancy | 유휴 오브젝트 리플리케이션 중단 | UniNet (NetworkDormant + FlushNetworkDormancy — 2상태 단순화) | P3 ✅ |
+| NetUpdateFrequency | 오브젝트별 전송 주기 | UniNet (NetworkUpdateFrequencyHz) | P3 ✅ |
+| 커스텀 NetSerialize | QuantizedVector 등 사용자 직렬화 | MP — **MessageProtocol 수정 필요, P4 이관** (UniNet 단독 구현 불가 — [[0011-P3-리플리케이션-고급-정책]]) | P4 |
+| FastArray 직렬화 | 배열 델타 동기화 | UniNet + MP — **MessageProtocol 수정 필요, P4 이관** (동일 사유) | P4 |
 | RepGraph 스타일 커스터마이징 | 그리드 공간 분할 가시성 | UniNet | P4 |
 
 ### 연결·보안 (P1~P3 분산)
@@ -58,7 +58,7 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 | 연결 수명주기·핸드셰이크 | 접속/종료·핸드셰이크 (재접속·하트비트는 앱 계층 구현) | Communication + DRPC + UniNet | P1 |
 | 전송 신뢰성 계층 | RUDP, 5가지 전달 모드 | Communication + DRPC | P1 |
 | 패킷 암호화 | DTLS 1.2 | Communication | P1 |
-| 채널 우선순위 큐 | 유형별 대역폭 관리 | UniNet (리플리케이션 드라이버 레벨) | P3 |
+| 채널 우선순위 큐 | 유형별 대역폭 관리 | UniNet (SetReplicationChannelBudget — 리플리케이션 드라이버 레벨) | P3 ✅ |
 
 ### 엔진 통합 수준 — 상응 훅 제공 (P4)
 

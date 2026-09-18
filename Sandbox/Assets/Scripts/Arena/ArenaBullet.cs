@@ -5,9 +5,11 @@ using UnityEngine;
 namespace Arena
 {
     /// <summary>
-    /// 총알 — 서버 권위 발사체. 동적 스폰/파괴 + 조건부 리플리케이션 시연:
+    /// 총알 — 서버 권위 발사체. 동적 스폰/파괴 + 조건부 리플리케이션 + P3 고급 정책 시연:
     /// - _x, _y      : 조건 없음 — 궤적을 전 클라가 추종
     /// - _seed       : InitialOnly — 발사 시 1회 전송 (치명타 판정·색에 재사용, 이후 변경 무전파)
+    /// - P3-④ NetworkUpdateFrequencyHz — 궤적 전송을 30Hz로 제한 (매 틱 불필요)
+    /// - P3-① NetworkCullDistance — 멀리 있는 연결에는 궤적을 보내지 않고, 접근하면 그때 스폰한다
     ///
     /// 충돌 판정은 서버만 수행한다 (거리 기반). 히트 시 피해자의 ServerApplyDamage를 호출하고
     /// 사망이면 발사자에게 킬을 부여한 뒤 스스로 NetworkDestroy (파괴가 전 클라에 동기화된다).
@@ -31,6 +33,10 @@ namespace Arena
             _seed = seed;
             _x = transform.position.x;
             _y = transform.position.z;
+
+            // P3 리플리케이션 정책 — 서버 틱이 읽는다 (Spawn 전 설정)
+            NetworkUpdateFrequencyHz = ArenaConfig.BulletUpdateFrequencyHz;   // P3-④ 30Hz 스로틀 — 미도달 변경분은 최신값으로 합쳐진다
+            NetworkCullDistance = ArenaConfig.BulletCullDistance;             // P3-① 거리 컬 — 접근 시 관련 전환 틱에 스폰된다
         }
 
         private void Start()

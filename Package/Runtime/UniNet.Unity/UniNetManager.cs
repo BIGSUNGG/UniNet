@@ -212,20 +212,30 @@ namespace UniNet.Unity
             if (server != null)
             {
                 var objects = server.SnapshotObjects();   // 프레임당 1회 — 스윕·틱 공유 (복사 2회 방지)
-                SweepDestroyed(objects);
-                server.TickReplication(objects);
+                var alive = SweepDestroyed(server, objects);   // 파괴분 제거 + 살아있는 엔트리만 틱으로
+                server.TickReplication(alive, Time.unscaledTimeAsDouble);   // 실제 시계 제공 — P3 주기·기아 정책 활성
             }
         }
 
+        private static readonly List<(ulong NetId, NetworkServer.ServerObjectEntry Entry)> AliveScratch = new();
+
         /// <summary>
-        /// 일반 Destroy로 사라진 네트워크 오브젝트를 감지해 파괴를 전파한다 (고스트 등록 방지 — 리소스 소진 방어).
-        /// ponytail: 매 프레임 전체 순회(O(n)), 오브젝트 수가 커지면 파괴 이벤트 후크로 교체.
+        /// 일반 Destroy로 사라진 네트워크 오브젝트를 감지해 파괴를 전파하고, 살아있는 엔트리만 남긴 목록을 반환한다.
+        /// 같은 프레임 틱이 파괴된 컴포넌트의 transform 등에 접근해 MissingReferenceException으로 틱 전체가 깨지는 것을 방지한다.
+        /// ponytail: 매 프레임 전체 순회(O(n)) — 오브젝트 수가 커지면 파괴 이벤트 후크로 교체. 스크래치는 드라이버 1 인스턴스 전제 재사용.
         /// </summary>
-        private static void SweepDestroyed(IReadOnlyList<(ulong NetId, NetworkServer.ServerObjectEntry Entry)> objects)
+        private static List<(ulong NetId, NetworkServer.ServerObjectEntry Entry)> SweepDestroyed(
+            NetworkServer server, IReadOnlyList<(ulong NetId, NetworkServer.ServerObjectEntry Entry)> objects)
         {
+            AliveScratch.Clear();
             foreach (var (netId, entry) in objects)
+            {
                 if (entry.Instance is UnityEngine.Object u && u == null)
-                    UniNetEnvironment.Server.DestroyObject(netId);
+                    server.DestroyObject(netId);
+                else
+                    AliveScratch.Add((netId, entry));
+            }
+            return AliveScratch;
         }
     }
 }

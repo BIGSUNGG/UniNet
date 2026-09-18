@@ -21,6 +21,7 @@
 ### features/ — 기능 문서
 
 - [[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]] — MonoBehaviour RPC 3종 + [Replicated]/RepNotify + 동적 스폰/파괴·조건부 (P1 전체 + P2 전체, 구현됨)
+- [[features/replication-p3-policy|replication-p3-policy]] — 리플리케이션 고급 정책: 가시성·우선순위·휴면·전송 주기·채널 예산 (P3, 구현됨)
 
 ### examples/ — 예시 게임 문서
 
@@ -38,6 +39,7 @@
 - [[0008-구현-아키텍처]] — P1 RPC + Replicate 기본 구현: 소스젠(로슬린 4.3) 직접 배선·다중 어셈블리·씬경로 netId·라운드로빈 소유권·검증 증거
 - [[0009-동적-스폰-조건부-리플리케이션]] — P2 완결: 명시적 Spawn/NetworkDestroy·타입 카탈로그·캐치업·ReplicateCondition(OwnerOnly/SkipOwner/InitialOnly)·호스트 권위 원본 보존
 - [[0010-2층-식별자-다중-컴포넌트]] — 다중 NetworkBehaviour 지원: GameObject 단위 netId + SubId 슬롯·다중 서브 스폰·슬롯 대조
+- [[0011-P3-리플리케이션-고급-정책]] — P3 완결: IUniNetReplicationPolicy·틱 이중 모드·가시성 계약·기아 보정 우선순위·채널 예산·휴면 2상태·MP 의존 2종 P4 이관
 
 ### _templates/ — 문서 템플릿
 
@@ -46,6 +48,8 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-18 — **P3 완결 — 리플리케이션 고급 정책 구현** (ADR-0011: 가시성·우선순위·휴면·전송 주기·채널 예산 — UniNet 단독 구현분 5종. EditMode 38/38·PlayMode 7/7·아레나 예시 통합)
+- 2026-09-18 — **Sandbox Usage 예시 7종 제거** (아레나와 무관한 사용법 예제 정리 — README 코드 예시로 대체)
 - 2026-09-17 — **수명주기 종료 API 추가 — RUDP 포트 잔존 바인딩 실패 근본 해소** (ServerStopAsync/ServerStop/ClientStop/HostStopAsync/HostStop — LifecycleStopTests 3종·PlayMode 7/7×2회·EditMode 20/20 통과, UniNet.CodeGenerator 0.1.1)
 - 2026-09-17 — **Sandbox 아레나 슈팅 예시 게임 구현** (examples/arena-shooter: 구현 기능 P1+P2 전부 활용 — MPPM 설치·메인=서버/가상 플레이어=클라 토폴로지·Arena 씬·PlayMode 테스트 통과·2-프로세스 클라 2 접속 검증 PASS)
 

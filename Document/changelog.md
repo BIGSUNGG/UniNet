@@ -3,6 +3,31 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-18]
+
+### Added (P3 완결 — 리플리케이션 고급 정책)
+
+- **P3 리플리케이션 고급 5종 구현 — UniNet 저장소만 수정해서 완결** (ADR [[0011-P3-리플리케이션-고급-정책]] · 기능 문서 [[features/replication-p3-policy]])
+  - **정책 인터페이스 `IUniNetReplicationPolicy`** (UniNet.Core) — NetworkBehaviour가 구현. UE 대응: NetworkPriority(NetPriority)·NetworkUpdateFrequencyHz(NetUpdateFrequency)·NetworkCullDistance(NetCullDistance)·NetworkDormant+FlushNetworkDormancy(NetDormancy 2상태 단순화)·IsNetworkRelevant(IsNetRelevantFor 훅). 제너레이터·와이어 포맷 무변경
+  - **틱 이중 모드** — 1-arg 즉시 모드(P2 호환 100% 보존·batchmode 검증기 경로) / 2-arg 시간 모드(드라이버가 Time.unscaledTimeAsDouble 제공)
+  - **가시성(Relevancy)** — 거리 컬(NetworkCullDistance + SetViewerPosition 뷰어 위치, 미설정 연결은 페일오픈) + 관련성 훅. 씬 오브젝트 첫 평가는 조용한 시드(P2 후발 등록 계약 유지), 재진입·동적 첫 평가는 스폰/전체 상태 기준선 복구, 어느 연결에도 비관련이면 비교 생략. 비관련 전환 시 델타만 중단(전파 파괴 미지원 — 명시적 계약)
+  - **우선순위·스타베이션 방지** — 전역 예산 ReplicationBudgetPerTickBytes(0=무제한) + 병합 큐 + 기아 보정(UE GetNetPriority 공식 `priority × (1 + 대기초/0.1)`) + 예산 초과 대델타 강제 전송. PriorityTests 6종(이전 세션 스펙) 구현 완료
+  - **채널 우선순위 큐(유형별 대역폭 관리)** — SetReplicationChannelBudget(Type, bytes) — 유형 초과분만 연기, 타 유형은 계속 흐름
+  - **휴면(Dormancy)** — NetworkDormant 중 델타 비교 생략(스냅샷 동결), FlushNetworkDormancy 시 누적 변경분 일괄 전송
+  - **전송 주기(NetUpdateFrequency)** — NetworkUpdateFrequencyHz 미도달 틱 비교 생략, 도달 틱에 최신 변경분(최신값 승)
+- **검증**: EditMode 38/38(P3 신규 12종 — Relevancy 4·Dormancy 3·UpdateFrequency 3·ChannelBudget 2 + Priority 6)·PlayMode 8/8(드라이버 시간 모드 전환 회귀 + 파괴 엔트리 틱 방어 신규 1종)
+- **리뷰 라운드 1 반영 (ISSUES 5건 → 전부 수용)**: ① 파괴된 엔트리가 같은 프레임 틱 스냅샷에 남아 IsRelevant의 transform 접근으로 MissingReferenceException → 드라이버 스윕이 살아있는 엔트리만 틱에 전달 ② DetachConnection의 `_everVisible` 정리 누락(재접속마다 HashSet 누수 — 리소스 소진) → 정리 블록에 Remove 추가 ③ 전송 루프의 항목×연결 IsRelevant 재평가 제거 — 인큐 시점 관련 비트마스크 스냅샷(하위 64 연결, 초과분은 전송 시점 폴백) ④ 즉시 모드 문서-코드 불일치(예산이 적용되던 것) → 예산·유형 예산을 timed 게이팅으로 문서 계약과 일치 ⑤ 휴면 진입 직전 연기된 델타가 휴면 중에도 전송되던 것 → 휴면 중 연기분 보류(드롭 시 스냅샷 갱신으로 유실 — 깨우면 전송)
+- **리뷰 라운드 2 반영 (권장 1건 → 수용)**: `DestroyObject`가 연결별 가시성 맵(`_visible`·`_everVisible`)에서 파괴 netId를 제거하지 않아 동적 스폰/파괴 churn마다 잔여물이 누적 → 제거 추가. 씬 리로드 재등록 시 신선한 기준선 보장 부수 효과. DetachConnection 블록 들여쓰기 정정
+
+### Changed (Sandbox 아레나 예시 — P3 사용 예시 통합)
+
+- **아레나에 P3 정책 사용 예시 추가** — 총알(NetworkUpdateFrequencyHz 30·NetworkCullDistance 24)·플레이어(NetworkPriority 2·사망 시 휴면 진입→리스폰 FlushNetworkDormancy 일괄 전파)·부트스트랩(연결별 SetViewerPosition 소유 플레이어 좌표 주입·총알 SetReplicationChannelBudget 512B/tick) — 상수는 ArenaConfig 단일 진실 공급원
+- **README** — P3 사용법 섹션 추가. 기능 문서·roadmap·plan·00-INDEX 갱신
+
+### Removed (Sandbox 정리)
+
+- **아레나와 무관한 Usage 예시 7종 제거** — Player·Projectile·Weapon·GadgetCarrier·UsageBootstrap·CriticalHitMsg·DamageMsg (씬 참조 없음 확인 후 삭제 — API 사용법은 README 코드 예시로 대체)
+
 ## [2026-09-17]
 
 ### Fixed (수명주기 종료 API — RUDP 포트 잔존 바인딩 실패 근본 해소)

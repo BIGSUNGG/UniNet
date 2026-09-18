@@ -13,7 +13,7 @@ RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Frame
 | `Sandbox/` | Unity 6000.0.83f1(6.0 LTS) 샌드박스 프로젝트 — 스파이크·데모·테스트 (폐기 가능) |
 | `Document/` | Obsidian Vault — 정의·구조·플랜·결정 기록 (SSoT) |
 
-## 사용법 (구현됨 — P1 전체 + P2 전체)
+## 사용법 (구현됨 — P1 전체 + P2 전체 + P3 유니넷 단독 구현분)
 
 RPC 메서드는 `partial` 선언 + 본문은 `{Name}_Implementation`에, 선택 검증은 `{Name}_Validate`에 작성한다 (ADR-0007 변경 이력·ADR-0008).
 
@@ -113,6 +113,43 @@ UniNetManager.Spawn(go);   // 전 컴포넌트가 서브 테이블(SubId 슬롯)
 // 다중 컴포넌트 동적 스폰은 RegisterPrefab 필수 — 소유권·파괴는 오브젝트 단위
 ```
 
+### 리플리케이션 고급 정책 (P3 — 가시성·우선순위·휴면·주기·채널 예산)
+
+```csharp
+public sealed partial class Bullet : NetworkBehaviour
+{
+    public void Init()
+    {
+        // 서버 틱이 읽는 정책 — 설정만 하면 동작한다 (UE NetUpdateFrequency/NetCullDistance 상응)
+        NetworkUpdateFrequencyHz = 30f;   // P3-④ 궤적 전송을 30Hz로 제한 (미도달 변경분은 최신값으로 합쳐짐)
+        NetworkCullDistance = 24f;        // P3-① 이 반경 밖 연결에는 전송하지 않음 (접근 시 스폰 자동 전달)
+    }
+
+    public override bool IsNetworkRelevant(long viewerConnId)      // P3-① 사용자 정의 관련성 훅 (선택)
+        => viewerConnId == _allowedConnId;
+}
+
+public sealed partial class Player : NetworkBehaviour
+{
+    private void Die()
+    {
+        NetworkDormant = true;            // P3-③ 휴면 — 델타 비교·전송 중단 (유휴 오브젝트 비용 제거)
+    }
+
+    private void Respawn()
+    {
+        _hp = MaxHp;
+        FlushNetworkDormancy();           // P3-③ 해제 — 휴면 중 누적 변경분이 한 번에 전송된다
+        NetworkPriority = 2f;             // P3-② 대역폭 부족 시 높은 우선순위부터 전송
+    }
+}
+
+// 서버(부트스트랩) — 컬 판정 기준점·대역폭 예산 제공
+server.SetViewerPosition(connId, x, y, z);                 // P3-① 뷰어 위치 (미설정 연결은 컬 무효)
+server.SetReplicationChannelBudget(typeof(Bullet), 512);   // P3-⑤ 유형별 틱 예산 — 총알 홍수가 타 유형을 굶기지 않음
+server.ReplicationBudgetPerTickBytes = 8192;               // P3-② 전역 틱 예산 (0 = 무제한 기본, 초과분은 기아 보정 후 다음 틱)
+```
+
 전체 사용법: `Sandbox/Assets/Scripts/` · 검증: EditMode/PlayMode 유닛 테스트 + 2-프로세스 RUDP 왕복 (`Sandbox/Assets/Tests/`)
 
 ## 수명주기 종료 (Stop API)
@@ -127,7 +164,7 @@ await UniNetManager.ServerStopAsync();   // 리스너 정지 + 환경 정리 (�
 
 ## 예시 게임 (Sandbox)
 
-**아레나 슈팅** — 구현된 기능 전부(P1 RPC 3종·검증 후크·오브젝트 RPC / P2 조건부 리플리케이션·RepNotify·동적 스폰/파괴)를 활용하는 탑다운 2~4인 슈팅 데모. 에셋 없이 Unity 기본 도형만 사용하며, MPPM(Multiplayer Play Mode)으로 메인 에디터=서버 + 가상 플레이어 2=클라이언트를 한 에디터에서 실행한다.
+**아레나 슈팅** — 구현된 기능 전부(P1 RPC 3종·검증 후크·오브젝트 RPC / P2 조건부 리플리케이션·RepNotify·동적 스폰/파괴 / P3 가시성·우선순위·휴면·주기·채널 예산)를 활용하는 탑다운 2~4인 슈팅 데모. 에셋 없이 Unity 기본 도형만 사용하며, MPPM(Multiplayer Play Mode)으로 메인 에디터=서버 + 가상 플레이어 2=클라이언트를 한 에디터에서 실행한다.
 
 - 씬: `Sandbox/Assets/Scenes/Arena.unity` · 코드: `Sandbox/Assets/Scripts/Arena/`
 - 실행·기능 매트릭스·자동 검증: [Document/examples/arena-shooter.md](Document/examples/arena-shooter.md)

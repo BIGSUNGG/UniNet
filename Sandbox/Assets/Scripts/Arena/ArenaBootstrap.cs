@@ -55,6 +55,11 @@ namespace Arena
             }
 
             _server = UniNetEnvironment.Server;
+            if (_server != null)
+            {
+                // P3-⑤ 채널 예산 — 총알 유형 대역폭을 제한해 총알 홍수가 플레이어 상태를 굶기지 않게 한다
+                _server.SetReplicationChannelBudget(typeof(ArenaBullet), ArenaConfig.BulletChannelBudgetPerTickBytes);
+            }
         }
 
         /// <summary>Play 모드 종료 — 리스너·연결을 정리해 소켓을 언바인딩한다 (미정지 시 동일 포트 재시작이 바인딩 실패한다).</summary>
@@ -84,7 +89,7 @@ namespace Arena
             ManagePlayers();
         }
 
-        /// <summary>서버 — 접속 수와 동적 플레이어 수를 일치시킨다 (스폰·파괴가 전 클라에 동기화된다).</summary>
+        /// <summary>서버 — 접속 수와 동적 플레이어 수를 일치시키고, 연결별 뷰어 위치를 소유 플레이어 좌표로 유지한다 (P3-①).</summary>
         private void ManagePlayers()
         {
             int connections = 0;
@@ -93,6 +98,15 @@ namespace Arena
                     connections++;
 
             var players = FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+            // P3-① 뷰어 위치 — 컬 거리 판정의 기준점. 각 연결의 소유 플레이어 좌표를 서버에 제공한다
+            foreach (var player in players)
+            {
+                var ownerConnId = _server.GetEntry(player.NetId)?.OwnerConnId ?? 0;
+                if (ownerConnId != 0)
+                    _server.SetViewerPosition(ownerConnId, player.transform.position.x, 0f, player.transform.position.z);
+            }
+
             int diff = connections - players.Length;
 
             for (int i = 0; i < diff; i++)

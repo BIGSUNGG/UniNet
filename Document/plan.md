@@ -39,9 +39,15 @@
 
 **완료 정의**: HP·위치 등이 조건·델타로 동기화되고 변경 콜백이 호출된다.
 
-## Phase 3·4 — roadmap 매트릭스 순서대로
+## Phase 3 — Replicate 고급 (**구현됨 — 2026-09-18, ADR-0011**)
 
-가시성 → 우선순위 → dormancy → 예측·래그컴펜세이션 훅. 세부는 [[roadmap]] 참조.
+UniNet 저장소만 수정해서 구현 가능한 P3 항목 5종 완결 — 가시성(IUniNetReplicationPolicy.NetworkCullDistance + IsNetworkRelevant 훅 + SetViewerPosition)·우선순위·스타베이션 방지(NetworkPriority + 기아 보정)·휴면(NetworkDormant + FlushNetworkDormancy)·전송 주기(NetworkUpdateFrequencyHz)·채널 우선순위 큐(SetReplicationChannelBudget + 전역 ReplicationBudgetPerTickBytes). 커스텀 NetSerialize·FastArray는 MP 수정 필요로 P4 이관. 세부는 [[roadmap]]·[[0011-P3-리플리케이션-고급-정책]] 참조.
+
+**완료 정의**: 정책 미설정 오브젝트는 P2 동작 유지(즉시 모드), 정책 설정 오브젝트는 가시성·우선순위·휴면·주기가 서버 틱에서 동작하고 유닛 테스트가 이를 검증한다.
+
+## Phase 4 — 고급 (미착수)
+
+예측·래그컴펜세이션·커스텀 드라이버 훅 + P3 이관분(커스텀 NetSerialize·FastArray — MP 수정 동반). 세부는 [[roadmap]] 참조.
 
 ## 설계 난점 (설계 중심 관건)
 

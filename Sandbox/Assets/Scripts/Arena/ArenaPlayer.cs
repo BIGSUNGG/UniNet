@@ -21,6 +21,11 @@ namespace Arena
     /// - ServerRpc 3종(입력·조준·발사) + _Validate 신뢰 경계 검증
     /// - MulticastRpc — 발사·피격(비신뢰), 사망(신뢰) — 서버 포함 전원 로컬 실행
     /// - ClientRpc — 킬피드 (서버 호출만 전파)
+    ///
+    /// P3 리플리케이션 정책 커버리지:
+    /// - NetworkPriority (P3-②) — 플레이어 상태는 총알보다 먼저 전송된다
+    /// - NetworkDormant + FlushNetworkDormancy (P3-③) — 사망 확정 델타가 나간 뒤 리스폰까지 휴면,
+    ///   리스폰 시 상태 전체(HP·탄약·좌표)가 일괄 전파된다
     /// </summary>
     public sealed partial class ArenaPlayer : NetworkBehaviour
     {
@@ -46,6 +51,7 @@ namespace Arena
         private float _nextFireAllowed;
         private float _nextAmmoRegen;
         private float _respawnAt;
+        private bool _dormancyArmed;   // P3-③ — 사망 델타 전송이 지나간 뒤 다음 서버 틱에 휴면 전환
 
         // ---- 로컬(클라) 상태 ----
         private Transform _body;
@@ -69,6 +75,9 @@ namespace Arena
             _x = transform.position.x;
             _y = transform.position.z;
             gameObject.name = "ArenaPlayer_" + displayName;
+
+            // P3-② 우선순위 — 대역폭 예산 부족 시 총알(기본 1)보다 플레이어 상태가 먼저 전송된다
+            NetworkPriority = ArenaConfig.PlayerNetworkPriority;
         }
 
         /// <summary>아바타 표시 이름 (HUD·킬피드용 — InitialOnly로 전파됨).</summary>
@@ -152,6 +161,13 @@ namespace Arena
             {
                 if (Time.time >= _respawnAt)
                     Respawn();
+                else if (_dormancyArmed)
+                {
+                    // P3-③ 휴면 — 사망 확정 델타가 첫 틱에 나간 뒤 리스폰까지 델타 비교·전송을 중단한다
+                    // (다음 서버 틱에 전환하므로 드라이버 틱과의 실행 순서와 무관하게 사망 HP 전파가 보장된다)
+                    _dormancyArmed = false;
+                    NetworkDormant = true;
+                }
                 return;
             }
 
@@ -195,6 +211,7 @@ namespace Arena
             if (_hp <= 0)
             {
                 _respawnAt = Time.time + ArenaConfig.RespawnDelay;
+                _dormancyArmed = true;   // P3-③ — 다음 서버 틱에 휴면 진입
                 RpcPlayDeathFx(_x, _y, _displayName);
             }
         }
@@ -217,11 +234,13 @@ namespace Arena
         private void Respawn()
         {
             _respawnAt = 0f;
+            _dormancyArmed = false;
             _hp = ArenaConfig.MaxHp;
             _ammo = ArenaConfig.MaxAmmo;
             var (x, z) = ArenaConfig.SpawnPoints[Random.Range(0, ArenaConfig.SpawnPoints.Length)];
             _x = x;
             _y = z;
+            FlushNetworkDormancy();   // P3-③ — 휴면 해제, 리스폰 상태(HP·탄약·좌표)가 다음 틱에 일괄 전파된다
         }
 
         // ---------------------------------------------------------------- 로컬 입력 (소유 클라)

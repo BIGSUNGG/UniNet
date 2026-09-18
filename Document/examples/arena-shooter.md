@@ -49,7 +49,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 
 부트스트랩 인스펙터에서 `Role`을 강제 지정할 수도 있다. 서버는 접속이 늘면 플레이어를 스폰하고 줄면 잉여 플레이어를 파괴한다. 소유권은 라이브러리의 라운드로빈 최소 정책이 배정하므로, 게임은 "누가 무엇을 소유하는가"를 가정하지 않고 클라이언트는 `IsOwner`로 내 아바타를 찾는다 (이름·색은 아바타 고유값).
 
-## 기능 사용 매트릭스 (P1+P2 → 게임 내 위치)
+## 기능 사용 매트릭스 (P1+P2+P3 → 게임 내 위치)
 
 ### P1 — RPC
 
@@ -78,6 +78,19 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 소유권(IsOwner) | 입력 처리 게이트·내 아바타 탐색(카메라·HUD) | ArenaPlayer·ArenaHud·ArenaCameraRig |
 | 네트워크 역할(IsServer/IsClient) | 시뮬레이션은 서버만, 클라는 복제 좌표 추종 | ArenaPlayer·ArenaBullet |
 | 후발 접속 캐치업 | 중간에 합류한 클라가 기존 플레이어를 전체 상태로 수신 | 라이브러리 (게임은 자동 활용) |
+
+### P3 — 리플리케이션 고급 정책
+
+| 기능 | 게임 내 사용 | 위치 |
+| --- | --- | --- |
+| 가시성 컬 거리(NetCullDistance) | 총알 궤적 — 반경 24 밖 연결에는 전송하지 않고, 접근하면 관련 전환 틱에 스폰 | ArenaBullet (`NetworkCullDistance`) |
+| 뷰어 위치(SetViewerPosition) | 각 연결의 소유 플레이어 좌표를 컬 판정 기준점으로 서버에 주입 | ArenaBootstrap `ManagePlayers` |
+| 관련성 훅(IsNetRelevantFor) | 라이브러리 기능 — 아레나는 거리 컬만 사용 (커스텀 훅은 테스트 픽스처 FilteredRelay가 검증) | — |
+| 우선순위(NetPriority) | 플레이어 상태를 우선순위 2로 — 대역폭 부족 시 총알(기본 1)보다 먼저 전송 | ArenaPlayer `InitServerState` |
+| 전송 주기(NetUpdateFrequency) | 총알 궤적 30Hz 스로틀 — 미도달 변경분은 최신값으로 합쳐짐 | ArenaBullet `Init` |
+| 휴면(Dormancy) | 사망 확정 델타 전송 후 리스폰까지 휴면(비교·전송 중단) → 리스폰 시 `FlushNetworkDormancy`로 상태 일괄 전파 | ArenaPlayer `ServerTick`·`Respawn` |
+| 채널 우선순위 큐(유형별 예산) | 총알 유형 틱 예산 512B — 총알 홍수가 플레이어 상태 대역폭을 굶기지 않게 함 | ArenaBootstrap (Start) |
+| 전역 틱 예산 | 기본 0(무제한) 유지 — 데모는 유형별 예산만 시연 | — |
 
 ## 자동 검증
 

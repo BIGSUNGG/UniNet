@@ -10,7 +10,7 @@ namespace UniNet.Unity
     /// 오브젝트에 여러 NetworkBehaviour가 있으면 각자 SubId(슬롯)를 받아 독립적으로 RPC·리플리케이션된다 (ADR-0010).
     /// 슬롯 순서는 GetComponents 순서 — 런타임 컴포넌트 증감은 금지(양단 슬롯 불변식).
     /// </summary>
-    public abstract partial class NetworkBehaviour : MonoBehaviour, IUniNetSpawnTransform
+    public abstract partial class NetworkBehaviour : MonoBehaviour, IUniNetSpawnTransform, IUniNetReplicationPolicy
     {
         private ulong _netId;
         private bool _netIdComputed;
@@ -50,6 +50,32 @@ namespace UniNet.Unity
                 return client != null && client.GetOwner(NetId) == client.LocalConnId && client.LocalConnId != 0;
             }
         }
+
+        // ── P3 리플리케이션 정책 (가시성·우선순위·휴면·주기) ──
+
+        /// <summary>리플리케이션 우선순위 (UE NetPriority 상응, 기본 1). 대역폭 예산이 부족하면 높은 값부터 전송된다.</summary>
+        public float NetworkPriority { get; set; } = 1f;
+
+        /// <summary>오브젝트별 전송 주기(Hz, UE NetUpdateFrequency 상응). 0 = 매 틱 무제한 (기본).</summary>
+        public float NetworkUpdateFrequencyHz { get; set; }
+
+        /// <summary>가시성 컬 거리(월드 단위 반경, UE NetCullDistance 상응). 0 = 미적용 (기본). 서버 SetViewerPosition 으로 뷰어 위치 제공 필요.</summary>
+        public float NetworkCullDistance { get; set; }
+
+        /// <summary>휴면 — true 동안 서버가 이 오브젝트의 델타 비교·전송을 중단한다 (UE NetDormancy 단순화). 깨울 때 FlushNetworkDormancy.</summary>
+        public bool NetworkDormant { get; set; }
+
+        /// <summary>휴면을 해제한다 — 이후 틱에서 휴면 중 누적된 변경분이 전송된다 (UE FlushNetDormancy 상응).</summary>
+        public void FlushNetworkDormancy() => NetworkDormant = false;
+
+        /// <summary>연결별 사용자 정의 관련성 (UE IsNetRelevantFor 상응) — 기본 항상 관련. 거리 컬과 AND로 적용된다.</summary>
+        public virtual bool IsNetworkRelevant(long viewerConnId) => true;
+
+        float IUniNetReplicationPolicy.NetworkPriority => NetworkPriority;
+        float IUniNetReplicationPolicy.NetworkUpdateFrequencyHz => NetworkUpdateFrequencyHz;
+        float IUniNetReplicationPolicy.NetworkCullDistance => NetworkCullDistance;
+        bool IUniNetReplicationPolicy.IsNetworkDormant => NetworkDormant;
+        bool IUniNetReplicationPolicy.IsNetworkRelevant(long viewerConnId) => IsNetworkRelevant(viewerConnId);
 
         /// <summary>동적 스폰 — 서버가 할당한 netId를 주입한다 (경로 해시 계산을 선제한다).</summary>
         internal void AssignNetId(ulong netId)

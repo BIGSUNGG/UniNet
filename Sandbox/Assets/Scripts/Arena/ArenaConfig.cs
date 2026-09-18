@@ -39,6 +39,18 @@ namespace Arena
         /// <summary>총알 수명 (초) — 수명 만료 시 스스로 파괴.</summary>
         public const float BulletLifetime = 2f;
 
+        /// <summary>P3-④ 총알 전송 주기 (Hz) — 궤적은 30Hz면 충분 (플레이어 상태는 매 틱). UE NetUpdateFrequency 상응.</summary>
+        public const float BulletUpdateFrequencyHz = 30f;
+
+        /// <summary>P3-① 총알 가시성 컬 거리 (월드 단위 반경) — 멀리 있는 연결은 총알 궤적을 추적하지 않는다. UE NetCullDistance 상응.</summary>
+        public const float BulletCullDistance = 24f;
+
+        /// <summary>P3-⑤ 총알 유형 틱당 전송 예산 (바이트) — 총알 홍수가 플레이어 상태 대역폭을 굶기지 않게 한다.</summary>
+        public const int BulletChannelBudgetPerTickBytes = 512;
+
+        /// <summary>P3-② 플레이어 리플리케이션 우선순위 — 대역폭 부족 시 총알(기본 1)보다 먼저 전송된다. UE NetPriority 상응.</summary>
+        public const float PlayerNetworkPriority = 2f;
+
         /// <summary>총알 충돌 반경 + 플레이어 반경 = 히트 판정 거리.</summary>
         public const float HitDistance = 1.0f;
 
