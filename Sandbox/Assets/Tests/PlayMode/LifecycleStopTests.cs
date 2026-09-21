@@ -16,6 +16,8 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class LifecycleStopTests
     {
+        private static readonly int PortBase = 30000 + (System.Environment.TickCount % 2000) * 12 + 40;   // 실행별 랜덤 포트 (이 클래스는 3개 포트 사용)
+
         [SetUp]
         public void AllowStopNoise()
         {
@@ -43,7 +45,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 서버_정지후_동일_포트_재리슨_성공()
         {
-            int port = 7843;
+            int port = PortBase;      // 실행별 랜덤 — 플레이 모드 종료 후 리스너 소켓 잔존(환경) 회피
 
             var t1 = UniNetManager.ServerAsync(port);
             while (!t1.IsCompleted) yield return null;
@@ -64,7 +66,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 클라_정지후_서버연결해제와_재접속_성공()
         {
-            int port = 7845;
+            int port = PortBase + 2;  // 실행별 랜덤
             var serverTask = UniNetManager.ServerAsync(port);
             while (!serverTask.IsCompleted) yield return null;
             Assert.IsFalse(serverTask.IsFaulted, serverTask.Exception?.ToString());
@@ -93,7 +95,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_정지후_재시작_성공()
         {
-            int port = 7847;
+            int port = PortBase + 4;  // 실행별 랜덤
             var h1 = UniNetManager.HostAsync(port);
             while (!h1.IsCompleted) yield return null;
             Assert.IsFalse(h1.IsFaulted, h1.Exception?.ToString());

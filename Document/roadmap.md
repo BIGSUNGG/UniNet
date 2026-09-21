@@ -10,7 +10,7 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 | **P1** | MonoBehaviour 기준 RPC (핵심 기능 1) | **구현됨** (2026-09-14, [[0008-구현-아키텍처]]) |
 | **P2** | 변수 자동 Replicate — 기본 (핵심 기능 2) | **구현됨** (2026-09-16, [[0009-동적-스폰-조건부-리플리케이션]] — 스폰/파괴·조건부·InitialOnly 완결) |
 | **P3** | Replicate 고급 — 가시성·우선순위·최적화 | **구현됨** (2026-09-18, [[0011-P3-리플리케이션-고급-정책]] — UniNet 단독 구현분 5종 완결·MP 의존 2종은 P4 이관) |
-| **P4** | 고급 — 예측·래그컴펜세이션·커스텀 드라이버 | 미착수 (P3 이관분: 커스텀 NetSerialize·FastArray 포함) |
+| **P4** | 고급 — 예측·래그컴펜세이션·커스텀 드라이버 | **구현됨** (2026-09-20, [[0012-P4-훅-시간동기화-인터폴레이션-리와인드-그리드]] — 예측·래그컴펜세이션·RepGraph·틱 훅 완결·MP 의존 2종은 잔여) |
 
 ## 매트릭스
 
@@ -47,9 +47,9 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 | Priority/스타베이션 방지 | 대역폭 할당 우선순위 | UniNet (NetworkPriority + 기아 보정 — UE GetNetPriority 공식) | P3 ✅ |
 | Dormancy | 유휴 오브젝트 리플리케이션 중단 | UniNet (NetworkDormant + FlushNetworkDormancy — 2상태 단순화) | P3 ✅ |
 | NetUpdateFrequency | 오브젝트별 전송 주기 | UniNet (NetworkUpdateFrequencyHz) | P3 ✅ |
-| 커스텀 NetSerialize | QuantizedVector 등 사용자 직렬화 | MP — **MessageProtocol 수정 필요, P4 이관** (UniNet 단독 구현 불가 — [[0011-P3-리플리케이션-고급-정책]]) | P4 |
-| FastArray 직렬화 | 배열 델타 동기화 | UniNet + MP — **MessageProtocol 수정 필요, P4 이관** (동일 사유) | P4 |
-| RepGraph 스타일 커스터마이징 | 그리드 공간 분할 가시성 | UniNet | P4 |
+| 커스텀 NetSerialize | QuantizedVector 등 사용자 직렬화 | MP — **MessageProtocol 수정 필요, 잔여 과제** (UniNet 단독 구현 불가 — [[0011-P3-리플리케이션-고급-정책]]) | 잔여 |
+| FastArray 직렬화 | 배열 델타 동기화 | UniNet + MP — **MessageProtocol 수정 필요, 잔여 과제** (동일 사유) | 잔여 |
+| RepGraph 스타일 커스터마이징 | 그리드 공간 분할 가시성 | UniNet (SetVisibilityGrid — XZ 격자 양자화 판정) | P4 ✅ |
 
 ### 연결·보안 (P1~P3 분산)
 
@@ -64,9 +64,9 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 
 | UE 기능 | 설명 | UniNet 방식 | 단계 |
 | --- | --- | --- | --- |
-| 클라이언트 예측·서버 리와인드 | 엔진 이동 예측과 롤백 | 훅 — 인터폴레이션 버퍼·리와인드 스냅샷 API | P4 |
-| 래그 컴펜세이션 | 히트스캔 히스토리 판정 | 훅 — 위치 히스토리 질의 API | P4 |
-| 틱 스케줄링 통합 | 엔진 루프와 네트워크 업데이트 동기 | 훅 — 전송 주기·적용 시점 제어 | P2~P4 |
+| 클라이언트 예측·서버 리와인드 | 엔진 이동 예측과 롤백 | 훅 — SnapshotBuffer(인터폴레이션)·UniNetTime·GetHistoryPosition(리와인드) | P4 ✅ |
+| 래그 컴펜세이션 | 히트스캔 히스토리 판정 | 훅 — NetworkRewindHistory + PositionHistory(클램프 리와인드) | P4 ✅ |
+| 틱 스케줄링 통합 | 엔진 루프와 네트워크 업데이트 동기 | 훅 — 전송 주기(P3 NetworkUpdateFrequencyHz)·적용 시점(P4 SnapshotBuffer 인터폴레이션) 제어 | P4 ✅ |
 
 ## 관리 규칙
 

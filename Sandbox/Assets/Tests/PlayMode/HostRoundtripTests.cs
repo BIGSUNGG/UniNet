@@ -15,6 +15,9 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class HostRoundtripTests
     {
+        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 32;   // 실행별 랜덤 포트 — 플레이 모드 종료 후 리스너 소켓이 에디터 프로세스에 잔존하는 환경 문제 회피 (이 클래스는 3개 포트 사용)
+
+
         [TearDown]
         public void StopListeners()
         {
@@ -30,7 +33,7 @@ namespace UniNet.Tests
             try
             {
                 // 호스트 시작 — 서버 + 클라가 실제 루프백 소켓으로 연결된다
-                var hostTask = UniNetManager.HostAsync(7791);
+                var hostTask = UniNetManager.HostAsync(Port);
                 while (!hostTask.IsCompleted) yield return null;
                 Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
@@ -94,7 +97,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_동적_스폰_파괴_조건부_리플리케이션()
         {
-            var hostTask = UniNetManager.HostAsync(7792);
+            var hostTask = UniNetManager.HostAsync(Port + 1);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
@@ -134,7 +137,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_다중_컴포넌트_오브젝트_왕복()
         {
-            var hostTask = UniNetManager.HostAsync(7793);
+            var hostTask = UniNetManager.HostAsync(Port + 2);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);

@@ -39,6 +39,54 @@ namespace Arena
             fx.Color = new Color(1f, 0.45f, 0.1f, 0.85f);
         }
 
+        /// <summary>P4 히트스캔 트레이서 — 발사선을 잇는 가느다란 박스가 순간 나타났다 사라진다.</summary>
+        public static void Tracer(Vector3 from, Vector3 to, Color color)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.Destroy(go.GetComponent<Collider>());
+            go.name = "FxTracer";
+            var dir = to - from;
+            go.transform.position = from + dir * 0.5f;
+            go.transform.localScale = new Vector3(0.07f, 0.07f, Mathf.Max(0.1f, dir.magnitude));
+            if (dir.sqrMagnitude > 0.0001f)
+                go.transform.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
+            var fx = go.AddComponent<TracerFade>();
+            fx.Lifetime = 0.12f;
+            fx.Color = new Color(color.r, color.g, color.b, 0.85f);
+        }
+
+        /// <summary>트레이서 페이드 — 늘어진 스케일을 유지한 채 알파만 줄인다 (FxParticle의 균일 스케일과 다름).</summary>
+        private sealed class TracerFade : MonoBehaviour
+        {
+            public float Lifetime;
+            public Color Color;
+
+            private float _age;
+            private Renderer _renderer;
+            private Material _material;
+
+            private void Start()
+            {
+                _renderer = GetComponent<Renderer>();
+                _material = new Material(_renderer.sharedMaterial);
+                _renderer.sharedMaterial = _material;
+                _material.color = Color;
+            }
+
+            private void Update()
+            {
+                _age += Time.deltaTime;
+                float t = _age / Lifetime;
+                if (t >= 1f)
+                {
+                    Destroy(gameObject);
+                    return;
+                }
+                Color.a = 1f - t;
+                _material.color = Color;
+            }
+        }
+
         /// <summary>스스로 팽창·페이드 후 제거되는 1회용 FX 파티클.</summary>
         private sealed class FxParticle : MonoBehaviour
         {

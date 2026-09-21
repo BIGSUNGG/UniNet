@@ -22,6 +22,7 @@
 
 - [[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]] — MonoBehaviour RPC 3종 + [Replicated]/RepNotify + 동적 스폰/파괴·조건부 (P1 전체 + P2 전체, 구현됨)
 - [[features/replication-p3-policy|replication-p3-policy]] — 리플리케이션 고급 정책: 가시성·우선순위·휴면·전송 주기·채널 예산 (P3, 구현됨)
+- [[features/replication-p4-hooks|replication-p4-hooks]] — P4 훅: UniNetTime·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성 (구현됨)
 
 ### examples/ — 예시 게임 문서
 
@@ -40,6 +41,9 @@
 - [[0009-동적-스폰-조건부-리플리케이션]] — P2 완결: 명시적 Spawn/NetworkDestroy·타입 카탈로그·캐치업·ReplicateCondition(OwnerOnly/SkipOwner/InitialOnly)·호스트 권위 원본 보존
 - [[0010-2층-식별자-다중-컴포넌트]] — 다중 NetworkBehaviour 지원: GameObject 단위 netId + SubId 슬롯·다중 서브 스폰·슬롯 대조
 - [[0011-P3-리플리케이션-고급-정책]] — P3 완결: IUniNetReplicationPolicy·틱 이중 모드·가시성 계약·기아 보정 우선순위·채널 예산·휴면 2상태·MP 의존 2종 P4 이관
+- [[0012-P4-훅-시간동기화-인터폴레이션-리와인드-그리드]] — P4 완결: UniNetTime(TimeSync 와이어 5번)·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성·아레나 예측 전환
+- [[0013-NetworkTransform-컴포넌트]] — NetworkTransform 컴포넌트: 이동 예측의 라이브러리 승격(조합 채택 — 제너레이터 리프 스캔 한계)·MovementRule 주입·제너레이터 겹리(0.1.2)
+- [[0014-스폰-서브-자동-복원]] — 멀티 컴포넌트 스폰 슬롯 불일치 근본 해결: 클라 서브 자동 복원(typeKeys)·RegisterPrefab 필수 → 선택 완화
 
 ### _templates/ — 문서 템플릿
 
@@ -48,6 +52,8 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-20 — **NetworkTransform 컴포넌트 + 스폰 서브 자동 복원** (ADR-0013·0014: 이동 예측 라이브러리 컴포넌트화 + 멀티 컴포넌트 스폰 슬롯 불일치 근본 해결. EditMode 52/52·PlayMode 12/12)
+- 2026-09-20 — **P4 훅 완결 — 시간 동기화·인터폴레이션·리와인드·그리드 가시성 구현** (ADR-0012: UniNet 단독 구현분 전부. EditMode 45/45·PlayMode 10/10·아레나 예측/히트스캔 전환)
 - 2026-09-18 — **P3 완결 — 리플리케이션 고급 정책 구현** (ADR-0011: 가시성·우선순위·휴면·전송 주기·채널 예산 — UniNet 단독 구현분 5종. EditMode 38/38·PlayMode 7/7·아레나 예시 통합)
 - 2026-09-18 — **Sandbox Usage 예시 7종 제거** (아레나와 무관한 사용법 예제 정리 — README 코드 예시로 대체)
 - 2026-09-17 — **수명주기 종료 API 추가 — RUDP 포트 잔존 바인딩 실패 근본 해소** (ServerStopAsync/ServerStop/ClientStop/HostStopAsync/HostStop — LifecycleStopTests 3종·PlayMode 7/7×2회·EditMode 20/20 통과, UniNet.CodeGenerator 0.1.1)

@@ -13,7 +13,7 @@ RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Frame
 | `Sandbox/` | Unity 6000.0.83f1(6.0 LTS) 샌드박스 프로젝트 — 스파이크·데모·테스트 (폐기 가능) |
 | `Document/` | Obsidian Vault — 정의·구조·플랜·결정 기록 (SSoT) |
 
-## 사용법 (구현됨 — P1 전체 + P2 전체 + P3 유니넷 단독 구현분)
+## 사용법 (구현됨 — P1 전체 + P2 전체 + P3 + P4 훅)
 
 RPC 메서드는 `partial` 선언 + 본문은 `{Name}_Implementation`에, 선택 검증은 `{Name}_Validate`에 작성한다 (ADR-0007 변경 이력·ADR-0008).
 
@@ -76,7 +76,8 @@ var projectile = Instantiate(_projectilePrefab, pos, rot);
 UniNetManager.Spawn(projectile.gameObject);
 UniNetManager.NetworkDestroy(projectile.gameObject);   // 파괴 동기화
 
-// 클라 생성용 프리팹 카탈로그 (미등록 시 빈 GameObject+AddComponent로 생성)
+// 클라 생성용 프리팹 카탈로그 (선택 — 커스텀 비주얼/사전 구성용. 미등록 시 빈 GameObject+AddComponent로 생성되며,
+// 서버의 서브 구성(NetworkTransform 등 추가 컴포넌트 포함)은 스폰 메시지의 typeKeys로 자동 복원된다)
 UniNetManager.RegisterPrefab<Projectile>(projectilePrefab);
 
 public sealed partial class Projectile : NetworkBehaviour
@@ -110,7 +111,8 @@ var go = new GameObject("robot");
 go.AddComponent<MovementBrain>();
 go.AddComponent<HealthTank>();
 UniNetManager.Spawn(go);   // 전 컴포넌트가 서브 테이블(SubId 슬롯)로 등록된다
-// 다중 컴포넌트 동적 스폰은 RegisterPrefab 필수 — 소유권·파괴는 오브젝트 단위
+// 다중 컴포넌트도 동일 — 서브 구성은 스폰 메시지 typeKeys로 클라에 자동 복원 (ADR-0014)
+// RegisterPrefab은 커스텀 비주얼·사전 구성이 필요할 때만 사용
 ```
 
 ### 리플리케이션 고급 정책 (P3 — 가시성·우선순위·휴면·주기·채널 예산)
@@ -150,6 +152,65 @@ server.SetReplicationChannelBudget(typeof(Bullet), 512);   // P3-⑤ 유형별 �
 server.ReplicationBudgetPerTickBytes = 8192;               // P3-② 전역 틱 예산 (0 = 무제한 기본, 초과분은 기아 보정 후 다음 틱)
 ```
 
+### NetworkTransform 컴포넌트 (P4 — 이동 예측·보간 내장)
+
+```csharp
+// 위치 복제·소유 클라 예측·리모트 인터폴레이션을 컴포넌트 하나로 — 게임은 이동 규칙만 주입
+public sealed partial class Character : NetworkBehaviour
+{
+    private NetworkTransform _nt;
+
+    private void Awake()
+    {
+        _nt = GetComponent<NetworkTransform>();                    // [RequireComponent]로 자동 결합
+        _nt.MovementRule = (ref float x, ref float y, ref float z,
+                            float ix, float iy, float iz, float dt) =>
+        {
+            x += ix * 5f * dt;                                     // 게임 이동 규칙 (서버·예측 공유)
+        };
+    }
+
+    private void HandleInput()
+    {
+        _nt.SubmitMove(inputX, inputY, 0);   // 소유 클라: 예측 즉시 반영 + 서버 전송
+        _nt.SimulationEnabled = IsAlive();   // 게이트 — 서버·예측 동시 정지/재개
+    }
+}
+// 리모트 클라: NetworkTransform이 위치를 수신하고 InterpolationDelay(기본 0.12s) 뒤 시점으로 렌더
+```
+
+### P4 훅 — 시간 동기화·예측·래그 컴펜세이션·그리드 가시성
+
+```csharp
+public sealed partial class Player : NetworkBehaviour
+{
+    private void Awake()
+    {
+        NetworkRewindHistory = true;   // P4-② 서버가 위치 히스토리를 기록 (리와인드 대상)
+    }
+
+    // 발사 — 발신자가 조준한 서버 시각을 보내면 서버가 대상을 리와인드해 판정한다
+    private partial void RpcFire(float dirX, float dirY, double hitTime);
+    private void RpcFire_Implementation(float dirX, float dirY, double hitTime)
+    {
+        double t = Math.Clamp(hitTime, UniNetTime.Now - 1.0, UniNetTime.Now);   // 신뢰 경계 클램프
+        foreach (var target in FindTargets())
+        {
+            target.GetHistoryPosition(t, out float hx, out _, out float hz);   // P4-② 과거 위치 질의
+            if (HitTest(dirX, dirY, hx, hz)) { target.ApplyDamage(); break; }
+        }
+    }
+}
+
+// 서버(부트스트랩) — 시간 동기화는 드라이버가 자동 전파 (UniNetTime.Now로 어디서든 서버 시각 조회)
+server.SetVisibilityGrid(10f, 30f);   // P4-③ 그리드 공간 분할 가시성 (선택)
+
+// 클라 — 예측·인터폴레이션
+NetworkUpdateFrequencyHz = 30f;       // (P3) 전송 주기 제어
+// 소유 오브젝트: 입력 즉시 적용(예측) + 서버 상태 수신 시 조정
+// 리모트 오브젝트: SnapshotBuffer<T>로 Now - InterpolationDelay 시점 렌더 (적용 시점 제어)
+```
+
 전체 사용법: `Sandbox/Assets/Scripts/` · 검증: EditMode/PlayMode 유닛 테스트 + 2-프로세스 RUDP 왕복 (`Sandbox/Assets/Tests/`)
 
 ## 수명주기 종료 (Stop API)
@@ -164,7 +225,7 @@ await UniNetManager.ServerStopAsync();   // 리스너 정지 + 환경 정리 (�
 
 ## 예시 게임 (Sandbox)
 
-**아레나 슈팅** — 구현된 기능 전부(P1 RPC 3종·검증 후크·오브젝트 RPC / P2 조건부 리플리케이션·RepNotify·동적 스폰/파괴 / P3 가시성·우선순위·휴면·주기·채널 예산)를 활용하는 탑다운 2~4인 슈팅 데모. 에셋 없이 Unity 기본 도형만 사용하며, MPPM(Multiplayer Play Mode)으로 메인 에디터=서버 + 가상 플레이어 2=클라이언트를 한 에디터에서 실행한다.
+**아레나 슈팅** — 구현된 기능 전부(P1 RPC 3종·검증 후크·오브젝트 RPC / P2 조건부 리플리케이션·RepNotify·동적 스폰/파괴 / P3 가시성·우선순위·휴면·주기·채널 예산 / P4 클라 예측 이동·히트스캔 래그컴펜세이션·TimeSync·그리드 가시성)를 활용하는 탑다운 2~4인 슈팅 데모. 에셋 없이 Unity 기본 도형만 사용하며, MPPM(Multiplayer Play Mode)으로 메인 에디터=서버 + 가상 플레이어 2=클라이언트를 한 에디터에서 실행한다.
 
 - 씬: `Sandbox/Assets/Scenes/Arena.unity` · 코드: `Sandbox/Assets/Scripts/Arena/`
 - 실행·기능 매트릭스·자동 검증: [Document/examples/arena-shooter.md](Document/examples/arena-shooter.md)

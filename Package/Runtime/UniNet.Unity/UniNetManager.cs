@@ -201,9 +201,12 @@ namespace UniNet.Unity
         public static void Ensure()
         {
             if (_instance != null) return;
+            UniNetTime.LocalClock = () => Time.unscaledTimeAsDouble;   // P4 — 코어 시계를 Unity unscaled 시계로 교체 (전 프로세스 공유)
             var go = new GameObject("UniNetDriver") { hideFlags = HideFlags.HideAndDontSave };
             _instance = go.AddComponent<UniNetDriver>();
         }
+
+        private static double _nextTimeSync;   // P4 — TimeSync 주기 브로드캐스트 (드라이버 1 인스턴스 전제)
 
         private void Update()
         {
@@ -213,8 +216,28 @@ namespace UniNet.Unity
             {
                 var objects = server.SnapshotObjects();   // 프레임당 1회 — 스윕·틱 공유 (복사 2회 방지)
                 var alive = SweepDestroyed(server, objects);   // 파괴분 제거 + 살아있는 엔트리만 틱으로
+                RecordRewindHistory(alive, Time.unscaledTimeAsDouble);   // P4 — 리와인드 대상 위치 기록
                 server.TickReplication(alive, Time.unscaledTimeAsDouble);   // 실제 시계 제공 — P3 주기·기아 정책 활성
+                BroadcastTimeSync(server, Time.unscaledTimeAsDouble);   // P4 — 시간 동기화 (1초 주기)
             }
+        }
+
+        /// <summary>P4 시간 동기화 — 서버 권위 시각을 전 연결에 주기 전파 (UE ReplicatedWorldTimeSeconds 상응).</summary>
+        private static void BroadcastTimeSync(NetworkServer server, double serverTime)
+        {
+            if (serverTime < _nextTimeSync) return;
+            _nextTimeSync = serverTime + 1.0;
+            foreach (var conn in server.SnapshotConnections())
+                if (!conn.Disconnected)
+                    conn.Channel.SendTimeSync(serverTime);
+        }
+
+        /// <summary>P4 — 리와인드 대상(NetworkRewindHistory) 오브젝트의 위치를 서버 도메인 시각으로 기록한다.</summary>
+        private static void RecordRewindHistory(IReadOnlyList<(ulong NetId, NetworkServer.ServerObjectEntry Entry)> objects, double serverTime)
+        {
+            foreach (var (_, entry) in objects)
+                if (entry.Instance is NetworkBehaviour nb && nb.NetworkRewindHistory)
+                    nb.RecordRewindSample(serverTime);
         }
 
         private static readonly List<(ulong NetId, NetworkServer.ServerObjectEntry Entry)> AliveScratch = new();

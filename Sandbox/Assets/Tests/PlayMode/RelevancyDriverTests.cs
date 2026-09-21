@@ -10,7 +10,7 @@ namespace UniNet.Tests
     /// <summary>드라이버 레벨 가시성 방어 — 일반 Destroy 직후 프레임의 틱이 파괴된 컴포넌트에 접근하지 않는다 (리뷰 라운드 1 ①).</summary>
     public sealed class RelevancyDriverTests
     {
-        private const int Port = 7834;   // 타임아웃된 실행 시도의 잔존 리스너와 충돌 피하기 위한 전용 포트
+        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 24;   // 실행별 랜덤 포트 — 플레이 모드 종료 후 리스너 소켓이 에디터 프로세스에 잔존하는 환경 문제 회피
 
         [TearDown]
         public void StopListeners() => UniNetManager.HostStop();

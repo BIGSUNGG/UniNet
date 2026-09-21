@@ -22,10 +22,12 @@ namespace UniNet.CodeGenerator
                 predicate: static (node, _) => node is ClassDeclarationSyntax { BaseList.Types.Count: > 0 },
                 transform: static (ctx, _) => ctx.SemanticModel.GetDeclaredSymbol(ctx.Node) as INamedTypeSymbol)
                 .Where(static t => t != null)
-                .Collect();
+                .Collect()
+                .Combine(context.CompilationProvider);
 
-            context.RegisterSourceOutput(candidates, static (spc, types) =>
+            context.RegisterSourceOutput(candidates, static (spc, source) =>
             {
+                var (types, compilation) = source;
                 var parser = new Parser(spc.ReportDiagnostic, spc.CancellationToken);
                 var models = parser.Parse(types!);
                 if (models.Count == 0) return;
@@ -48,7 +50,7 @@ namespace UniNet.CodeGenerator
                     }
                 }
 
-                spc.AddSource("UniNet.Generated.g.cs", Emitter.Emit(models));
+                spc.AddSource("UniNet.Generated.g.cs", Emitter.Emit(models, compilation.Assembly.Name));
             });
         }
     }

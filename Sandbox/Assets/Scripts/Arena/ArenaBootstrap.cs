@@ -57,8 +57,8 @@ namespace Arena
             _server = UniNetEnvironment.Server;
             if (_server != null)
             {
-                // P3-⑤ 채널 예산 — 총알 유형 대역폭을 제한해 총알 홍수가 플레이어 상태를 굶기지 않게 한다
-                _server.SetReplicationChannelBudget(typeof(ArenaBullet), ArenaConfig.BulletChannelBudgetPerTickBytes);
+                // P3-⑤ 채널 예산 — 플레이어 유형 틱당 전송량을 제한하는 유형별 대역폭 관리 예시 (P4 전환으로 총알이 제거되어 대상 변경)
+                _server.SetReplicationChannelBudget(typeof(ArenaPlayer), ArenaConfig.PlayerChannelBudgetPerTickBytes);
             }
         }
 

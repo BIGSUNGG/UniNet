@@ -50,11 +50,26 @@ namespace UniNet.Unity
                 return;
             }
 
+            // 서브 복원 — 스폰 메시지의 타입 키 순서대로 누락된 NetworkBehaviour를 추가한다.
+            // 기본 팩토리는 첫 서브만 생성하므로, 멀티 컴포넌트 오브젝트(예: ArenaPlayer + NetworkTransform)도
+            // RegisterPrefab 없이 서버와 동일한 슬롯 구성으로 복원된다 (ADR-0014).
+            for (int i = 1; i < typeKeys.Length; i++)
+            {
+                if (HasSub(primary.gameObject, typeKeys[i])) continue;
+                var subType = UniNetSpawnRegistry.TypeOf(typeKeys[i]);
+                if (subType == null)
+                {
+                    Debug.LogError($"[UniNet] 스폰 실패 — 등록되지 않은 타입 키 {typeKeys[i]} (netId={netId}, 서브 {i})");
+                    DestroyObject(primary.gameObject);
+                    return;
+                }
+                primary.gameObject.AddComponent(subType);
+            }
+
             var comps = primary.gameObject.GetComponents<NetworkBehaviour>();
             if (!VerifySlots(comps, typeKeys))
             {
-                Debug.LogError($"[UniNet] 스폰 슬롯 불일치 (netId={netId}) — 서버 서브 {subCount}개/클라 {comps.Length}개. " +
-                    "다중 컴포넌트 오브젝트는 RegisterPrefab으로 양단 같은 프리팹을 등록해야 한다 (기본 팩토리는 단일 컴포넌트만 생성)");
+                Debug.LogError($"[UniNet] 스폰 슬롯 불일치 (netId={netId}) — 자동 복원 후에도 서버 {subCount}개/클라 {comps.Length}개. 프리팹이 스폰 메시지와 다른 NetworkBehaviour 서브를 갖거나(초과·누락) 컴포넌트 순서가 어긋난 경우다 — 프리팹 구성을 서버와 동일하게 맞추세요");
                 DestroyObject(primary.gameObject);
                 return;
             }
@@ -77,6 +92,15 @@ namespace UniNet.Unity
                     handler.ApplyDelta(comps[i], ref reader);   // 전체 상태 — InitialOnly 포함, RepNotify(로컬 초기값) 발생
                 }
             }
+        }
+
+        /// <summary>오브젝트에 해당 타입 키의 서브가 이미 존재하는가.</summary>
+        private static bool HasSub(GameObject go, ulong typeKey)
+        {
+            foreach (var nb in go.GetComponents<NetworkBehaviour>())
+                if (UniNetSpawnRegistry.TypeKeyOf(nb.GetType()) == typeKey)
+                    return true;
+            return false;
         }
 
         /// <summary>서버의 파괴 메시지를 적용한다 — 등록 해제 + 로컬 파괴 (메인 스레드). 이미 없으면 아무것도 안 한다. 생성 코드 전용.</summary>

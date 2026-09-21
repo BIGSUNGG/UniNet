@@ -68,7 +68,7 @@ UniNetManager.Spawn(projectile.gameObject);      // netId 할당·소유권·전
 UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 로컬 파괴
 ```
 
-- **클라 생성 우선순위**: `UniNetManager.RegisterPrefab<T>(prefab)` 타입 카탈록(한 타입=프리팹 1개) → 소스젠 기본 팩토리(빈 GameObject+AddComponent)
+- **클라 생성 우선순위**: `UniNetManager.RegisterPrefab<T>(prefab)` 타입 카탈록(한 타입=프리팹 1개, 선택) → 소스젠 기본 팩토리(빈 GameObject+AddComponent). 누락 서브는 스폰 메시지의 typeKeys로 자동 복원(ADR-0014)
 - **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화
 - **후발 접속 캐치업** — 연결 확정 시 기존 동적 오브젝트(스폰+전체 상태)·씬 오브젝트(전체 상태) 일괄 합류
 - **호스트** — 서버 인스턴스를 클라 등록으로 재사용(이중 생성 없음). 일반 `Destroy`로 사라진 등록 오브젝트도 드라이버가 감지해 파괴 전파(고스트 방지)
@@ -103,7 +103,7 @@ public sealed partial class HealthTank : NetworkBehaviour { [Replicated(Replicat
 var go = new GameObject("robot");
 go.AddComponent<MovementBrain>();
 go.AddComponent<HealthTank>();
-UniNetManager.Spawn(go);   // 다중 컴포넌트는 RegisterPrefab 필수 (기본 팩토리는 단일 생성)
+UniNetManager.Spawn(go);   // 서브 구성은 스폰 메시지의 typeKeys로 클라에 자동 복원된다 (ADR-0014)
 ```
 
 - **슬롯 불변식**: 슬롯 순서는 GetComponents 순서 — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다 (양단 같은 프리팩/씬이 전제). 클라는 스폰 메시지의 서브 구성과 생성 오브젝트를 슬롯·타입별 대조해 불일치 시 거부(진단)
@@ -117,7 +117,7 @@ UniNetManager.Spawn(go);   // 다중 컴포넌트는 RegisterPrefab 필수 (기�
 - **연결 종료 수명주기** — 해소됨: 아래 "수명주기 종료 (Stop API)" 섹션 참조 (2026-09-17 — 명시적 Stop API 구현)
 - **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가).
 - **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 컬렉션(List<T> 등)의 직접 파라미터는 여전히 미지원 — 메시지 내부 필드로 담아 전달(MP가 처리). 32필드 상한(UNINET008) 유지.
-- **동적 스폰 제약** — 다중 컴포넌트 오브젝트의 동적 스폰은 RegisterPrefab 필수(기본 팩토리는 단일 컴포넌트만 생성 — 슬롯 불일치로 거부), 타입-프리팹 카탈로그 1:1(카탈로그 키=첫 NetworkBehaviour 타입), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
+- **동적 스폰 제약** — 스폰 메시지의 typeKeys 순서대로 누락 서브가 클라에서 자동 복원된다(ADR-0014 — RegisterPrefab은 커스텀 비주얼·사전 구성용 선택). 타입-프리팹 카탈로그 1:1(카탈로그 키=첫 NetworkBehaviour 타입), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
 - **슬롯 불변식** — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다(ADR-0010). 씬 오브젝트의 증감은 감지 창구가 없어 계약으로만 방어, 동적 스폰은 구성 대조로 거부. 오브젝트당 NetworkBehaviour 상한 **255개**(SubId byte — 초과 시 등록·스폰 거부)
 - **같은 프로세스 재시작** — 해소됨: Stop으로 정리 후 동일 포트 재리슨 검증 (`LifecycleStopTests.호스트_정지후_재시작_성공`)
 

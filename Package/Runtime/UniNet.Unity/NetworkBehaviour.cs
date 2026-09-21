@@ -77,6 +77,40 @@ namespace UniNet.Unity
         bool IUniNetReplicationPolicy.IsNetworkDormant => NetworkDormant;
         bool IUniNetReplicationPolicy.IsNetworkRelevant(long viewerConnId) => IsNetworkRelevant(viewerConnId);
 
+        // ── P4 래그 컴펜세이션 훅 (위치 히스토리·리와인드) ──
+
+        /// <summary>서버가 이 오브젝트의 위치 히스토리를 기록한다 (래그 컴펜세이션 리와인드 대상 — 기본 false, 서버 전용 동작).</summary>
+        public bool NetworkRewindHistory { get; set; }
+
+        private PositionHistory _rewindHistory;
+
+        internal PositionHistory RewindHistory => _rewindHistory ??= new PositionHistory(128, 1.0 / 60.0);   // 60Hz 샘플링 — 128 샘플 ≈ 2.1초 창 (프레임레이트 무관)
+
+        /// <summary>테스트 관찰자 — 현재까지 기록된 위치 샘플 수.</summary>
+        internal int RewindSampleCount => _rewindHistory?.SampleCount ?? 0;
+
+        /// <summary>드라이버 서버 틱에서 호출 — 서버 도메인 시각으로 위치 샘플 기록 (NetworkRewindHistory가 true일 때만).</summary>
+        internal void RecordRewindSample(double serverTime)
+        {
+            var p = transform.position;
+            RewindHistory.Record(serverTime, p.x, p.y, p.z);
+        }
+
+        /// <summary>
+        /// 서버 전용 — 과거 serverTime 시점(UniNetTime 도메인)의 위치를 질의한다 (래그 컴펜세이션 리와인드).
+        /// 히스토리 미기록 오브젝트는 현재 transform 위치를 반환한다(리와인드 비대상 — 호출자 계약).
+        /// </summary>
+        public bool GetHistoryPosition(double serverTime, out float x, out float y, out float z)
+        {
+            if (IsServer && _rewindHistory != null && _rewindHistory.Sample(serverTime, out x, out y, out z))
+                return true;
+            var p = transform.position;
+            x = p.x;
+            y = p.y;
+            z = p.z;
+            return true;
+        }
+
         /// <summary>동적 스폰 — 서버가 할당한 netId를 주입한다 (경로 해시 계산을 선제한다).</summary>
         internal void AssignNetId(ulong netId)
         {

@@ -45,9 +45,11 @@ UniNet 저장소만 수정해서 구현 가능한 P3 항목 5종 완결 — 가�
 
 **완료 정의**: 정책 미설정 오브젝트는 P2 동작 유지(즉시 모드), 정책 설정 오브젝트는 가시성·우선순위·휴면·주기가 서버 틱에서 동작하고 유닛 테스트가 이를 검증한다.
 
-## Phase 4 — 고급 (미착수)
+## Phase 4 — 고급 (**구현됨 — 2026-09-20, ADR-0012**)
 
-예측·래그컴펜세이션·커스텀 드라이버 훅 + P3 이관분(커스텀 NetSerialize·FastArray — MP 수정 동반). 세부는 [[roadmap]] 참조.
+UniNet 저장소만 수정해서 구현 가능한 P4 훅 완결 — UniNetTime(서버 권위 단조 시계 + TimeSync 와이어 5번)·SnapshotBuffer(인터폴레이션 버퍼·적용 시점 제어)·PositionHistory + NetworkRewindHistory/GetHistoryPosition(래그컴펜세이션 리와인드)·SetVisibilityGrid(그리드 공간 분할 가시성). 커스텀 NetSerialize·FastArray는 MP 수정 필요로 잔여 과제. 세부는 [[roadmap]]·[[0012-P4-훅-시간동기화-인터폴레이션-리와인드-그리드]] 참조.
+
+**완료 정의**: 예측·보간·리와인드 프리미티브가 유닛 테스트로 검증되고, 아레나가 클라 예측 이동 + 히트스캔 래그컴펜세이션으로 실동작 전환된다.
 
 ## 설계 난점 (설계 중심 관건)
 

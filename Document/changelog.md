@@ -3,6 +3,41 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-20]
+
+### Added (P4 훅 — 시간 동기화·인터폴레이션·리와인드·그리드 가시성)
+
+- **P4 훅 구현 — UniNet 저장소만 수정해서 가능한 항목 완결** (ADR [[0012-P4-훅-시간동기화-인터폴레이션-리와인드-그리드]] · 기능 문서 [[features/replication-p4-hooks]])
+  - **UniNetTime** — 서버 권위 단조 시계 (UE ReplicatedWorldTimeSeconds 상응). 서버=로컬 시계, 클라=로컬+EMA(α=0.25) 오프셋, 단조 보장(역행 클램프). 서버·호스트는 ApplyServerTime 무시 — 기록·질의 시계 불일치 결함 방어
+  - **TimeSync 와이어** — 시스템 메시지 methodId 5 (`[serverTime: double]`): IUniNetSystemChannel.SendTimeSync + 생성 클라 허브 수신 핸들 + 드라이버 1초 주기 브로드캐스트. 수신은 메인 큐 우회(Unity 시계 메인 전용). UniNet.CodeGenerator 0.1.2
+  - **SnapshotBuffer<T>** — 클라 인터폴레이션 버퍼: 시간 역전 스냅샷 폐기·범위 밖 끝 값 홀드·선형 보간 (틱 스케줄링 "적용 시점 제어" 훅)
+  - **PositionHistory + NetworkRewindHistory/GetHistoryPosition** — 래그컴펜세이션 훅: 서버 옵트인 위치 히스토리(링 128) + 과거 시점 질의(선형 보간·끝 홀드)
+  - **SetVisibilityGrid(cellSize, visibleRadius)** — RepGraph 스타일 그리드 공간 분할 가시성: 셀 멤버십 양자화 판정, P3 계약(관련성 훅 AND·페일오픈·재진입 기준선 복구) 유지
+- **검증**: EditMode 52/52(UniNetSpawnApplyTests 4종 신규 — 2서브 복원·역방향 순서·미등록 거부·단일 회귀 + NetworkTransformComponent 3종 관찰자 실사용)·PlayMode 12/12(리모트 버퍼 적재 회귀 테스트 포함)
+- **스폰 서브 자동 복원 — 멀티 컴포넌트 스폰 슬롯 불일치 런타임 에러 근본 해결** (ADR [[0014-스폰-서브-자동-복원]] · NetworkTransform 도입 후 발견)
+  - **원인**: 클라 스폰이 첫 서브 타입의 기본 팩토리(단일 컴포넌트)로만 생성 — RequireComponent로 결합된 멀티 컴포넌트 오브젝트(ArenaPlayer + NetworkTransform)가 서버 2서브/클라 1서브로 어긋남
+  - **수정**: UniNetSpawn.Apply가 스폰 메시지의 typeKeys 순서대로 누락 NetworkBehaviour 서브를 자동 복원(AddComponent) — UniNetSpawnRegistry에 typeKey→Type 역조회 추가, 미등록 타입 키는 스폰 거부+부분 생성 폐기
+  - **계약 완화**: 멀티 컴포넌트 오브젝트의 RegisterPrefab 필수 → 선택 (커스텀 비주얼/구성용)
+
+### Fixed (라이브 재현 — 클라→다른 클라 이동 동기화 단절)
+
+- **NetworkTransform의 [Replicated] 위치 3필드에 RepNotify(OnNetX/Y/ZChanged) 미연결** — 필드 갱신은 되지만 Notify 미호출로 리모트 인터폴레이션 버퍼가 영구 비어 다른 클라 화면에 이동이 반영되지 않음 → 3필드 Notify 연결로 해소. 아울러 NetworkTransform.SubmitMove가 클라에서 로컬 예측 입력(_inX)을 갱신하지 않던 누락도 수정(예측 즉시 반영 복원)
+  - **검증**: EditMode 52/52(UniNetSpawnApplyTests 4종 신규 — 2서브 복원·역방향 순서·미등록 거부·단일 회귀 + MultiComponentTests 자동 복원 계약 갱신)·PlayMode 12/12
+- **리뷰 라운드 2 반영 (권장 1건 → 수용 + 플레이모드 안정화)**: RefreshGrid의 "연결별 집합 재사용"이 실제로는 작동하지 않았음(`_gridRelevant.Clear()`로 딕셔너리째 비워 매 틱 재할당) → 딕셔너리 유지 + Clear 후 재기입으로 수정, 끊긴 연결 키는 DetachConnection에서 제거. 리와인드 테스트도 프레임 타이밍 무관한 결정론 시점 단언으로 강화(before=이동 전 0 / after+여유=최신 10 — 홀드 계약 활용)
+- **리뷰 라운드 3 반영 (권장 3건 → 전부 수용)**: ① 누락됐던 ADR-0013(NetworkTransform 컴포넌트) 문서 신규 작성 + 00-INDEX decisions 목록 보강 ② UniNetSpawnApplyTests의 미사용 헬퍼(SpawnAndRegisterServerSide) 제거 ③ 슬롯 불일치 에러 메시지의 부정확한 원인 예시(비네트워크 컴포넌트)를 실제 잔여 원인(프리팹 초과 서브·컴포넌트 순서 어긋남)으로 정정
+- **리뷰 라운드 1 반영 (권장 5건 → 전부 수용)**: ① TimeSync 와이어 도달 관찰자(ReceiveCount) 추가 + 호스트 모드 테스트를 와이어 도달 단언으로 강화 ② RefreshGrid 버킷 리스트·연결 집합 재사용 풀링(틱당 GC 압력 제거) ③ PositionHistory.Record 시간 역전·중복 폐기로 SnapshotBuffer와 계약 정렬 ④ 미사용 HasRewindHistory 제거 + RewindSampleCount를 리와인드 테스트에서 실사용 ⑤ BulletChannelBudgetPerTickBytes → PlayerChannelBudgetPerTickBytes 개명(실제 대상 정렬)
+
+### Changed (Sandbox 아레나 — P4 게임플레이 전환)
+
+- **클라 이동 예측** — 이동 규칙을 ArenaMovement.Step 단일 공급원으로 추출(서버·예측 공유), 소유 클라 입력 즉시 적용 + 서버 상태 수신 시 ReconcileAxis(스냅/소프트) 조정, 리모트는 SnapshotBuffer로 InterpolationDelay(0.12s) 뒤 렌더
+- **발사를 히트스캔+래그컴펜세이션으로 전환** — RpcFire에 발신자 조준 시각(hitTime) 추가, 서버가 대상을 리와인드(클램프 [Now−1s, Now])해 선분-원 판정, 트레이서 MulticastRpc 신설(ArenaFx.Tracer), ArenaBullet 제거(동적 스폰/파괴 커버리지는 플레이어 스폰·파괴가 담당)
+- **기존 테스트 갱신** — ArenaRoundtripTests(트레이서 단언·TryFire 시그니처)·ArenaTwoProcessRunner(동일) — PlayMode 10/10 그린
+- **README·roadmap·plan·00-INDEX·architecture·examples 문서 갱신**
+
+### Removed (Sandbox 아레나 정리)
+
+- **ArenaBullet 제거** — 히트스캔 전환으로 투사체 클래스 삭제 (총알 전용 P3 상수는 ArenaConfig에 유지 — 채널 예산 대상은 ArenaPlayer로 변경)
+
 ## [2026-09-18]
 
 ### Added (P3 완결 — 리플리케이션 고급 정책)

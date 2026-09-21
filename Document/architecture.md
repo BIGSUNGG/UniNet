@@ -23,7 +23,7 @@
 ## 구성 요소 (구현 — [[0008-구현-아키텍처]])
 
 - **UniNet.CodeGenerator** (`CodeGenerator/`) — Roslyn 4.3 소스 제너레이터. NetworkBehaviour 파생의 RPC·리플리케이션 멤버를 스캔해 DRPC 런타임 수동 구성 API로 허브 배선·타입별 partial 구현·델타 핸들을 방출한다. DRPC/MP 제너레이터와는 체이닝하지 않는다.
-- **UniNet.Core.Hosting** (`Package/Runtime/UniNet.Core/Hosting/`) — 순수 C# 런타임. NetworkServer(연결·소유권·리플리케이션 틱 — P3 가시성·우선순위·휴면·주기·채널 예산 스케줄링 포함)·NetworkClient(Welcome·소유권 맵)·UniNetEnvironment(메인 스레드 펌프)·UniNetDispatch(전역 디스패치 — 다중 어셈블리)·UniNetEndpointOptions(연결/보안 설정 래핑)·IUniNetReplicationPolicy(오브젝트 정책 계약 — [[0011-P3-리플리케이션-고급-정책]]).
+- **UniNet.Core.Hosting** (`Package/Runtime/UniNet.Core/Hosting/`) — 순수 C# 런타임. NetworkServer(연결·소유권·리플리케이션 틱 — P3 가시성·우선순위·휴면·주기·채널 예산 스케줄링 포함)·NetworkClient(Welcome·소유권 맵)·UniNetEnvironment(메인 스레드 펌프)·UniNetDispatch(전역 디스패치 — 다중 어셈블리)·UniNetEndpointOptions(연결/보안 설정 래핑)·IUniNetReplicationPolicy(오브젝트 정책 계약 — [[0011-P3-리플리케이션-고급-정책]])·UniNetTime(서버 권위 단조 시계)·SnapshotBuffer(인터폴레이션 버퍼)·PositionHistory(리와인드 히스토리) — [[0012-P4-훅-시간동기화-인터폴레이션-리와인드-그리드]].
 - **UniNet.Unity** (`Package/Runtime/UniNet.Unity/`) — MonoBehaviour 바인딩. NetworkBehaviour(netId=씬 경로 해시·IsOwner)·UniNetManager(연결 수명주기)·UniNetDriver(구동기).
 - **RPC 매핑** — 사용법 partial 메서드 → 생성 코드가 DRPC 허브 프로시저로 변환. 전달 모드는 `Delivery`(ReliableOrdered·Unreliable) → `RpcDeliveryMode` 매핑.
 - **직렬화** — 모든 와이어 포맷은 MessageProtocol 런타임 프리미티브(`MessageBufferWriter/Reader`)로 생성 코드가 직접 방출 ([netId][인자/델타]).

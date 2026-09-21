@@ -28,6 +28,16 @@ namespace UniNet.Core.Hosting
         private bool[] _relevanceScratch = Array.Empty<bool>();
         private long _seq;
 
+        // P4 — 그리드 공간 분할 가시성 (RepGraph 스타일) 상태. 메인 스레드 전용.
+        private bool _gridEnabled;
+        private float _gridCellSize = 32f;
+        private float _gridRadius = 48f;
+        private readonly Dictionary<(int X, int Z), List<ulong>> _gridBuckets = new();
+        private readonly List<ulong> _gridAlwaysRelevant = new();
+        private readonly Dictionary<long, HashSet<ulong>> _gridRelevant = new();
+        private readonly List<List<ulong>> _bucketFree = new();   // 재사용 가능한 빈 셀 버킷
+        private readonly List<List<ulong>> _bucketUsed = new();   // 이번 틱에 배정된 셀 버킷
+
         /// <summary>틱당 리플리케이션 전역 바이트 예산 — 0 = 무제한(기본). 초과 델타는 대기열로 연기됐다가 다음 틱에 전송된다.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 
@@ -153,14 +163,14 @@ namespace UniNet.Core.Hosting
             foreach (var conn in SnapshotConnections())
             {
                 if (conn.Disconnected) continue;
-                if (!IsRelevant(entry, conn)) continue;   // 비관련 연결 — 스폰 생략 (관련 전환 시 전송된다)
+                if (!IsRelevant(entry, conn, netId)) continue;   // 비관련 연결 — 스폰 생략 (관련 전환 시 전송된다)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
                 SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, conn.ConnId == entry.OwnerConnId);
             }
             if (entry.OwnerConnId != 0)
                 foreach (var conn in SnapshotConnections())
-                    if (!conn.Disconnected && IsRelevant(entry, conn))
+                    if (!conn.Disconnected && IsRelevant(entry, conn, netId))
                         conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
         }
 
@@ -231,9 +241,10 @@ namespace UniNet.Core.Hosting
                         _connections.RemoveAt(i);
                         UniNetEnvironment.QueueOnMain(() =>
                         {
-                            _viewerPositions.Remove(conn.ConnId);   // P3 상태 정리 — 틱과 같은 메인 스레드에서
+                            _viewerPositions.Remove(conn.ConnId);   // P3/P4 상태 정리 — 틱과 같은 메인 스레드에서
                             _visible.Remove(conn.ConnId);
                             _everVisible.Remove(conn.ConnId);   // 재접속마다 잔존하는 HashSet 누수 방지 (connId 단조 증가)
+                            _gridRelevant.Remove(conn.ConnId);   // P4 그리드 집합도 정리
                             ReassignOwnership();
                         });
                         return;
@@ -276,7 +287,7 @@ namespace UniNet.Core.Hosting
             bool isOwner;
             foreach (var (netId, entry) in SnapshotObjects())
             {
-                if (!IsRelevant(entry, conn)) continue;   // 비관련 오브젝트 — 캐치업 제외 (관련 전환 시 전송)
+                if (!IsRelevant(entry, conn, netId)) continue;   // 비관련 오브젝트 — 캐치업 제외 (관련 전환 시 전송)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
                 isOwner = entry.OwnerConnId == conn.ConnId;
@@ -323,6 +334,7 @@ namespace UniNet.Core.Hosting
             bool timed = !double.IsNaN(time);
             int budget = timed ? ReplicationBudgetPerTickBytes : 0;   // 즉시 모드는 예산 정책도 미적용 (P2 호환 계약)
             int budgetLeft = budget > 0 ? budget : int.MaxValue;
+            if (_gridEnabled) RefreshGrid(objects, connections);   // P4 — 그리드 가시성 갱신 (틱당 1회)
 
             _pending.Clear();
             foreach (var (netId, entry) in objects)
@@ -416,7 +428,7 @@ namespace UniNet.Core.Hosting
                     if (conn.Disconnected) continue;
                     bool relevant = i < 64
                         ? (item.RelevantMask & (1ul << i)) != 0
-                        : IsRelevant(entry, conn);   // 64 초과 연결 — 전송 시점 재평가 (드문 대규모 토폴로지)
+                        : IsRelevant(entry, conn, item.NetId);   // 64 초과 연결 — 전송 시점 재평가 (드문 대규모 토폴로지)
                     if (!relevant) continue;
                     var payload = conn.ConnId == entry.OwnerConnId ? item.Owner : item.Others;
                     if (IsEmpty(payload)) continue;
@@ -448,13 +460,88 @@ namespace UniNet.Core.Hosting
             else _channelBudgets.Remove(behaviourType);
         }
 
-        /// <summary>오브젝트가 연결에 관련되는가 — 관련성 훅 + 뷰어 위치 대비 컬 거리. 정책이 없으면 항상 관련.</summary>
-        private bool IsRelevant(ServerObjectEntry entry, ServerConnection conn)
+        /// <summary>
+        /// P4 그리드 공간 분할 가시성 (RepGraph 스타일) — 월드를 cellSize 격자(XZ 평면)로 나눠 뷰어 주변 visibleRadius
+        /// 반경 셀의 오브젝트만 관련으로 판정한다. 거리 판정을 셀 멤버십으로 대체하는 양자화 판정(경계 오차 cellSize 이하)이며,
+        /// 오브젝트별 NetworkCullDistance>0는 그리드와 AND로 유지된다. 뷰어 위치 미설정 연결은 P3 계약대로 페일오픈 (메인 스레드).
+        /// </summary>
+        public void SetVisibilityGrid(float cellSize, float visibleRadius)
+        {
+            if (cellSize <= 0f) throw new ArgumentOutOfRangeException(nameof(cellSize));
+            if (visibleRadius <= 0f) throw new ArgumentOutOfRangeException(nameof(visibleRadius));
+            _gridCellSize = cellSize;
+            _gridRadius = visibleRadius;
+            _gridEnabled = true;
+        }
+
+        /// <summary>그리드 가시성을 해제한다 — P3 거리 컬로 복귀한다 (메인 스레드).</summary>
+        public void ClearVisibilityGrid() => _gridEnabled = false;
+
+        /// <summary>P4 그리드 갱신 — 오브젝트를 셀에 분배하고 연결별(뷰어 반경 내) 관련 집합을 계산한다 (틱당 1회).
+        /// 버킷 리스트·연결 집합은 재사용해 틱당 GC 압력을 없앤다. ponytail: 오브젝트·연결 수가 매우 크면 풀링으로 확장.</summary>
+        private void RefreshGrid(IReadOnlyList<(ulong NetId, ServerObjectEntry Entry)> objects, IReadOnlyList<ServerConnection> connections)
+        {
+            // 버킷 회수 — 이전 틱 리스트를 비워 재사용 가능하게 만든다 (딕셔너리는 키가 바뀌므로 재구성)
+            foreach (var bucket in _bucketUsed) bucket.Clear();
+            _bucketFree.AddRange(_bucketUsed);
+            _bucketUsed.Clear();
+            _gridBuckets.Clear();
+            _gridAlwaysRelevant.Clear();
+
+            foreach (var (netId, entry) in objects)
+            {
+                if (entry.Instance is IUniNetSpawnTransform transform)
+                {
+                    transform.GetSpawnTransform(out float px, out _, out float pz, out _, out _, out _, out _);
+                    var key = ((int)Math.Floor(px / _gridCellSize), (int)Math.Floor(pz / _gridCellSize));
+                    if (!_gridBuckets.TryGetValue(key, out var bucket))
+                    {
+                        bucket = _bucketFree.Count > 0 ? PopBucket() : new List<ulong>();
+                        _gridBuckets[key] = bucket;
+                    }
+                    bucket.Add(netId);
+                }
+                else _gridAlwaysRelevant.Add(netId);   // 위치 없는 오브젝트 — 항상 관련 (페일오픈)
+            }
+
+            // 연결별 집합 재사용 — 딕셔너리를 유지한 채 Clear 후 재기입 (GC 압력 제거). 끊긴 연결 키는 DetachConnection에서 제거
+            int range = (int)Math.Ceiling(_gridRadius / _gridCellSize);
+            foreach (var conn in connections)
+            {
+                if (conn.Disconnected) continue;
+                if (!_viewerPositions.TryGetValue(conn.ConnId, out var viewer)) continue;   // 집합 미생성 — IsRelevant의 페일오픈이 처리
+                if (!_gridRelevant.TryGetValue(conn.ConnId, out var set)) _gridRelevant[conn.ConnId] = set = new HashSet<ulong>();
+                set.Clear();   // 기존 인스턴스 재사용 — 용량 유지
+                int cx = (int)Math.Floor(viewer.X / _gridCellSize);
+                int cz = (int)Math.Floor(viewer.Z / _gridCellSize);
+                for (int dx = -range; dx <= range; dx++)
+                    for (int dz = -range; dz <= range; dz++)
+                        if (_gridBuckets.TryGetValue((cx + dx, cz + dz), out var bucket))
+                            set.UnionWith(bucket);
+                set.UnionWith(_gridAlwaysRelevant);
+            }
+        }
+
+        private List<ulong> PopBucket()
+        {
+            var last = _bucketFree[_bucketFree.Count - 1];
+            _bucketFree.RemoveAt(_bucketFree.Count - 1);
+            _bucketUsed.Add(last);
+            return last;
+        }
+
+        /// <summary>오브젝트가 연결에 관련되는가 — 관련성 훅 + (그리드 멤버십 또는 뷰어 위치 대비 컬 거리). 정책이 없으면 항상 관련.</summary>
+        private bool IsRelevant(ServerObjectEntry entry, ServerConnection conn, ulong netId)
         {
             if (entry.Instance is not IUniNetReplicationPolicy policy) return true;
             if (!policy.IsNetworkRelevant(conn.ConnId)) return false;
 
             float cull = policy.NetworkCullDistance;
+            if (_gridEnabled && _viewerPositions.ContainsKey(conn.ConnId))
+            {
+                if (cull <= 0f) return GridContains(conn.ConnId, netId);   // 그리드 멤버십으로 거리 판정 대체 (양자화 오차 cellSize 이하)
+                if (!GridContains(conn.ConnId, netId)) return false;   // 전역 반경 통과 후 오브젝트 컬도 검사 (AND)
+            }
             if (cull > 0f
                 && _viewerPositions.TryGetValue(conn.ConnId, out var viewer)
                 && entry.Instance is IUniNetSpawnTransform transform)
@@ -465,6 +552,9 @@ namespace UniNet.Core.Hosting
             }
             return true;
         }
+
+        private bool GridContains(long connId, ulong netId)
+            => _gridRelevant.TryGetValue(connId, out var set) && set.Contains(netId);
 
         /// <summary>
         /// 오브젝트 단위 가시성 갱신 — 연결별 관련 변화를 추적하고 관련 여부를 되돌린다. 씬 오브젝트의 첫 평가는
@@ -479,7 +569,7 @@ namespace UniNet.Core.Hosting
             {
                 var conn = conns[i];
                 var seen = GetVisibleSet(conn.ConnId);
-                if (IsRelevant(entry, conn))
+                if (IsRelevant(entry, conn, netId))
                 {
                     _relevanceScratch[i] = anyRelevant = true;
                     bool everNew = GetEverVisibleSet(conn.ConnId).Add(netId);

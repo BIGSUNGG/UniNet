@@ -207,13 +207,17 @@ namespace UniNet.Tests
                 Assert.AreEqual(0, clientBrain.SubId, "클라 슬롯 주입");
                 Assert.AreEqual(1, clientTank.SubId, "클라 슬롯 주입");
 
-                // 슬롯 불일치 — 단일 컴포넌트 템플릿을 슬롯 0에 등록 → 구성 불일치 → 생성 거부
+                // 서브 자동 복원 (ADR-0014) — 단일 컴포넌트 템플릿(슬롯 0)이어도 누락 서브는 typeKeys 순서대로 자동 추가된다
                 var solo = new GameObject("solo");
                 solo.AddComponent<MovementBrain>();
                 UniNetManager.RegisterPrefab<MovementBrain>(solo);
-                UnityEngine.TestTools.LogAssert.Expect(LogType.Error, new Regex("."));
                 UniNetSpawn.Apply(netId + 1, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 2, typeKeys, states);
-                Assert.IsNull(UniNetEnvironment.Client.Get(netId + 1), "슬롯 불일치 스폰 거부");
+                var restored = UniNetEnvironment.Client.Get(netId + 1);
+                Assert.IsNotNull(restored, "자동 복원 — 스폰 등록");
+                Assert.AreEqual(2, restored.Length, "서버와 동일한 2슬롯 복원");
+                Assert.IsInstanceOf<MovementBrain>(restored[0], "슬롯 0 — 템플릿 제공분");
+                Assert.IsInstanceOf<HealthTank>(restored[1], "슬롯 1 — 자동 복원분");
+                Assert.AreEqual(77, ((HealthTank)restored[1]).Armor, "복원분에도 전체 상태 적용");
                 UnityEngine.Object.DestroyImmediate(solo);
             }
             finally
@@ -271,6 +275,7 @@ namespace UniNet.Tests
             public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)
                 => Spawns.Add((netId, subCount, typeKeys, states));
             public void SendDestroy(ulong netId) { }
+            public void SendTimeSync(double serverTime) { }
             public void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode) { }
         }
     }

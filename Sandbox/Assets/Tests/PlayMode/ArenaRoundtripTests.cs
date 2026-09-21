@@ -16,7 +16,7 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class ArenaRoundtripTests
     {
-        private const int Port = 7833;   // 타임아웃된 실행 시도의 잔존 리스너와 충돌 피하기 위한 전용 포트
+        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 0;   // 실행별 랜덤 포트 — 플레이 모드 종료 후 리스너 소켓이 에디터 프로세스에 잔존하는 환경 문제 회피
 
         [SetUp]
         public void DisableSceneBootstrap()
@@ -75,8 +75,8 @@ namespace UniNet.Tests
             yield return WaitUntil(() => ArenaHud.LastHitText.Contains("Bravo"), 5, "RepNotify(HP) 관찰");
 
             // 3) 발사 ServerRpc — 탄약 감소(OwnerOnly) + 총알 동적 스폰 전파
-            alpha.TryFire(1f, 0f);   // +x 직진 — Bravo(5,0) 방향
-            yield return WaitUntil(() => UnityEngine.Object.FindObjectsByType<ArenaBullet>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length == 1, 5, "총알 동적 스폰");
+            alpha.TryFire(1f, 0f, UniNet.Core.Hosting.UniNetTime.Now);   // +x 직진 — Bravo(5,0) 방향 (P4 히트스캔)
+            yield return WaitUntil(() => CountNamed("FxTracer") > 0, 5, "히트스캔 트레이서");
             yield return WaitUntil(() => alpha.HudAmmo == ArenaConfig.MaxAmmo - 1, 5, "탄약 감소 (OwnerOnly 델타)");
 
             // 4) 연사 → 사망 → 킬 크레딧 + ClientRpc 킬피드
@@ -88,15 +88,15 @@ namespace UniNet.Tests
                 {
                     if (bravo.IsDead) return true;
                     if (alpha.HudAmmo > 0)
-                        alpha.TryFire(1f, 0f);   // 서버 쿨다운에 걸리는 호출은 서버가 권위로 거부한다
+                        alpha.TryFire(1f, 0f, UniNet.Core.Hosting.UniNetTime.Now);   // 서버 쿨다운에 걸리는 호출은 서버가 권위로 거부한다
                     return false;
                 },
                 8f, 20000, "연사 → 사망");
             yield return WaitForSim(() => alpha.HudScore == 1, 3f, 6000, "킬 크레딧 (점수 리플리케이션)");
             yield return WaitForSim(() => ArenaHud.LastKillFeed == "Alpha ▶ Bravo", 3f, 6000, "ClientRpc 킬피드 수신");
 
-            // 5) 명중한 총알 파괴 동기화
-            yield return WaitForSim(() => UnityEngine.Object.FindObjectsByType<ArenaBullet>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length == 0, 3f, 6000, "총알 파괴 동기화");
+            // 5) 트레이서 FX 소멸 (비신뢰 FX — 수명 뒤 스스로 제거)
+            yield return WaitForSim(() => CountNamed("FxTracer") == 0, 3f, 6000, "트레이서 FX 소멸");
 
             // 6) 리스폰 — HP 복구 (델타 리플리케이션). RespawnDelay 2s는 게임 시간 기준
             yield return WaitForSim(() => !bravo.IsDead && bravo.HudHp == ArenaConfig.MaxHp, 10f, 30000, "리스폰");
@@ -104,6 +104,14 @@ namespace UniNet.Tests
             // 이동 후 정지 확인 — 서버가 마지막 입력(0,0)을 유지한다
             yield return new WaitForSecondsRealtime(0.3f);
             Assert.LessOrEqual(Mathf.Abs(alpha.transform.position.x - alphaX), 0.5f, "정지 입력 적용");
+        }
+
+        private static int CountNamed(string name)
+        {
+            int count = 0;
+            foreach (var t in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                if (t.name == name) count++;
+            return count;
         }
 
         private static ArenaPlayer CreatePlayer(string name, int seed, Vector3 pos)

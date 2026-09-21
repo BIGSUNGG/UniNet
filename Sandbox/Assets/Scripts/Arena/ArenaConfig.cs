@@ -45,11 +45,20 @@ namespace Arena
         /// <summary>P3-① 총알 가시성 컬 거리 (월드 단위 반경) — 멀리 있는 연결은 총알 궤적을 추적하지 않는다. UE NetCullDistance 상응.</summary>
         public const float BulletCullDistance = 24f;
 
-        /// <summary>P3-⑤ 총알 유형 틱당 전송 예산 (바이트) — 총알 홍수가 플레이어 상태 대역폭을 굶기지 않게 한다.</summary>
-        public const int BulletChannelBudgetPerTickBytes = 512;
+        /// <summary>P4-⑤ 플레이어 유형 틱당 전송 예산 (바이트) — 유형별 대역폭 관리 예시 (P4 전환으로 총알이 제거되어 대상이 플레이어).</summary>
+        public const int PlayerChannelBudgetPerTickBytes = 512;
 
         /// <summary>P3-② 플레이어 리플리케이션 우선순위 — 대역폭 부족 시 총알(기본 1)보다 먼저 전송된다. UE NetPriority 상응.</summary>
         public const float PlayerNetworkPriority = 2f;
+
+        /// <summary>P4-① 리모트 오브젝트 인터폴레이션 지연 (초) — 렌더 시점을 서버 시간보다 이만큼 뒤로 밀어 부드럽게 만든다.</summary>
+        public const float InterpolationDelay = 0.12f;
+
+        /// <summary>P4-② 리와인드 허용 창 (초) — 히트 타임이 이보다 과거/미래면 클램프한다 (신뢰 경계 — 과도한 리와인드 거부).</summary>
+        public const double RewindWindowSeconds = 1.0;
+
+        /// <summary>P4-② 히트스캔 사거리 (월드 단위) — 사거리 밖은 트레이서 끝점만 표시된다.</summary>
+        public const float HitscanRange = 40f;
 
         /// <summary>총알 충돌 반경 + 플레이어 반경 = 히트 판정 거리.</summary>
         public const float HitDistance = 1.0f;

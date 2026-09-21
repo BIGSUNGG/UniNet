@@ -11,6 +11,7 @@ namespace UniNet.Core.Hosting
     public static class UniNetSpawnRegistry
     {
         private static readonly Dictionary<ulong, Func<object>> Factories = new();
+        private static readonly Dictionary<ulong, Type> FactoryTypes = new();
         private static readonly Dictionary<Type, ulong> TypeKeys = new();
 
         /// <summary>타입의 스폰 팩토리를 등록한다 (생성 코드 전용 — typeKey는 컴파일 타임 전체 이름 해시).</summary>
@@ -19,6 +20,7 @@ namespace UniNet.Core.Hosting
             if (type == null) throw new ArgumentNullException(nameof(type));
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             Factories[typeKey] = factory;
+            FactoryTypes[typeKey] = type;
             TypeKeys[type] = typeKey;
         }
 
@@ -41,5 +43,9 @@ namespace UniNet.Core.Hosting
         /// <summary>식별자로 인스턴스를 생성한다 (미등록 = null).</summary>
         public static object Create(ulong typeKey)
             => Factories.TryGetValue(typeKey, out var factory) ? factory() : null;
+
+        /// <summary>식별자의 등록 타입을 조회한다 (null = 미등록) — 클라 스폰 시 누락 서브 복원(AddComponent)용.</summary>
+        public static Type TypeOf(ulong typeKey)
+            => FactoryTypes.TryGetValue(typeKey, out var type) ? type : null;
     }
 }

@@ -25,6 +25,9 @@ public interface IUniNetSystemChannel
     /// <summary>동적 오브젝트 파괴를 전송한다 (오브젝트 전체).</summary>
     void SendDestroy(ulong netId);
 
+    /// <summary>P4 시간 동기화 — 서버 권위 시각(UniNetTime 도메인, 초)을 클라에 전송한다 (주기적 브로드캐스트).</summary>
+    void SendTimeSync(double serverTime);
+
     /// <summary>일반 RPC 페이로드 전송 (어셈블리 무관 송신 경로).</summary>
     void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode);
 }

@@ -74,7 +74,7 @@ namespace Arena
             // 발사 — OwnerOnly 탄약 감소 + 총알 동적 스폰 전파
             WaitFor(() => UniNetEnvironment.Client.LocalConnId != 0, 10, "클라A welcome");
             ThreadSleep(1.0);   // 스폰 전파 여유
-            alpha.TryFire(1f, 0f);
+            alpha.TryFire(1f, 0f, UniNet.Core.Hosting.UniNetTime.Now);
             if (!WaitFor(() => alpha.HudAmmo == ArenaConfig.MaxAmmo - 1, 10, "클라A 탄약 감소")) return;
 
             // 피해 → 사망 → 킬피드 (총알 비행 없이 권위 경로로 직접 — 배치모드는 틱이 없다)
@@ -137,8 +137,8 @@ namespace Arena
             Debug.Log("[ARENA-2PROC] CLIENT-OWNER-ONLY-AMMO OK ammo=" + alpha.HudAmmo);
 
             // 총알 동적 스폰 전파
-            if (!WaitFor(() => Bullets().Length >= 1, 15, "총알 스폰 전파")) return;
-            Debug.Log("[ARENA-2PROC] CLIENT-BULLET-SPAWNED");
+            if (!WaitFor(() => FindNamed("FxTracer") != null, 15, "히트스캔 트레이서 전파")) return;
+            Debug.Log("[ARENA-2PROC] CLIENT-HITSCAN-TRACER");
 
             // 피해 → 사망 리플리케이션 + RepNotify
             if (!WaitFor(() => bravo.HudHp == 0, 15, "사망 리플리케이션")) return;
@@ -169,9 +169,6 @@ namespace Arena
 
         private static ArenaPlayer[] Players()
             => UnityEngine.Object.FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-
-        private static ArenaBullet[] Bullets()
-            => UnityEngine.Object.FindObjectsByType<ArenaBullet>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 
         private static GameObject FindNamed(string name)
         {
