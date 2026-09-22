@@ -3,7 +3,7 @@ using UniNet.Core.Hosting;
 
 namespace UniNet.Tests
 {
-    /// <summary>P3-④ NetUpdateFrequency — 오브젝트별 전송 주기 스케줄링 검증 (네트워킹 없음).</summary>
+    /// <summary>P3 NetUpdateFrequency — verifies per-object send-rate scheduling (no networking).</summary>
     public sealed class UpdateFrequencyTests
     {
         [SetUp]
@@ -17,7 +17,7 @@ namespace UniNet.Tests
         {
             var server = new NetworkServer();
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "freq-1");
-            player.NetworkUpdateFrequencyHz = 2f;   // 0.5초마다 1회
+            player.NetworkUpdateFrequencyHz = 2f;   // one compare every 0.5 s
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
@@ -51,7 +51,7 @@ namespace UniNet.Tests
             ch.Clear();
 
             player.Score = 5;
-            server.TickReplication(server.SnapshotObjects());   // 1-arg — P2 호환 경로
+            server.TickReplication(server.SnapshotObjects());   // 1-arg — P2 compatibility path
             Assert.AreEqual(1, ch.Replicates.Count, "즉시 모드 — 주기 정책 미적용");
         }
 
@@ -59,7 +59,7 @@ namespace UniNet.Tests
         public void 주기_0은_매_틱_전송을_유지한다()
         {
             var server = new NetworkServer();
-            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "freq-3");   // hz 기본 0
+            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "freq-3");   // Hz defaults to 0
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);

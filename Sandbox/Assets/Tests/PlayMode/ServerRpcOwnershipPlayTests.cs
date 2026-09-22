@@ -10,12 +10,12 @@ using UnityEngine.TestTools;
 
 namespace UniNet.Tests
 {
-    /// <summary>ServerRpc 소유자 자동 강제 — 실제 루프백 RUDP 호스트 왕복 (ADR-0016).</summary>
+    /// <summary>ServerRpc owner auto-enforcement — real loopback RUDP host round-trip (see ADR-0016).</summary>
     public sealed class ServerRpcOwnershipPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 64;   // 실행별 랜덤 포트 — 기존 PlayMode 클래스와 오프셋 겹침 없음
+        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 64;   // random port per run — no offset overlap with the other PlayMode classes
 
-        /// <summary>두 번째(비소유) 연결 흉내용 기록 채널 — 단일 프로세스에서 ClientSender는 1개뿐이라 서버 수신 경로로 대체한다.</summary>
+        /// <summary>Record-only channel standing in for a second (non-owner) connection — a single process has only one ClientSender, so the server receive path substitutes for it.</summary>
         private sealed class GuestChannel : IUniNetSystemChannel
         {
             public long UniNetConnId { get; set; }
@@ -29,7 +29,7 @@ namespace UniNet.Tests
         }
 
         [TearDown]
-        public void StopListeners() => UniNetManager.HostStop();   // 잔존 리스너 정리 (멱등)
+        public void StopListeners() => UniNetManager.HostStop();   // clean up leftover listeners (idempotent)
 
         [UnityTest]
         public IEnumerator 소유자_왕복은_실행되고_비소유_발신은_거부된다()
@@ -46,15 +46,15 @@ namespace UniNet.Tests
                 yield return WaitUntil(() => UniNetEnvironment.Client.GetOwner(player.NetId) != 0, 5);
                 Assert.IsTrue(player.IsOwner, "유일 연결(호스트 클라)이 소유");
 
-                // 1) 소유자 발신 실제 왕복 — 강제가 정상 경로를 막지 않는다
+                // 1) Owner-sent round-trip — enforcement must not block the legitimate path
                 int pingId = Fnv1a.MethodId("UniNet.Tests.VerifyPlayer.RpcPing");
                 UniNetEnvironment.ClientSender.UniNetSend(pingId,
                     VerifyPlayer.__UniNetEncode_RpcPing(player.NetId, player.SubId, 7), RpcDeliveryMode.ReliableOrdered);
                 yield return WaitUntil(() => player.ServerPingCount == 1, 5);
                 Assert.AreEqual(1, player.ServerPingCount, "소유자 발신은 왕복해 실행된다");
 
-                // 2) 비소유 발신 — 실제 서버에 게스트 연결을 붙이고, 소유자가 아닌 연결 명의로 같은 오브젝트 대상 요청.
-                //    재배정 후 누가 소유자인지는 오브젝트 수·netId 정렬에 따라 달라지므로 런타임에 비소유 연결을 고른다.
+                // 2) Non-owner send — attach a real guest connection to the server and request the same object under a non-owner connection identity.
+                //    Who owns the object after reassignment depends on object count and netId ordering, so pick a non-owner connection at runtime.
                 var guest = new GuestChannel();
                 UniNetEnvironment.Server.AttachConnection(guest);
                 UniNetEnvironment.PumpMain();

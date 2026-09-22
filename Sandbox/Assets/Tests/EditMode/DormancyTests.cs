@@ -4,7 +4,7 @@ using UniNet.Core.Hosting;
 
 namespace UniNet.Tests
 {
-    /// <summary>P3-③ 휴면(Dormancy) — 휴면 중 델타 중단·깨울 때 누적 변경분 전송 검증 (네트워킹 없음).</summary>
+    /// <summary>P3 dormancy — verifies delta suppression while dormant and delivery of accumulated changes on wake (no networking).</summary>
     public sealed class DormancyTests
     {
         [SetUp]

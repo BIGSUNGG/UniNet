@@ -6,10 +6,10 @@ using UnityEngine;
 
 namespace UniNet.Tests
 {
-    /// <summary>P3 리플리케이션 테스트 공용 — 시스템 메시지 기록 채널 + 씬 등록 헬퍼.</summary>
+    /// <summary>Shared P3 replication test support — recording system channel plus scene registration helper.</summary>
     internal static class ReplicationTestSupport
     {
-        /// <summary>씬 오브젝트 등록 (실제 경로와 동일 — 컴포넌트 NetId 키). DestroyImmediate는 호출자 책임.</summary>
+        /// <summary>Registers a scene object exactly as the live path does (keyed by the component's NetId). Caller owns DestroyImmediate.</summary>
         internal static T RegisterScene<T>(NetworkServer server, string name) where T : NetworkBehaviour
         {
             var go = new GameObject(name);
@@ -19,7 +19,7 @@ namespace UniNet.Tests
         }
     }
 
-    /// <summary>시스템 메시지를 전부 기록하는 테스트 채널.</summary>
+    /// <summary>Test channel that records every system message instead of sending it.</summary>
     internal sealed class RecordingChannel : IUniNetSystemChannel
     {
         public long UniNetConnId { get; set; }

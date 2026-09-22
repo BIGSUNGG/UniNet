@@ -5,6 +5,14 @@
 
 ## [2026-09-22]
 
+### Changed (코드 주석 전체 영어화 — 사용자 관점 규약 확립)
+
+- **저장소 전체 코드 주석을 영어로 전환 + 라이브러리 사용자 관점 재작성** (ADR [[0019-코드-주석-영어화-사용자-관점-규약]] · 규약 [[conventions]])
+  - **대상 78개 파일** — Package(UniNet.Core·UniNet.Unity 공개 API XML doc) · CodeGenerator(생성기 주석 + 생성 코드에 방출되는 주석 템플릿 `Emitter.cs`) · Sandbox(Arena 예제·Tests·에디터 툴). XML doc은 첫 문장 what + 사용자 계약(실행 주체·기본값·제약·호출 시점), 인라인은 why 중심으로 재작성
+  - **경계** — 코드 로직·식별자·문자열 리터럴 무변경 (로그·예외 메시지의 한국어는 주석이 아니므로 유지). 생성물(obj/·.gendump-fixture.cs)은 제외 — 제너레이터 재실행 시 영어로 재생성
+  - **검증**: 주석 제거 정규화 비교로 코드 무변경 입증(HEAD 대비 77파일 일치, Emitter는 생성-주석 템플릿 문자열만 변경) · dotnet 빌드 녹색 · Unity 컴파일 에러 0 · EditMode 60/60 · **reviewer 판정 CLEAN** — 주석-코드 대조 전수 확인(틀린 주석 0·정보 손실 0), 문자열 리터럴 집합 불변 확인
+- **주석 규약 확립** — conventions에 주석 언어(영어)·관점(공개 API는 사용자 계약, 인라인은 why) 규약 추가 (ADR-0019)
+
 ### Changed (ServerRpc 검증 훅 — 자동 감지 제거, Validate 옵트인)
 
 - **`_Validate` 자동 감지 제거 → `[ServerRpc(Validate = true)]` 옵트인** (ADR [[0018-ServerRpc-Validate-옵트인]])

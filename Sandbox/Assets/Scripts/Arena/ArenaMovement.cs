@@ -3,13 +3,13 @@ using UnityEngine;
 namespace Arena
 {
     /// <summary>
-    /// P4 이동 규칙 단일 공급원 — 서버 권위 시뮬레이션과 클라 예측이 같은 Step을 공유한다
-    /// (양쪽 규칙이 달라지면 예측 오차가 상수가 되므로 절대 복제하지 않는다).
-    /// Reconcile은 서버 권위 좌표 수신 시 예측 좌표를 보정한다.
+    /// Single source of truth for P4 movement rules — server-authoritative simulation and client prediction share the same Step
+    /// (diverging rules would turn prediction error into a constant offset; never duplicate the rule).
+    /// Reconcile corrects the predicted coordinates when authoritative server coordinates arrive.
     /// </summary>
     internal static class ArenaMovement
     {
-        /// <summary>이동 1스텝 — 속도·경계·기둥 충돌(축 분리) 규칙. 서버와 예측 클라가 동일 적용한다.</summary>
+        /// <summary>One movement step — speed, boundary, and pillar collision rules (axis-separated). Applied identically by the server and the predicting client.</summary>
         public static (float X, float Z) Step(float x, float z, sbyte dx, sbyte dy, float dt)
         {
             float nx = Mathf.Clamp(x + dx * ArenaConfig.MoveSpeed * dt, -ArenaConfig.Half, ArenaConfig.Half);
@@ -19,7 +19,7 @@ namespace Arena
             return (x, z);
         }
 
-        /// <summary>기둥 충돌 — 확장 AABB 점 포함 판정 (플레이어 반경 포함).</summary>
+        /// <summary>Pillar collision — expanded AABB point containment check (includes player radius).</summary>
         public static bool Blocked(float x, float z)
         {
             foreach (var (px, pz, half) in ArenaConfig.Pillars)
@@ -32,8 +32,8 @@ namespace Arena
         }
 
         /// <summary>
-        /// P4 NetworkTransform.MovementRule 어댑터 — 컴포넌트 틱(서버 권위·예측)이 호출한다.
-        /// Y축은 아레나 평면에서 사용하지 않는다. 부동 소수 입력을 8방향 sbyte 규칙으로 변환해 Step에 위임한다.
+        /// P4 NetworkTransform.MovementRule adapter — called by the component tick (server authority and prediction).
+        /// The Y axis is unused in this flat arena. Converts float input into the 8-direction sbyte rule and delegates to Step.
         /// </summary>
         public static void StepNet(ref float x, ref float y, ref float z, float inX, float inY, float inZ, float dt)
         {
@@ -41,14 +41,14 @@ namespace Arena
             sbyte dy = (sbyte)Mathf.Clamp(Mathf.Round(inY), -1f, 1f);
             var (nx, nz) = Step(x, z, dx, dy, dt);
             x = nx;
-            z = nz;   // y는 평면 높이 — 컴포넌트가 관리하지 않는다
+            z = nz;   // y stays as the flat plane height — not managed by the component
         }
 
         /// <summary>
-        /// P4 예측 조정 — 서버 권위 좌표 수신 시 예측 좌표를 보정한다 (축 단위).
-        /// 오차가 snapThreshold를 넘으면 스냅(하드 조정), 아니면 잔여 오차의 softRate를 즉시 흡수한다(소프트 조정)
-        /// — UE ClientAdjustPosition 단순형.
-        /// ponytail: 입력 시퀀스 ack·미적용 입력 재적용 큐는 UE급 구현 — 예측 오차가 눈에 띄면 도입.
+        /// P4 prediction reconciliation — corrects the predicted coordinate when the authoritative server coordinate arrives (per axis).
+        /// Errors beyond snapThreshold snap (hard correction); otherwise softRate of the residual error is absorbed immediately (soft correction)
+        /// — a simplified UE ClientAdjustPosition.
+        /// ponytail: input-sequence ack and a replay queue of unacknowledged inputs would be the UE-grade version — add if prediction error becomes visible.
         /// </summary>
         public static float ReconcileAxis(float predicted, float server,
             float snapThreshold = 0.5f, float softRate = 0.15f)

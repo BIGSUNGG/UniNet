@@ -9,21 +9,21 @@ using Debug = UnityEngine.Debug;
 namespace Arena
 {
     /// <summary>
-    /// 아레나 2-프로세스 검증기 — 실제 프로세스 간 RUDP로 교차 클라 기능을 검증한다.
-    /// 호스트(서버+클라A) + 원격 클라이언트(B) = 클라 2 접속 토폴로지.
+    /// Arena two-process verifier — validates cross-client features over real inter-process RUDP.
+    /// Host (server + client A) + remote client (B) = two connected clients.
     ///
-    /// 검증 항목 (마커 [ARENA-2PROC]):
-    /// - 클라 2 접속·동적 플레이어 2 스폰 전파·소유권 분배(라운드로빈)
-    /// - InitialOnly 스폰 전파(이름) — 후발 클라가 스폰 상태로 합류
-    /// - SkipOwner 조각 전파 — non-owner(B)만 조준각을 수신
-    /// - OwnerOnly 비전파 — non-owner(B)는 탄약 감소를 수신하지 않음
-    /// - 피해→사망 리플리케이션 + RepNotify, ClientRpc 킬피드, MulticastRpc FX, 파괴 전파
+    /// Checks (marker [ARENA-2PROC]):
+    /// - Two clients connect, two dynamic players spawn and replicate, ownership is split (round-robin)
+    /// - InitialOnly spawn propagation (names) — the late joiner arrives with full spawn state
+    /// - SkipOwner fragment propagation — only the non-owner (B) receives the aim angle
+    /// - OwnerOnly non-propagation — the non-owner (B) never receives ammo decreases
+    /// - Damage→death replication + RepNotify, ClientRpc kill feed, MulticastRpc FX, destroy propagation
     ///
-    /// 위치 이동 리플리케이션(서버 틱)은 PlayMode 호스트 테스트(ArenaRoundtripTests)가 담당 —
-    /// 배치모드는 MonoBehaviour Update가 동작하지 않아 시뮬레이션 틱이 없다 (RPC·리플리케이션 계층만 검증).
+    /// Position movement replication (server tick) is covered by the PlayMode host test (ArenaRoundtripTests) —
+    /// batchmode has no MonoBehaviour Update and thus no simulation tick (only the RPC/replication layers are verified here).
     ///
-    /// 실행: Unity.exe -batchmode -projectPath &lt;사본&gt; -executeMethod Arena.ArenaTwoProcessRunner.Run
-    ///       --arena-role=host|client  (실행 방법은 Document/examples/arena-shooter.md)
+    /// Run: Unity.exe -batchmode -projectPath &lt;copy&gt; -executeMethod Arena.ArenaTwoProcessRunner.Run
+    ///      --arena-role=host|client  (see Document/examples/arena-shooter.md for instructions)
     /// </summary>
     public static class ArenaTwoProcessRunner
     {
@@ -31,7 +31,7 @@ namespace Arena
 
         public static void Run()
         {
-            // batchmode -executeMethod는 RuntimeInitializeOnLoadMethod가 실행되지 않아 명시 등록 (멱등) — 기존 TwoProcessRunner와 동일
+            // batchmode -executeMethod does not run RuntimeInitializeOnLoadMethod, so register explicitly (idempotent) — same as the existing TwoProcessRunner
             global::UniNet.Generated.__UniNetRegistration.Register();
 
             string role = null;
@@ -44,7 +44,7 @@ namespace Arena
             else Debug.LogError("[ARENA-2PROC] FAIL — --arena-role=host|client 미지정");
         }
 
-        // ---------------------------------------------------------------- 호스트 (서버 + 클라A)
+        // ---------------------------------------------------------------- Host (server + client A)
 
         private static void RunHost()
         {
@@ -52,41 +52,41 @@ namespace Arena
             Wait(hostTask, 15, "호스트 리슨");
             if (hostTask.IsFaulted) { Debug.LogError("[ARENA-2PROC] HOST-ABORT " + hostTask.Exception); return; }
 
-            // 클라 2 접속 대기 (호스트 클라A + 원격 클라B) — batchmode 초기화 시간까지 여유 있게
+            // wait for two clients (host client A + remote client B) — generous timeout for batchmode startup
             if (!WaitFor(() => LiveConnections() == 2, 150, "클라 2 접속")) return;
             Debug.Log("[ARENA-2PROC] HOST-TWO-CLIENTS");
 
-            // 스폰은 접속 2명 확정 후 — 라운드로빈 소유권이 A/B에 각각 배정된다 (CreatePlayer가 복제·등록·전파까지 수행)
+            // spawn after both connections are confirmed — round-robin assigns ownership to A/B (CreatePlayer handles clone, register, and broadcast)
             var alpha = CreatePlayer("Alpha", 123, new Vector3(0f, 0.5f, 0f));
             var bravo = CreatePlayer("Bravo", 456, new Vector3(5f, 0.5f, 0f));
-            alpha.LocalInputEnabled = false;   // 호스트 클라의 로컬 입력이 프로그램 입력을 덮어쓰지 않게 한다
+            alpha.LocalInputEnabled = false;   // keep the host client's local input from overriding programmatic input
             bravo.LocalInputEnabled = false;
 
-            // 클라A 소유 확인 (라운드로빈 — 첫 스폰 = 첫 연결)
+            // verify client A ownership (round-robin — first spawn goes to the first connection)
             if (!WaitFor(() => alpha.IsOwner, 10, "클라A의 Alpha 소유")) return;
 
-            // 조준 제출 — SkipOwner: B만 수신해야 한다
+            // submit aim — SkipOwner: only B should receive it
             alpha.SubmitAimInput(45f);
-            PumpFor(2.0);   // SkipOwner 델타 전파 보장 (B의 대기 시간과 무관하게 전송 완료)
+            PumpFor(2.0);   // ensure the SkipOwner delta goes out (independent of B's polling)
 
-            // 발사 — OwnerOnly 탄약 감소 + 총알 동적 스폰 전파
+            // fire — OwnerOnly ammo decrease + tracer FX propagation
             WaitFor(() => UniNetEnvironment.Client.LocalConnId != 0, 10, "클라A welcome");
-            ThreadSleep(1.0);   // 스폰 전파 여유
+            ThreadSleep(1.0);   // grace for spawn propagation
             alpha.TryFire(1f, 0f, UniNet.Core.Hosting.UniNetTime.Now);
             if (!WaitFor(() => alpha.HudAmmo == ArenaConfig.MaxAmmo - 1, 10, "클라A 탄약 감소")) return;
 
-            // 피해 → 사망 → 킬피드 (총알 비행 없이 권위 경로로 직접 — 배치모드는 틱이 없다)
+            // damage → death → kill feed (straight through the authority path, no bullet flight — batchmode has no tick)
             bravo.ServerApplyDamage(ArenaConfig.MaxHp, crit: false);
             alpha.BroadcastKillFeed(alpha.DisplayName, bravo.DisplayName);
 
-            // 델타·ClientRpc 전파 여유 — TickReplication을 돌리며 대기 (종료 전 전파 완료)
+            // grace for delta and ClientRpc propagation — pump TickReplication while waiting (finish before exit)
             PumpFor(3.0);
 
             Debug.Log($"[ARENA-2PROC] HOST-DONE ammoA={alpha.HudAmmo} aimA={alpha.HudAim} " +
                       $"hpB={bravo.HudHp} scoreA={alpha.HudScore} killfeed={ArenaHud.LastKillFeed}");
         }
 
-        // ---------------------------------------------------------------- 클라이언트 (B)
+        // ---------------------------------------------------------------- Client (B)
 
         private static void RunClient()
         {
@@ -97,7 +97,7 @@ namespace Arena
             if (!WaitFor(() => UniNetEnvironment.Client.LocalConnId != 0, 15, "welcome")) return;
             Debug.Log($"[ARENA-2PROC] CLIENT-CONNECTED connId={UniNetEnvironment.Client.LocalConnId}");
 
-            // 2 플레이어 스폰 + 내 소유 1개
+            // two players spawned + exactly one owned by me
             if (!WaitFor(() => Players().Length == 2, 30, "플레이어 2 스폰 전파")) return;
             ArenaPlayer mine = null, alpha = null, bravo = null;
             foreach (var p in Players())
@@ -121,12 +121,12 @@ namespace Arena
             }
             Debug.Log("[ARENA-2PROC] CLIENT-SPAWNED-2 mine=Bravo (InitialOnly 이름 전파 OK)");
 
-            // SkipOwner — non-owner(B)가 Alpha의 조준각을 수신하는가
+            // SkipOwner — does the non-owner (B) receive Alpha's aim angle
             if (!WaitFor(() => Mathf.Abs(Mathf.DeltaAngle(alpha.HudAim, 45f)) < 0.5f, 15, "SkipOwner 조준 전파(B 수신)")) return;
             Debug.Log("[ARENA-2PROC] CLIENT-SKIP-OWNER-AIM OK aim=" + alpha.HudAim);
 
-            // OwnerOnly — non-owner(B)는 Alpha의 탄약 감소를 수신하지 않는다
-            PumpFor(3.0);   // Alpha 발사 전파 여유 (무조건 로그 없는 대기)
+            // OwnerOnly — the non-owner (B) must not receive Alpha's ammo decrease
+            PumpFor(3.0);   // grace for Alpha's fire to propagate (silent wait, no log)
             if (alpha.HudAmmo != ArenaConfig.MaxAmmo)
             {
                 Debug.LogError("[ARENA-2PROC] CLIENT-FAIL — OwnerOnly 탄약이 B에 전파됨 ammo=" + alpha.HudAmmo);
@@ -134,31 +134,31 @@ namespace Arena
             }
             Debug.Log("[ARENA-2PROC] CLIENT-OWNER-ONLY-AMMO OK ammo=" + alpha.HudAmmo);
 
-            // 총알 동적 스폰 전파
+            // tracer FX propagation
             if (!WaitFor(() => FindNamed("FxTracer") != null, 15, "히트스캔 트레이서 전파")) return;
             Debug.Log("[ARENA-2PROC] CLIENT-HITSCAN-TRACER");
 
-            // 피해 → 사망 리플리케이션 + RepNotify
+            // damage → death replication + RepNotify
             if (!WaitFor(() => bravo.HudHp == 0, 15, "사망 리플리케이션")) return;
             if (!WaitFor(() => ArenaHud.LastHitText.Contains("Bravo"), 15, "RepNotify(HP) 관찰")) return;
             Debug.Log("[ARENA-2PROC] CLIENT-DAMAGE-REPLICATED hitText=" + ArenaHud.LastHitText);
 
-            // ClientRpc 킬피드
+            // ClientRpc kill feed
             if (!WaitFor(() => ArenaHud.LastKillFeed == "Alpha ▶ Bravo", 15, "ClientRpc 킬피드")) return;
             Debug.Log("[ARENA-2PROC] CLIENT-KILLFEED OK");
 
-            // MulticastRpc — 사망 폭발 FX가 클라에도 생성된다
+            // MulticastRpc — the death explosion FX also spawns on the client
             if (!WaitFor(() => FindNamed("FxExplosion") != null, 15, "MulticastRpc FX")) return;
             Debug.Log("[ARENA-2PROC] CLIENT-MULTICAST-FX OK");
 
             Debug.Log("[ARENA-2PROC] CLIENT-DONE");
         }
 
-        // ---------------------------------------------------------------- 공용
+        // ---------------------------------------------------------------- Shared
 
         private static ArenaPlayer CreatePlayer(string name, int seed, Vector3 pos)
         {
-            // 템플릿 복제 스폰 — private [Replicated] 초기화(InitServerState)는 configure 콜백으로 스폰 기준선에 실린다
+            // clone-from-template spawn — the private [Replicated] init (InitServerState) rides on the spawn baseline via the configure callback
             var template = new GameObject("Arena2Proc_" + name);
             template.transform.position = pos;
             template.AddComponent<ArenaPlayer>();
@@ -220,7 +220,7 @@ namespace Arena
         private static void ThreadSleep(double seconds)
             => System.Threading.Thread.Sleep(TimeSpan.FromSeconds(seconds));
 
-        /// <summary>로그 없는 전파 대기 — PumpMain + 서버 리플리케이션 틱을 지정 시간 동안 구동한다.</summary>
+        /// <summary>Silent propagation wait — runs PumpMain and the server replication tick for the given duration.</summary>
         private static void PumpFor(double seconds)
         {
             var deadline = DateTime.UtcNow.AddSeconds(seconds);

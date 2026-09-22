@@ -2,25 +2,25 @@ using Unity.Multiplayer.Playmode;
 
 namespace Arena
 {
-    /// <summary>아레나 네트워크 역할 — 씬 부트스트랩이 이 역할로 UniNet을 시작한다.</summary>
+    /// <summary>Arena network role — the scene bootstrap starts UniNet in this role.</summary>
     public enum ArenaRole
     {
-        /// <summary>MPPM 구성·태그로 자동 판별한다 (기본값).</summary>
+        /// <summary>Detected automatically from MPPM topology and tags (default).</summary>
         Auto,
 
-        /// <summary>전용 서버 — 권위 시뮬레이션만, 로컬 플레이어 없음.</summary>
+        /// <summary>Dedicated server — authority simulation only, no local player.</summary>
         Server,
 
-        /// <summary>클라이언트 — 서버에 접속한다.</summary>
+        /// <summary>Client — connects to the server.</summary>
         Client,
 
-        /// <summary>서버+클라이언트 한 프로세스 (1인 빠른 데모용).</summary>
+        /// <summary>Server + client in one process (quick single-person demo).</summary>
         Host,
     }
 
     /// <summary>
-    /// 역할 판별 — 우선순위: 인스펙터 강제값 → MPPM 플레이어 태그(UniNetServer/UniNetClient/UniNetHost)
-    /// → MPPM 토폴로지(메인 에디터=서버, 가상 플레이어=클라이언트).
+    /// Role resolution — priority: inspector override → MPPM player tags (UniNetServer/UniNetClient/UniNetHost)
+    /// → MPPM topology (main editor = server, virtual players = clients).
     /// </summary>
     internal static class ArenaRoleResolver
     {

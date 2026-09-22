@@ -5,10 +5,10 @@ using UnityEngine;
 
 namespace UniNet.Tests
 {
-    /// <summary>동적 스폰/파괴 + 조건부 리플리케이션(OwnerOnly·SkipOwner·InitialOnly) 코어 로직 테스트 (네트워킹 없음).</summary>
+    /// <summary>Dynamic spawn/destroy + conditional replication (OwnerOnly/SkipOwner/InitialOnly) core-logic tests (no networking).</summary>
     public sealed class SpawnConditionTests
     {
-        private const uint ScoreBit = 1u << 0;      // SpawnablePlayer 필드 인덱스 고정
+        private const uint ScoreBit = 1u << 0;      // fixed SpawnablePlayer field indices
         private const uint SecretBit = 1u << 1;
         private const uint TeamBit = 1u << 2;
         private const uint SeedBit = 1u << 3;
@@ -116,7 +116,7 @@ namespace UniNet.Tests
                 var entry = new NetworkServer.SubObjectEntry(player);
                 handler.InitSnapshot(entry);
 
-                player.SpawnSeed = 42;   // 스폰 이후 값 변경
+                player.SpawnSeed = 42;   // changed after spawn
                 var (toOwner, toOthers) = handler.CompareAndWriteDelta(entry);
                 Assert.IsNull(toOwner, "InitialOnly 변경은 델타를 만들지 않는다");
                 Assert.IsNull(toOthers, "InitialOnly 변경은 델타를 만들지 않는다");
@@ -167,7 +167,7 @@ namespace UniNet.Tests
             {
                 server.AttachConnection(ch1);
                 server.AttachConnection(ch2);
-                UniNetEnvironment.PumpMain();   // Welcome·재배정 실행 — 연결 2개 확정
+                UniNetEnvironment.PumpMain();   // runs Welcome/reassignment — settles both connections
 
                 ulong netId = server.RegisterDynamicObject(new object[] { player });
                 Assert.AreNotEqual(0ul, netId, "동적 netId 할당");
@@ -230,14 +230,14 @@ namespace UniNet.Tests
             try
             {
                 server.AttachConnection(ch1);
-                UniNetEnvironment.PumpMain();   // 첫 연결 확정
+                UniNetEnvironment.PumpMain();   // settles the first connection
 
                 player.Score = 77;
                 ulong netId = server.RegisterDynamicObject(new object[] { player });
                 server.BroadcastSpawn(netId);
                 Assert.AreEqual(1, ch1.Spawns.Count);
 
-                // 후발 접속 — 캐치업이 기존 동적 오브젝트를 스폰으로 전달
+                // late join — catch-up delivers the existing dynamic object as a spawn
                 server.AttachConnection(late);
                 UniNetEnvironment.PumpMain();
 
@@ -252,7 +252,7 @@ namespace UniNet.Tests
             }
         }
 
-        /// <summary>스폰·파괴·리플리케이션 기록 채널.</summary>
+        /// <summary>Channel recording spawns, destroys, and replications.</summary>
         private sealed class RecordingChannel : IUniNetSystemChannel
         {
             public long UniNetConnId { get; set; }

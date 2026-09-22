@@ -3,7 +3,8 @@ using System.Collections.Generic;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// 클라이언트 런타임 — 씬·동적 스폰 오브젝트 등록(오브젝트당 1 netId + 컴포넌트 배열), 서버가 알려준 연결 ID·소유권 맵 보관.
+    /// Client-side runtime — keeps scene and dynamically spawned objects registered (one netId per object plus its
+    /// component array), and stores the connection ID and ownership map the server announced.
     /// </summary>
     public sealed class NetworkClient
     {
@@ -11,28 +12,28 @@ namespace UniNet.Core.Hosting
         private readonly Dictionary<ulong, object[]> _objects = new();
         private readonly Dictionary<ulong, long> _owners = new();
 
-        /// <summary>서버가 부여한 내 연결 ID (Welcome 수신 시 설정).</summary>
+        /// <summary>This client's connection ID assigned by the server (set when the Welcome message arrives).</summary>
         public long LocalConnId { get; private set; }
 
-        /// <summary>오브젝트를 등록한다 — 오브젝트(netId)에 NetworkBehaviour 컴포넌트 배열을 슬롯 순서로. 씬·동적 스폰 공용.</summary>
+        /// <summary>Registers an object — binds a NetworkBehaviour component array (in slot order) to a netId. Shared by scene objects and dynamic spawns.</summary>
         public void Register(ulong netId, object[] components)
         {
             lock (_gate) _objects[netId] = components;
         }
 
-        /// <summary>등록을 해제한다 (파괴 동기화). 등록이 있었으면 true.</summary>
+        /// <summary>Removes a registration (destroy sync). Returns true if it was registered.</summary>
         public bool Unregister(ulong netId)
         {
             lock (_gate) return _objects.Remove(netId);
         }
 
-        /// <summary>오브젝트의 컴포넌트 배열을 조회한다 (없으면 null) — 오브젝트 단위 확인용.</summary>
+        /// <summary>Returns the object's component array (null if unknown) — for object-level checks.</summary>
         public object[] Get(ulong netId)
         {
             lock (_gate) return _objects.TryGetValue(netId, out var o) ? o : null;
         }
 
-        /// <summary>서브슬롯의 인스턴스를 조회한다 (RPC 라우팅·리플리케이션 적용).</summary>
+        /// <summary>Returns the instance in a sub slot (used for RPC routing and applying replication).</summary>
         public object Get(ulong netId, byte subId)
         {
             lock (_gate)
@@ -42,16 +43,16 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>Welcome 수신 — 내 연결 ID를 설정한다 (생성 클라 허브가 호출).</summary>
+        /// <summary>Applies the Welcome message — sets this client's connection ID (called by the generated client hub).</summary>
         public void SetLocalConnId(long connId) => LocalConnId = connId;
 
-        /// <summary>소유권 갱신 수신 (OwnerUpdate) — 생성 클라 허브가 호출.</summary>
+        /// <summary>Applies an ownership update (OwnerUpdate) — called by the generated client hub.</summary>
         public void ApplyOwner(ulong netId, long ownerConnId)
         {
             lock (_gate) _owners[netId] = ownerConnId;
         }
 
-        /// <summary>오브젝트 소유자 조회 (0 = 미할당).</summary>
+        /// <summary>Returns the owner connection of an object (0 = unassigned).</summary>
         public long GetOwner(ulong netId)
         {
             lock (_gate) return _owners.TryGetValue(netId, out var o) ? o : 0;

@@ -1,34 +1,35 @@
 namespace UniNet.Core.Hosting
 {
-/// <summary>시스템 메시지(Welcome·소유권·리플리케이션·스폰·파괴) 전송 계약 — 생성 서버 허브가 구현한다.</summary>
+/// <summary>Contract for sending system messages (Welcome, ownership, replication, spawn, destroy) — implemented by the generated server hub.</summary>
 public interface IUniNetSystemChannel
 {
-    /// <summary>서버가 부여한 이 연결의 ID (AttachConnection 시 설정) — ServerRpc 발신자 식별용.</summary>
+    /// <summary>Connection ID assigned by the server (set on AttachConnection) — used to identify ServerRpc senders.</summary>
     long UniNetConnId { get; set; }
 
-    /// <summary>클라이언트에 자신의 연결 ID를 알린다.</summary>
+    /// <summary>Tells a client its own connection ID.</summary>
     void SendWelcome(long connId);
 
-    /// <summary>오브젝트 소유자 변경을 알린다 (오브젝트 단위).</summary>
+    /// <summary>Notifies clients that an object's owner changed (per object).</summary>
     void SendOwnerUpdate(ulong netId, long ownerConnId);
 
-    /// <summary>서브오브젝트 리플리케이션 델타를 전송한다 (methodId는 타입별 생성 값).</summary>
+    /// <summary>Sends a sub-object replication delta (methodId is the generated per-type value).</summary>
     void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload);
 
     /// <summary>
-    /// 동적 오브젝트 스폰을 전송한다 — 변환 7값으로 초기 배치를, 서브 수+서브별 typeKey/전체 상태로
-    /// 오브젝트의 전 NetworkBehaviour를 클라가 생성·검증하도록 한다 (서브슬롯은 배열 순서 암시).
+    /// Sends a dynamic object spawn — the seven transform values place it initially, and the sub count
+    /// plus per-sub typeKey/state let the client create and verify every NetworkBehaviour on the object
+    /// (sub slots are implied by array order).
     /// </summary>
     void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw,
         byte subCount, ulong[] typeKeys, byte[][] states);
 
-    /// <summary>동적 오브젝트 파괴를 전송한다 (오브젝트 전체).</summary>
+    /// <summary>Sends a dynamic object destruction (the whole object).</summary>
     void SendDestroy(ulong netId);
 
-    /// <summary>P4 시간 동기화 — 서버 권위 시각(UniNetTime 도메인, 초)을 클라에 전송한다 (주기적 브로드캐스트).</summary>
+    /// <summary>P4 time sync — sends the authoritative server time (UniNetTime domain, seconds) to clients (periodic broadcast).</summary>
     void SendTimeSync(double serverTime);
 
-    /// <summary>일반 RPC 페이로드 전송 (어셈블리 무관 송신 경로).</summary>
+    /// <summary>Sends a generic RPC payload (assembly-agnostic send path).</summary>
     void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode);
 }
 

@@ -9,43 +9,44 @@ using UnityEngine.TestTools;
 namespace UniNet.Tests
 {
     /// <summary>
-    /// 수명주기 종료 API 검증 — 리슨/접속을 정지(Stop)한 뒤 동일 포트에서 재시작이 성공하는지 단언한다.
-    /// 배경: ServerAsync가 RpcListenHandle을 저장만 하고 Dispose하지 않아 Play 모드 종료·재진입 시
-    /// "RUDP 리스너 바인딩 실패 (0.0.0.0:포트)"가 발생했던 결함의 회귀 방지.
-    /// 각 테스트는 종료 API로 자기 리스너를 정리한다 — 테스트 간 잔존 리스너 포트 충돌 소멸.
+    /// Lifecycle stop API verification — asserts that stopping (Stop) a listener/connection succeeds and that
+    /// restarting on the same port then works. Background: regression guard for a defect where ServerAsync only
+    /// stored the RpcListenHandle without disposing it, causing "RUDP listener bind failure (0.0.0.0:port)"
+    /// when leaving and re-entering Play mode. Each test cleans up its own listener via the stop API —
+    /// eliminating leftover-listener port collisions between tests.
     /// </summary>
     public sealed class LifecycleStopTests
     {
-        private static readonly int PortBase = 30000 + (System.Environment.TickCount % 2000) * 12 + 40;   // 실행별 랜덤 포트 (이 클래스는 3개 포트 사용)
+        private static readonly int PortBase = 30000 + (System.Environment.TickCount % 2000) * 12 + 40;   // random port per run (this class uses 3 ports)
 
         [SetUp]
         public void AllowStopNoise()
         {
-            // 정지 과정에서 DRPC 세션 정리로 완료되지 못한 fire-and-forget 송신이
-            // 스레드풀 continuation에서 "세션이 끊겨 송신할 수 없습니다" 예외 로그를 남긴다 —
-            // 정상 종료 경로의 예상 노이즈이며 TearDown 종료 후에도 늦게 나올 수 있어
-            // 클래스 전체에서 로그 판정을 무시한다 (기능 단언은 Assert로 수행).
+            // During shutdown, fire-and-forget sends that could not complete while DRPC tore down sessions
+            // log a "session disconnected, cannot send" exception from thread-pool continuations.
+            // This is expected noise of the normal stop path and may surface even after TearDown ends,
+            // so log verdicts are ignored for the whole class (functional assertions use Assert).
             LogAssert.ignoreFailingMessages = true;
         }
 
         [TearDown]
         public void StopListeners()
         {
-            // TearDown은 별도 로그 스코프(ignore 리셋 상태)로 실행되므로 정지 노이즈 무시를 여기서 재설정한다
+            // TearDown runs in its own log scope (ignore resets), so re-apply the stop-noise suppression here
             LogAssert.ignoreFailingMessages = true;
-            UniNetManager.HostStop();   // 중간 실패 시 잔존 리스너 정리 (멱등 — 정상 종료 경로는 각 테스트 내부에서 수행)
+            UniNetManager.HostStop();   // clean up listeners after mid-test failures (idempotent — the normal stop path is exercised inside each test)
         }
 
         [OneTimeTearDown]
         public void RestoreLogChecks()
         {
-            LogAssert.ignoreFailingMessages = false;   // 클래스 종료 후 복구 — 이후 테스트의 로그 판정 유지
+            LogAssert.ignoreFailingMessages = false;   // restore after the class ends — keeps log verdicts meaningful for later tests
         }
 
         [UnityTest]
         public IEnumerator 서버_정지후_동일_포트_재리슨_성공()
         {
-            int port = PortBase;      // 실행별 랜덤 — 플레이 모드 종료 후 리스너 소켓 잔존(환경) 회피
+            int port = PortBase;      // random per run — works around listeners lingering after play mode ends (environment issue)
 
             var t1 = UniNetManager.ServerAsync(port);
             while (!t1.IsCompleted) yield return null;
@@ -55,7 +56,7 @@ namespace UniNet.Tests
             yield return StopTask(UniNetManager.ServerStopAsync());
             Assert.IsNull(UniNetEnvironment.Server, "정지 후 서버 참조 해제");
 
-            // 핵심 회귀 — 정지 후 동일 포트 재리슨이 바인딩 실패 없이 성공해야 한다
+            // Core regression — relistening on the same port after stopping must succeed without a bind failure
             var t2 = UniNetManager.ServerAsync(port);
             while (!t2.IsCompleted) yield return null;
             Assert.IsFalse(t2.IsFaulted, "재리슨 실패(포트 잔존): " + t2.Exception);
@@ -66,7 +67,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 클라_정지후_서버연결해제와_재접속_성공()
         {
-            int port = PortBase + 2;  // 실행별 랜덤
+            int port = PortBase + 2;  // random per run
             var serverTask = UniNetManager.ServerAsync(port);
             while (!serverTask.IsCompleted) yield return null;
             Assert.IsFalse(serverTask.IsFaulted, serverTask.Exception?.ToString());
@@ -95,7 +96,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_정지후_재시작_성공()
         {
-            int port = PortBase + 4;  // 실행별 랜덤
+            int port = PortBase + 4;  // random per run
             var h1 = UniNetManager.HostAsync(port);
             while (!h1.IsCompleted) yield return null;
             Assert.IsFalse(h1.IsFaulted, h1.Exception?.ToString());

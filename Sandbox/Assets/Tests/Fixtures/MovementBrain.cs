@@ -3,13 +3,13 @@ using UniNet.Unity;
 
 namespace UniNet.Tests
 {
-    /// <summary>다중 컴포넌트 검증 픽스처 1 — 이동 담당 서브오브젝트 (HealthTank와 같은 오브젝트에 붙는다).</summary>
+    /// <summary>Multi-component test fixture 1 — movement sub-object (attached to the same object as HealthTank).</summary>
     public sealed partial class MovementBrain : NetworkBehaviour
     {
         [Replicated]
         public int Speed = 1;
 
-        /// <summary>RpcMove 실행 횟수 (라우팅 검증용).</summary>
+        /// <summary>Number of times RpcMove ran (for routing verification).</summary>
         public int MoveCalls;
 
         [ServerRpc]

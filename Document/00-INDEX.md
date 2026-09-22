@@ -53,6 +53,7 @@
 - [[0016-ServerRpc-소유자-자동-강제]] — ServerRpc 발신자-소유자 자동 대조(보안 기본값)·RequireOwnership 옵트아웃·마이그레이션 노트
 - [[0017-동적-스폰-NetworkInstantiate-통합]] — Spawn(등록 전용) 제거·NetworkInstantiate(복제 겸함) 단독 API·configure 콜백(비직렬화 InitialOnly 초기화)
 - [[0018-ServerRpc-Validate-옵트인]] — `_Validate` 자동 감지 제거·`[ServerRpc(Validate = true)]` 옵트인·불일치 진단(UNINET011 에러·UNINET012 경고)·마이그레이션 노트
+- [[0019-코드-주석-영어화-사용자-관점-규약]] — 모든 코드 주석 영어 + 라이브러리 사용자 관점 XML doc·why 중심 인라인 규약 (문자열 리터럴은 대상 아님)
 
 ### _templates/ — 문서 템플릿
 
@@ -61,6 +62,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-22 — **코드 주석 전체 영어화 + 사용자 관점 재작성** (ADR-0019: 주석 언어·관점 규약 확립 — 78개 파일, 코드 무변경 입증, reviewer CLEAN)
 - 2026-09-22 — **ServerRpc 검증 훅 옵트인화** (ADR-0018: `_Validate` 자동 감지 제거·`[ServerRpc(Validate = true)]` 옵트인 — UNINET011 에러·UNINET012 경고 신설. 제너레이터 0.1.5. in-repo `_Validate` 5곳 마이그레이션. EditMode 60/60·PlayMode 15/15)
 - 2026-09-22 — **ServerRpc 소유자 자동 강제** (ADR-0016: 비소유 발신 거부 + RequireOwnership 옵트아웃 — netId 위조로 타 오브젝트 RPC 실행 불가화. 제너레이터 0.1.3. EditMode 60/60·PlayMode 15/15)
 - 2026-09-22 — **동적 스폰 API 교체** (ADR-0017: Spawn 제거·NetworkInstantiate(복제 겸함·configure 콜백) 통합·NetworkDestroy 유지. EditMode 60/60·PlayMode 15/15)

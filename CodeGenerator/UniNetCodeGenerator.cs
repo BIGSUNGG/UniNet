@@ -9,9 +9,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace UniNet.CodeGenerator
 {
     /// <summary>
-    /// UniNet 소스 제너레이터 — NetworkBehaviour 파생 타입의 RPC/리플리케이션 멤버를 스캔해
-    /// DRPC 런타임 위에서 동작하는 허브 배선·타입별 디스패치·델타 핸들을 생성한다.
-    /// Roslyn 4.3(Unity 6.0 LTS) 타깃.
+    /// UniNet source generator — scans RPC/replication members on NetworkBehaviour-derived types and
+    /// generates hub wiring, per-type dispatch, and delta handles that run on top of the DRPC runtime.
+    /// Targets Roslyn 4.3 (Unity 6.0 LTS).
     /// </summary>
     [Generator]
     public sealed class UniNetCodeGenerator : IIncrementalGenerator
@@ -55,7 +55,7 @@ namespace UniNet.CodeGenerator
         }
     }
 
-    /// <summary>의미론 분석 — NetworkBehaviour 파생의 RPC/리플리케이션 멤버 추출·검증.</summary>
+    /// <summary>Semantic analysis — extracts and validates RPC/replication members of NetworkBehaviour-derived types.</summary>
     internal sealed class Parser
     {
         internal delegate void ReportDelegate(Diagnostic diagnostic);
@@ -98,7 +98,7 @@ namespace UniNet.CodeGenerator
                         ParseField(model, type, field);
                 }
 
-                // 리플리케이션 핸들은 필드가 있을 때만
+                // a replication handle exists only when the type has replicated fields
                 model.HasReplicatedFields = model.ReplicatedFields.Count > 0;
                 result.Add(model);
             }
@@ -116,7 +116,7 @@ namespace UniNet.CodeGenerator
                 : clientRpc != null ? RpcKind.Client
                 : RpcKind.Multicast;
 
-            // partial 선언 검사
+            // must be a partial declaration (the body lives in the user's _Implementation method)
             if (!method.IsPartialDefinition)
             {
                 Report(Diagnostics.RpcNotPartial, method.Locations[0], method.Name, kind.ToString());
@@ -135,11 +135,11 @@ namespace UniNet.CodeGenerator
             };
             if (serverRpc != null)
             {
-                rpc.RequireOwnership = GetRequireOwnership(serverRpc);   // 기본 true — [ServerRpc(RequireOwnership = false)]로 옵트아웃 (ADR-0016)
-                rpc.HasValidate = GetValidate(serverRpc);                // 기본 false — [ServerRpc(Validate = true)]로 옵트인 (ADR-0018)
+                rpc.RequireOwnership = GetRequireOwnership(serverRpc);   // default true — opt out via [ServerRpc(RequireOwnership = false)] (see ADR-0016)
+                rpc.HasValidate = GetValidate(serverRpc);                // default false — opt in via [ServerRpc(Validate = true)] (see ADR-0018)
             }
 
-            // 매개변수 타입 검사 — 기본형·string 또는 [Message] 타입
+            // parameter type check — primitives, string, or [Message] types
             foreach (var p in rpc.Parameters)
             {
                 p.IsMessage = IsMessageType(p.Type);
@@ -147,7 +147,7 @@ namespace UniNet.CodeGenerator
                     Report(Diagnostics.UnsupportedType, method.Locations[0], p.Type.ToDisplayString(), method.Name);
             }
 
-            // _Implementation 존재·시그니처 검사
+            // _Implementation presence and signature check
             var impl = type.GetMembers(method.Name + "_Implementation").OfType<IMethodSymbol>().FirstOrDefault();
             if (impl == null || !SignatureMatches(impl, method))
             {
@@ -155,7 +155,7 @@ namespace UniNet.CodeGenerator
                 return;
             }
 
-            // _Validate 검증 훅 — ServerRpc에서 Validate = true로 옵트인한 경우에만 연결된다 (자동 감지 없음 — ADR-0018)
+            // _Validate hook — wired only when the ServerRpc opts in with Validate = true (no auto-detection — see ADR-0018)
             var validate = type.GetMembers(method.Name + "_Validate").OfType<IMethodSymbol>().FirstOrDefault();
             if (rpc.Kind == RpcKind.Server)
             {
@@ -168,7 +168,7 @@ namespace UniNet.CodeGenerator
                 }
                 else if (validate != null)
                 {
-                    // 플래그 없이 _Validate만 두면 실행되지 않는다 — 옵트인 누락 실수를 경고로 알린다
+                    // a _Validate method without the flag never runs — warn about the likely missing opt-in
                     Report(Diagnostics.ValidateNotOptedIn, validate.Locations.Length > 0 ? validate.Locations[0] : method.Locations[0], method.Name);
                 }
             }
@@ -203,7 +203,7 @@ namespace UniNet.CodeGenerator
                 return;
             }
 
-            // Notify (선택) — void M(T prev)
+            // Notify (optional) — void M(T prev)
             var notifyName = GetNotifyName(attr);
             if (notifyName != null)
             {
@@ -237,8 +237,8 @@ namespace UniNet.CodeGenerator
         }
 
         /// <summary>
-        /// [Message] 마킹 타입 여부 — object 직렬화 경로(MessageId 헤더 디스패치)로 직렬화 가능한 타입.
-        /// MessageKind.NonId(4)는 헤더에 ID가 없어 object 디스패치 불가 → 미지원(UNINET002).
+        /// Whether the type is marked [Message] — serializable via the object path (MessageId header dispatch).
+        /// MessageKind.NonId (4) has no ID in its header so it cannot be dispatched as object → unsupported (UNINET002).
         /// </summary>
         internal static bool IsMessageType(ITypeSymbol type)
         {
@@ -287,7 +287,7 @@ namespace UniNet.CodeGenerator
             return null;
         }
 
-        /// <summary>ServerRpcAttribute.RequireOwnership 이름 지정 인자 (미지정 시 기본 true — 소유자 강제).</summary>
+        /// <summary>ServerRpcAttribute.RequireOwnership named argument (defaults to true — ownership enforced).</summary>
         private static bool GetRequireOwnership(AttributeData attr)
         {
             foreach (var named in attr.NamedArguments)
@@ -296,7 +296,7 @@ namespace UniNet.CodeGenerator
             return true;
         }
 
-        /// <summary>ServerRpcAttribute.Validate 이름 지정 인자 (미지정 시 기본 false — _Validate 훅 없음, ADR-0018).</summary>
+        /// <summary>ServerRpcAttribute.Validate named argument (defaults to false — no _Validate hook, see ADR-0018).</summary>
         private static bool GetValidate(AttributeData attr)
         {
             foreach (var named in attr.NamedArguments)
@@ -305,7 +305,7 @@ namespace UniNet.CodeGenerator
             return false;
         }
 
-        /// <summary>ReplicatedAttribute 생성자의 조건 인자를 내부 비트로 변환한다 (ReplicateCondition 값과 1:1).</summary>
+        /// <summary>Converts the ReplicatedAttribute constructor condition argument to internal bits (1:1 with ReplicateCondition values).</summary>
         private static int ParseCondition(AttributeData attr)
             => attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is int cond ? cond : 0;
 
@@ -335,7 +335,7 @@ namespace UniNet.CodeGenerator
         public List<FieldModel> ReplicatedFields { get; } = new();
         public bool HasReplicatedFields;
 
-        /// <summary>메서드 ID 충돌 검사.</summary>
+        /// <summary>Detects method ID collisions.</summary>
         public void ValidateIds(Action<Diagnostic> report, Dictionary<int, string> seen)
         {
             void Check(int id, string key, Location? location)
@@ -363,7 +363,7 @@ namespace UniNet.CodeGenerator
         public List<ParamModel> Parameters = new();
         public bool HasValidate;
 
-        /// <summary>ServerRpc 전용 — 서버 디스패치에서 발신자가 오브젝트 소유자임을 강제하는가 (기본 true, ADR-0016).</summary>
+        /// <summary>ServerRpc only — whether server dispatch enforces that the sender owns the object (default true, see ADR-0016).</summary>
         public bool RequireOwnership = true;
     }
 
@@ -388,13 +388,13 @@ namespace UniNet.CodeGenerator
         public bool IsMessage;
         public int Condition = CondNone;
 
-        /// <summary>InitialOnly 조건이 있는가 (델타 추적 제외).</summary>
+        /// <summary>Whether the InitialOnly condition is set (excluded from delta tracking).</summary>
         public bool IsInitialOnly => (Condition & CondInitialOnly) != 0;
 
-        /// <summary>OwnerOnly 조건이 있는가.</summary>
+        /// <summary>Whether the OwnerOnly condition is set.</summary>
         public bool IsOwnerOnly => (Condition & CondOwnerOnly) != 0;
 
-        /// <summary>SkipOwner 조건이 있는가.</summary>
+        /// <summary>Whether the SkipOwner condition is set.</summary>
         public bool IsSkipOwner => (Condition & CondSkipOwner) != 0;
     }
 
@@ -408,7 +408,7 @@ namespace UniNet.CodeGenerator
         }
     }
 
-    /// <summary>FNV-1a 32bit — 런타임 Fnv1a.MethodId와 동일 알고리즘.</summary>
+    /// <summary>FNV-1a 32-bit — same algorithm as the runtime Fnv1a.MethodId.</summary>
     internal static class Fnv
     {
         public static int MethodId(string value)
@@ -424,7 +424,7 @@ namespace UniNet.CodeGenerator
         }
     }
 
-    /// <summary>UNINET0xx 진단 정의.</summary>
+    /// <summary>UNINET0xx diagnostic definitions.</summary>
     internal static class Diagnostics
     {
         private static DiagnosticDescriptor Make(int id, string title, string format, DiagnosticSeverity severity)

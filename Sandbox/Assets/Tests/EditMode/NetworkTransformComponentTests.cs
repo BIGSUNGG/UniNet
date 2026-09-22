@@ -3,13 +3,13 @@ using UniNet.Unity;
 
 namespace UniNet.Tests
 {
-    /// <summary>P4 NetworkTransform 컴포넌트 — 예측 조정(ReconcileAxis) 수학 검증 (ADR-0013).</summary>
+    /// <summary>P4 NetworkTransform component — verifies the ReconcileAxis prediction-correction math (see ADR-0013).</summary>
     public sealed class NetworkTransformComponentTests
     {
         [Test]
         public void ReconcileAxis_오차가_작으면_소프트_흡수한다()
         {
-            // 예측 9.0, 서버 9.3 — 오차 0.3 < 스냅 임계 0.5 → 잔여 오차의 softRate만큼 흡수
+            // predicted 9.0 vs server 9.3 — error 0.3 < snap threshold 0.5, so absorb error × softRate
             var reconciled = NetworkTransform.ReconcileAxis(9f, 9.3f, 0.5f, 0.15f);
             Assert.AreEqual(9.045f, reconciled, 1e-4, "잔여 오차 0.3 × 0.15 = 0.045 흡수");
         }

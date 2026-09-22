@@ -7,10 +7,10 @@ using UnityEngine.TestTools;
 
 namespace UniNet.Tests
 {
-    /// <summary>P4 와이어·드라이버 레벨 테스트 — TimeSync 동기화와 리와인드 위치 히스토리 검증 (PlayMode 실제 루프백).</summary>
+    /// <summary>P4 wire/driver-level tests — verifies TimeSync synchronization and rewind position history (PlayMode real loopback).</summary>
     public sealed class P4HookPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 16;   // 실행별 랜덤 포트 — 플레이 모드 종료 후 리스너 소켓이 에디터 프로세스에 잔존하는 환경 문제 회피
+        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 16;   // random port per run — avoids listeners lingering in the editor process after play mode ends
 
         [TearDown]
         public void StopListeners() => UniNetManager.HostStop();
@@ -22,8 +22,8 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            // 드라이버가 1초 주기로 TimeSync를 브로드캐스트한다 — 와이어 도달은 수신 카운터로 관찰한다.
-            // 주의: 호스트 모드는 자기 시계가 권위라 오프셋 적용은 건너뛰지만(ADR-0012), 수신 자체는 관찰된다.
+            // The driver broadcasts TimeSync every second — wire delivery is observed via the receive counter.
+            // Note: in host mode the local clock is authoritative so offset application is skipped (see ADR-0012), but reception itself is still observed.
             float deadline = Time.realtimeSinceStartup + 3f;
             while (UniNetTime.ReceiveCount == 0 && Time.realtimeSinceStartup < deadline)
                 yield return null;
@@ -45,16 +45,16 @@ namespace UniNet.Tests
             var go = UniNetManager.NetworkInstantiate(template);
             var player = go.GetComponent<SpawnablePlayer>();
             UnityEngine.Object.Destroy(template);
-            player.NetworkRewindHistory = true;   // P4-② 리와인드 대상 등록 — 서버 동작 플래그(비직렬화)라 스폰 후 클론에 주입
+            player.NetworkRewindHistory = true;   // register as a P4 rewind target — a server-behavior flag (not serialized), so set it on the clone after spawn
 
-            // P4-② 리와인드 — 샘플을 동기 기록해 드라이버 틱 타이밍과 무관하게 검증한다
-            // (기록 경로 자체는 드라이버 RecordRewindHistory가 호출하는 것과 동일한 RecordRewindSample)
+            // P4 rewind — record samples synchronously so verification is independent of driver tick timing
+            // (recording uses the same RecordRewindSample the driver's RecordRewindHistory calls)
             player.transform.position = new Vector3(0f, 0f, 0f);
             double before = UniNetTime.Now;
             player.RecordRewindSample(before);
 
             player.transform.position = new Vector3(10f, 0f, 0f);
-            double after = UniNetTime.Now + 1.0;   // 스냅 시각과 구분되도록 1초 뒤로
+            double after = UniNetTime.Now + 1.0;   // one second later, to distinguish from the earlier sample time
             player.RecordRewindSample(after);
             yield return null;
 
@@ -65,7 +65,7 @@ namespace UniNet.Tests
             Assert.IsTrue(player.GetHistoryPosition(after, out float endX, out _, out _));
             Assert.AreEqual(10f, endX, 0.01f, "이동 후 시점 질의 — 이동 후 위치");
 
-            // 홀드 계약 — 최신 샘플(after) 이후 시점 질의도 마지막 값을 유지한다
+            // Hold contract — queries past the newest sample (after) keep returning the last value
             Assert.IsTrue(player.GetHistoryPosition(after + 1.0, out float holdX, out _, out _));
             Assert.AreEqual(10f, holdX, 0.01f, "최신 이후 시점 질의 — 끝 값 홀드");
         }

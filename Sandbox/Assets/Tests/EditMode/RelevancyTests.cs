@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace UniNet.Tests
 {
-    /// <summary>P3-① 가시성(Relevancy) — 컬 거리·관련성 훅·동적 스폰 게이팅·재진입 기준선 복구 검증 (네트워킹 없음).</summary>
+    /// <summary>P3 relevancy — verifies cull distance, relevancy hooks, dynamic-spawn gating, and baseline restore on re-entry (no networking).</summary>
     public sealed class RelevancyTests
     {
         [SetUp]
@@ -24,16 +24,16 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
-            UniNetEnvironment.PumpMain();   // 캐치업 — 뷰어 위치 없음 → 항상 관련 → 전체 상태 전송 + 시드
+            UniNetEnvironment.PumpMain();   // catch-up — no viewer position → always relevant → full state + seed
             ch.Clear();
 
-            server.SetViewerPosition(ch.UniNetConnId, 100f, 0f, 0f);   // 컬 반경 10 밖
+            server.SetViewerPosition(ch.UniNetConnId, 100f, 0f, 0f);   // outside the cull radius of 10
             player.Score = 42;
 
             server.TickReplication(server.SnapshotObjects(), 1.0);
             Assert.AreEqual(0, ch.Replicates.Count, "컬 거리 밖 연결에는 델타를 보내지 않는다");
 
-            server.SetViewerPosition(ch.UniNetConnId, 5f, 0f, 0f);     // 컬 안 — 재진입
+            server.SetViewerPosition(ch.UniNetConnId, 5f, 0f, 0f);     // inside the cull radius — re-entry
             server.TickReplication(server.SnapshotObjects(), 1.5);
             Assert.AreEqual(2, ch.Replicates.Count, "재진입 — 기준선(전체 상태) + 미전송 변경분 델타");
             AssertScoreReceived(ch, 42, "복구분에 변경된 Score 값이 포함된다");
@@ -50,7 +50,7 @@ namespace UniNet.Tests
             server.AttachConnection(ch);
             UniNetEnvironment.PumpMain();
 
-            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "rel-late");   // 접속 후 등록
+            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "rel-late");   // registered after connect
             player.Score = 7;
             ch.Clear();
 
@@ -68,8 +68,8 @@ namespace UniNet.Tests
 
             var ch1 = new RecordingChannel();
             var ch2 = new RecordingChannel();
-            server.AttachConnection(ch1);   // ConnId 1 — 훅 거부
-            server.AttachConnection(ch2);   // ConnId 2 — 훅 허용
+            server.AttachConnection(ch1);   // ConnId 1 — rejected by the hook
+            server.AttachConnection(ch2);   // ConnId 2 — allowed by the hook
             UniNetEnvironment.PumpMain();
 
             Assert.AreEqual(0, ch1.Replicates.Count, "거부 연결 — 캐치업 제외");
@@ -88,7 +88,7 @@ namespace UniNet.Tests
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
             UniNetEnvironment.PumpMain();
-            server.SetViewerPosition(ch.UniNetConnId, 100f, 0f, 0f);   // 원점의 동적 오브젝트에서 100 — 컬 밖
+            server.SetViewerPosition(ch.UniNetConnId, 100f, 0f, 0f);   // 100 units from the dynamic object at the origin — outside the cull
 
             var go = new GameObject("rel-dyn");
             var bullet = go.AddComponent<SpawnablePlayer>();
@@ -98,7 +98,7 @@ namespace UniNet.Tests
             Assert.AreEqual(0, ch.Spawns.Count, "스폰 시점 비관련 — 스폰 메시지 생략");
             Assert.AreEqual(0, ch.Owners.Count, "스폰 시점 비관련 — 소유권 알림도 생략");
 
-            server.SetViewerPosition(ch.UniNetConnId, 5f, 0f, 0f);     // 컬 안 — 관련 전환
+            server.SetViewerPosition(ch.UniNetConnId, 5f, 0f, 0f);     // inside the cull — becomes relevant
             server.TickReplication(server.SnapshotObjects(), 1.0);
             Assert.AreEqual(1, ch.Spawns.Count, "동적 오브젝트 관련 전환 — 스폰(생성) 전송");
             Assert.AreEqual(1, ch.Owners.Count, "관련 전환 — 소유권 알림 동반");

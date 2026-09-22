@@ -5,30 +5,30 @@ using UniNet.Unity;
 namespace UniNet.Tests
 {
     /// <summary>
-    /// 왕복 검증용 NetworkBehaviour 픽스처 — RPC 3종 + [Replicated]+RepNotify + _Validate 전부 사용.
-    /// (네트워킹 없이 델타 로직 단위 테스트에도 쓰인다)
+    /// NetworkBehaviour fixture for round-trip verification — exercises all three RPC kinds + [Replicated]+RepNotify + _Validate.
+    /// (also used for delta-logic unit tests without networking)
     /// </summary>
     public sealed partial class VerifyPlayer : NetworkBehaviour
     {
         [Replicated(Notify = nameof(OnScoreChanged))]
         public int Score = 100;
 
-        /// <summary>RepNotify가 받은 이전값.</summary>
+        /// <summary>Previous value received by the RepNotify callback.</summary>
         public int LastPrevScore = -999;
 
-        /// <summary>RepNotify 호출 여부.</summary>
+        /// <summary>Whether the RepNotify callback fired.</summary>
         public bool ScoreNotified;
 
-        /// <summary>서버 측 RpcPing 실행 횟수 (검증 통과분만).</summary>
+        /// <summary>Server-side RpcPing execution count (validated calls only).</summary>
         public int ServerPingCount;
 
-        /// <summary>검증 거부가 일어났는가 (음수 인자).</summary>
+        /// <summary>Whether validation rejected a call (negative argument).</summary>
         public bool ValidateRejected;
 
-        /// <summary>클라 측 ClientRpc 실행 여부.</summary>
+        /// <summary>Whether the ClientRpc ran on the client.</summary>
         public bool ClientFxRan;
 
-        /// <summary>Multicast 로컬 실행 횟수 (서버 로컬 1 + 순수 클라 1이 이상적 — 호스트 중복 방지 확인).</summary>
+        /// <summary>Local Multicast execution count (ideally 1 server-local + 1 pure client — verifies no host double-execution).</summary>
         public int MulticastCount;
 
         private void OnScoreChanged(int prev)
@@ -64,22 +64,22 @@ namespace UniNet.Tests
         private void RpcDeath_Implementation()
             => MulticastCount++;
 
-        // ── 메시지 타입 지원 검증 (MP [Message] + 다형성) ──
+        // ── Message type support verification (MP [Message] + polymorphism) ──
 
-        /// <summary>서버가 마지막으로 받은 메시지 (다형성 확인용).</summary>
+        /// <summary>Last message the server received (for polymorphism checks).</summary>
         public PayloadMsg LastMsg;
 
-        /// <summary>마지막 메시지가 자식 타입이었는가.</summary>
+        /// <summary>Whether the last message was of the derived type.</summary>
         public bool LastMsgWasDerived => LastMsg is DerivedPayloadMsg;
 
-        /// <summary>리플리케이션 대상 메시지 필드.</summary>
+        /// <summary>Message field under replication.</summary>
         [Replicated(Notify = nameof(OnStateMsgChanged))]
         public PayloadMsg StateMsg = new PayloadMsg();
 
-        /// <summary>StateMsg RepNotify 호출 여부.</summary>
+        /// <summary>Whether the StateMsg RepNotify callback fired.</summary>
         public bool StateMsgNotified;
 
-        /// <summary>StateMsg RepNotify가 받은 이전 참조.</summary>
+        /// <summary>Previous reference received by the StateMsg RepNotify callback.</summary>
         public PayloadMsg LastStatePrev;
 
         [ServerRpc(Validate = true)]

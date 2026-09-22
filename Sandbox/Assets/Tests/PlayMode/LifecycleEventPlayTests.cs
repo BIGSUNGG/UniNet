@@ -9,19 +9,20 @@ using Arena;
 namespace UniNet.Tests
 {
     /// <summary>
-    /// 연결 수명주기 이벤트 실전 왕복 검증 — 실제 루프백 RUDP 세션에서 서버 이벤트·클라 해제 콜백·
-    /// 접속 상태 조회를 단언하고, Arena 방식(퇴장 연결 소유 아바타 파괴)의 전파를 확인한다.
+    /// End-to-end round-trip verification of connection lifecycle events — asserts server events, the client
+    /// disconnect callback, and connection-state queries over a real loopback RUDP session, and confirms the
+    /// Arena pattern (destroying the avatar owned by a disconnecting connection) propagates.
     /// </summary>
     public sealed class LifecycleEventPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 48;   // 실행별 랜덤 포트 (이 클래스는 2개 포트 사용)
+        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 48;   // random port per run (this class uses 2 ports)
 
         private static bool _clientBye;
 
         [SetUp]
         public void AllowStopNoise()
         {
-            // 정지 과정의 fire-and-forget 송신 노이즈는 기능 단언과 무관 (LifecycleStopTests와 동일 처리)
+            // Fire-and-forget send noise during shutdown is unrelated to the functional assertions (same handling as LifecycleStopTests)
             LogAssert.ignoreFailingMessages = true;
             _clientBye = false;
         }
@@ -29,9 +30,9 @@ namespace UniNet.Tests
         [TearDown]
         public void StopListeners()
         {
-            UniNetManager.ClientDisconnected -= OnClientBye;   // static 이벤트 — 테스트 간 구독 잔존 방지
+            UniNetManager.ClientDisconnected -= OnClientBye;   // static event — prevents subscriptions leaking across tests
             LogAssert.ignoreFailingMessages = true;
-            UniNetManager.HostStop();   // 멱등 잔존 정리
+            UniNetManager.HostStop();   // idempotent cleanup of leftovers
         }
 
         [OneTimeTearDown]
@@ -65,7 +66,7 @@ namespace UniNet.Tests
             Assert.AreEqual(UniNetEnvironment.Client.LocalConnId, connected, "환영 ID와 이벤트 ID 일치");
             Assert.IsTrue(UniNetManager.IsClientConnected, "접속 상태 조회");
 
-            // 서버가 먼저 종료 — 클라 세션 종료 관측 경로
+            // The server stops first — exercises the client-side session-end observation path
             var stop = UniNetManager.ServerStopAsync();
             while (!stop.IsCompleted) yield return null;
 
@@ -81,7 +82,7 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            // Arena 방식 — 퇴장 연결이 소유한 동적 오브젝트를 이벤트 핸들러에서 파괴한다 (소유권 재배정 전 발화 계약 활용)
+            // Arena pattern — the event handler destroys dynamic objects owned by the disconnecting connection (relies on the fires-before-ownership-reassignment contract)
             var server = UniNetEnvironment.Server;
             server.ClientDisconnected += connId =>
             {
@@ -93,7 +94,7 @@ namespace UniNet.Tests
                 }
             };
 
-            // 호스트 클라가 소유하는 아바타 동적 스폰 (ArenaRoundtripTests와 동일 패턴 — private InitialOnly는 configure 콜백으로 기준선에)
+            // Dynamically spawn an avatar owned by the host client (same pattern as ArenaRoundtripTests — private InitialOnly values ride the baseline via the configure callback)
             var template = new GameObject("LifePlayer");
             template.transform.position = new Vector3(0f, 0.5f, 0f);
             template.AddComponent<ArenaPlayer>();
@@ -113,7 +114,7 @@ namespace UniNet.Tests
                 return entry == null;
             }, 5, "퇴장 이벤트 → 아바타 파괴 → 서버 등록 해제");
 
-            yield return null;   // Object.Destroy 프레임 말 반영 대기
+            yield return null;   // let Object.Destroy take effect at end of frame
             Assert.IsTrue(alpha == null, "아바타 게임오브젝트 파괴");
         }
 

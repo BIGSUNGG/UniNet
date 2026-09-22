@@ -8,8 +8,8 @@ using UnityEngine;
 namespace UniNet.Tests
 {
     /// <summary>
-    /// 2-프로세스 검증 러너 — batchmode -executeMethod로 실행. 커스텀 인자 --uninet-role=server|client 로 분기.
-    /// 실제 프로세스 간 RUDP 왕복을 검증하고 [UNINET-2PROC] 마커를 남긴다.
+    /// Two-process verification runner — run via batchmode -executeMethod; dispatches on the custom argument --uninet-role=server|client.
+    /// Verifies a real cross-process RUDP round-trip and emits [UNINET-2PROC] markers.
     /// </summary>
     public static class TwoProcessRunner
     {
@@ -21,7 +21,7 @@ namespace UniNet.Tests
             foreach (var a in Environment.GetCommandLineArgs())
                 if (a.StartsWith("--uninet-role=")) role = a.Substring("--uninet-role=".Length);
 
-            // EditMode에서는 RuntimeInitializeOnLoadMethod가 안 돌므로 명시 등록 (멱등)
+            // RuntimeInitializeOnLoadMethod doesn't run in EditMode, so register explicitly (idempotent)
             global::UniNet.Generated.__UniNetRegistration.Register();
 
             if (role == "server") RunServer();
@@ -38,13 +38,13 @@ namespace UniNet.Tests
             Wait(serverTask, 15, "서버 리슨");
             if (serverTask.IsFaulted) { Debug.LogError("[UNINET-2PROC] SERVER-ABORT"); return; }
 
-            // 캐치업 검증 대상 — 클라 접속 *전* 동적 스폰 (후발 접속이 스폰+전체 상태로 합류해야 한다)
+            // Catch-up verification target — spawned dynamically *before* the client connects (a late joiner must receive the spawn plus full state)
             var a = CreateSpawnable(seed: 1001, score: 11, secret: 21, pos: new Vector3(10f, 20f, 30f));
             Debug.Log("[UNINET-2PROC] server-ready (pre-spawned A netId=" + a.NetId + ")");
             var keys = string.Join(",", global::System.Linq.Enumerable.Select(UniNetDispatch.ServerHandlers().Keys, k => k.ToString()));
             Debug.Log("[UNINET-2PROC] server-table=[" + keys + "] factory=" + (UniNetEnvironment.HubFactory != null));
 
-            // 클라이언트는 신규 프로젝트 사본일 수 있어 첫 import에 수 분 — attach 대기는 넉넉히
+            // The client may be a fresh project copy whose first import takes minutes — allow generously for attach
             var deadline = DateTime.UtcNow.AddSeconds(240);
             bool loggedAttach = false;
             bool spawnedB = false;
@@ -64,31 +64,31 @@ namespace UniNet.Tests
                     LoggedPing = true;
                     Debug.Log("[UNINET-2PROC] SERVER-RCVD-PING count=" + player.ServerPingCount);
                 }
-                // 핑 수신 후: 라이브 브로드캐스트 스폰 B + 조건부 값 변경 (OwnerOnly 전파 / InitialOnly·SkipOwner 비전파)
+                // After the ping: spawn B as a live broadcast + apply conditional value changes (OwnerOnly propagates; InitialOnly and SkipOwner do not)
                 if (!spawnedB && player.ServerPingCount > 0)
                 {
                     spawnedB = true;
                     _b = CreateSpawnable(seed: 2002, score: 22, secret: 32, pos: new Vector3(-5f, 0f, 0f));
-                    _b.Score = 66;      // 무조건 — 전파
-                    _b.SecretHp = 33;   // OwnerOnly — 소유자(유일 연결) 전파
-                    _b.SpawnSeed = 42;  // InitialOnly — 미전파 (스폰값 2002 유지)
-                    _b.TeamId = 8;      // SkipOwner — 미전파 (초기값 3 유지)
+                    _b.Score = 66;      // unconditional — propagates
+                    _b.SecretHp = 33;   // OwnerOnly — propagates to the owner (the only connection)
+                    _b.SpawnSeed = 42;  // InitialOnly — not propagated (stays at spawn value 2002)
+                    _b.TeamId = 8;      // SkipOwner — not propagated to the owner (stays at initial value 3)
                     Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-B netId=" + _b.NetId);
 
-                    // 다중 컴포넌트 오브젝트 — MovementBrain + HealthTank가 한 게임오브젝트 (ADR-0010)
+                    // Multi-component object — MovementBrain + HealthTank on one GameObject (see ADR-0010)
                     var template = new GameObject("MultiTemplate");
                     var tmb = template.AddComponent<MovementBrain>();
                     var tht = template.AddComponent<HealthTank>();
-                    UniNetManager.RegisterPrefab<MovementBrain>(template);   // 카탈로그 — 클라가 같은 구성으로 생성
-                    tmb.Speed = 10; tht.Armor = 20;   // 스폰 기준선 — 템플릿 값이 직렬화 복사된다
-                    _multi = UniNetManager.NetworkInstantiate(template);   // 같은 구성을 복제 스폰 (템플릿은 카탈로그 원본 — 파괴 금지)
+                    UniNetManager.RegisterPrefab<MovementBrain>(template);   // Catalog — the client rebuilds the same configuration from it
+                    tmb.Speed = 10; tht.Armor = 20;   // Spawn baseline — template values are copied through serialization
+                    _multi = UniNetManager.NetworkInstantiate(template);   // Clone-spawns the same configuration (the template is the catalog original — never destroy it)
                     var mb = _multi.GetComponent<MovementBrain>();
                     var ht = _multi.GetComponent<HealthTank>();
-                    mb.Speed = 99;    // 무조건 델타
-                    ht.Armor = 88;    // OwnerOnly 델타
+                    mb.Speed = 99;    // unconditional delta
+                    ht.Armor = 88;    // OwnerOnly delta
                     Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-MULTI netId=" + mb.NetId);
                 }
-                // 값 전파 여유 후 파괴 — 클라가 등록 해제 관찰
+                // Destroy after values had time to propagate — the client observes the deregistration
                 if (spawnedB && !destroyed && DateTime.UtcNow > DeadlineAfter(3))
                 {
                     destroyed = true;
@@ -104,7 +104,7 @@ namespace UniNet.Tests
                 }
                 if (destroyedMulti && DateTime.UtcNow > DeadlineAfter(11))
                 {
-                    Thread.Sleep(500);   // 클라 파괴 관찰 여유
+                    Thread.Sleep(500);   // give the client time to observe the destroy
                     UniNetEnvironment.PumpMain();
                     Debug.Log("[UNINET-2PROC] SERVER-DONE score=" + player.Score);
                     return;
@@ -124,7 +124,7 @@ namespace UniNet.Tests
             return _phaseMark.AddSeconds(seconds);
         }
 
-        /// <summary>동적 스폰 검증용 픽스처 생성 — 템플릿을 복제·등록·전파한다 (public 필드 초기값이 직렬화 복사로 InitialOnly 기준선에 실린다).</summary>
+        /// <summary>Creates a fixture for dynamic-spawn verification — clones, registers, and broadcasts the template (public field initial values ride the serialized copy as the InitialOnly baseline).</summary>
         private static SpawnablePlayer CreateSpawnable(int seed, int score, int secret, Vector3 pos)
         {
             var template = new GameObject("Dyn" + seed);
@@ -160,13 +160,13 @@ namespace UniNet.Tests
                 return;
             }
 
-            // 다중 컴포넌트 클라 생성용 카탈로그 — 접속 확정 뒤 생성해야 RegisterAllToClient가 템플릿을 씬 오브젝트로 등록하지 않는다
+            // Catalog for the client-side multi-component object — create only after the connection is confirmed, or RegisterAllToClient would register the template as a scene object
             var template = new GameObject("MultiTemplate");
             template.AddComponent<MovementBrain>();
             template.AddComponent<HealthTank>();
             UniNetManager.RegisterPrefab<MovementBrain>(template);
 
-            // 소유권 대기 후 네트워크 경로 ServerRpc 송신 — [netId][int amount]
+            // Wait for ownership, then send a ServerRpc over the network wire — [netId][int amount]
             deadline = DateTime.UtcNow.AddSeconds(5);
             while (UniNetEnvironment.Client.GetOwner(player.NetId) == 0 && DateTime.UtcNow < deadline)
             {
@@ -179,7 +179,7 @@ namespace UniNet.Tests
             int pingId = Fnv1a.MethodId("UniNet.Tests.VerifyPlayer.RpcPing");
             var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
             w.WriteUInt64(player.NetId);
-            w.WriteByte(0);   // SubId — 단일 컴포넌트 오브젝트 슬롯 0
+            w.WriteByte(0);   // SubId — slot 0 of a single-component object
             w.WriteInt32(11);
             UniNetEnvironment.ClientSender.UniNetSend(pingId, w.ToArray(), RpcDeliveryMode.ReliableOrdered);
 
@@ -201,7 +201,7 @@ namespace UniNet.Tests
             VerifyMultiComponent();
         }
 
-        /// <summary>다중 컴포넌트 오브젝트 검증 — MovementBrain+HealthTank가 한 오브젝트에서 서브별로 동작한다.</summary>
+        /// <summary>Verifies the multi-component object — MovementBrain+HealthTank on one object, each slot working independently.</summary>
         private static void VerifyMultiComponent()
         {
             MovementBrain mb = null;
@@ -211,7 +211,7 @@ namespace UniNet.Tests
                 UniNetEnvironment.PumpMain();
                 foreach (var c in UnityEngine.Object.FindObjectsByType<MovementBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
                     if (c.GetComponent<HealthTank>() != null && c.gameObject.name != "MultiTemplate")
-                        mb = c;   // 다중 컴포넌트 오브젝트 식별 (카탈로그 템플릿 제외)
+                        mb = c;   // identifies the multi-component object (excluding the catalog template)
                 Thread.Sleep(20);
             }
             if (mb == null)
@@ -221,7 +221,7 @@ namespace UniNet.Tests
             }
             var ht = mb.GetComponent<HealthTank>();
 
-            // 서브별 최종값 대기 — 무조건(Speed) + OwnerOnly(Armor — 유일 연결=소유자)
+            // Wait for per-slot final values — unconditional (Speed) + OwnerOnly (Armor — the only connection is the owner)
             deadline = DateTime.UtcNow.AddSeconds(15);
             while (DateTime.UtcNow < deadline && (mb.Speed != 99 || ht.Armor != 88))
             {
@@ -252,10 +252,10 @@ namespace UniNet.Tests
             Debug.Log("[UNINET-2PROC] MULTI-COMPONENT PASS — 다중 서브 스폰/슬롯/서브별 델타/파괴");
         }
 
-        /// <summary>동적 스폰·조건부·파괴 검증 — A(캐치업: 접속 전 스폰)와 B(브로드캐스트: 핑 후 스폰)를 값으로 식별한다.</summary>
+        /// <summary>Verifies dynamic spawn, conditions, and destroy — identifies A (catch-up: spawned before connect) and B (broadcast: spawned after the ping) by value.</summary>
         private static void VerifyDynamicSpawn()
         {
-            // A+B 발견 대기 — A는 접속 캐치업, B는 서버가 핑 후 스폰
+            // Wait for A+B to appear — A arrives via connect catch-up, B is spawned by the server after the ping
             SpawnablePlayer a = null, b = null;
             var deadline = DateTime.UtcNow.AddSeconds(15);
             while (DateTime.UtcNow < deadline && (a == null || b == null))
@@ -274,7 +274,7 @@ namespace UniNet.Tests
                 return;
             }
 
-            // A (캐치업) — 위치·초기 상태·소유자 전용/스킵 조건
+            // A (catch-up) — position, initial state, owner-only/skip conditions
             var pos = a.transform.position;
             bool posOk = pos.x == 10f && pos.y == 20f && pos.z == 30f;
             Debug.Log("[UNINET-2PROC] SPAWN-A pos-ok=" + posOk
@@ -286,7 +286,7 @@ namespace UniNet.Tests
                 return;
             }
 
-            // B (브로드캐스트) — 최종값 대기: 무조건 66·OwnerOnly 33 / InitialOnly 2002 유지·SkipOwner 3 유지
+            // B (broadcast) — wait for final values: unconditional 66, OwnerOnly 33 / InitialOnly stays 2002, SkipOwner stays 3
             deadline = DateTime.UtcNow.AddSeconds(15);
             while (DateTime.UtcNow < deadline && (b.Score != 66 || b.SecretHp != 33))
             {
@@ -301,7 +301,7 @@ namespace UniNet.Tests
                 return;
             }
 
-            // 파괴 — 등록 해제 + 인스턴스 제거
+            // Destroy — deregistration + instance removal
             ulong aNet = a.NetId, bNet = b.NetId;
             deadline = DateTime.UtcNow.AddSeconds(15);
             while (DateTime.UtcNow < deadline
@@ -337,7 +337,7 @@ namespace UniNet.Tests
             int pingId = Fnv1a.MethodId("UniNet.Tests.VerifyPlayer.RpcPing");
             var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
             w.WriteUInt64(player.NetId);
-            w.WriteByte(0);   // SubId — 단일 컴포넌트 오브젝트 슬롯 0
+            w.WriteByte(0);   // SubId — slot 0 of a single-component object
             w.WriteInt32(5);
             UniNetEnvironment.ClientSender.UniNetSend(pingId, w.ToArray(), RpcDeliveryMode.ReliableOrdered);
             Debug.Log("[UNINET-2PROC] HOST-PING-SENT");
@@ -359,7 +359,7 @@ namespace UniNet.Tests
             Debug.LogError("[UNINET-2PROC] HOST-TIMEOUT ping=" + player.ServerPingCount);
         }
 
-        /// <summary>양단이 같은 계층 경로를 갖도록 동일하게 생성 — netId 무합의 일치 검증에 필수.</summary>
+        /// <summary>Creates the player identically on both ends so their hierarchy paths match — required to verify netIds agree without negotiation.</summary>
         private static VerifyPlayer CreatePlayer()
         {
             var go = new GameObject("VProc");

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace UniNet.Tests
 {
-    /// <summary>P4-③ 그리드 공간 분할 가시성 (RepGraph 스타일) — 셀 멤버십 컬·페일오픈·오브젝트별 컬 AND 검증.</summary>
+    /// <summary>P4 grid spatial-partition visibility (RepGraph style) — verifies cell-membership culling, fail-open, and AND with per-object relevancy.</summary>
     public sealed class GridVisibilityTests
     {
         [SetUp]
@@ -24,19 +24,19 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
-            UniNetEnvironment.PumpMain();   // 캐치업 — 뷰어 미설정 → 둘 다 관련(페일오픈) → 전체 상태 + 시드
+            UniNetEnvironment.PumpMain();   // catch-up — no viewer set → both relevant (fail-open) → full state + seed
             ch.Clear();
 
-            server.SetVisibilityGrid(10f, 30f);           // 셀 10, 반경 30
-            server.SetViewerPosition(ch.UniNetConnId, 0f, 0f, 0f);   // near(5m)는 반경 내, far(500m)는 밖
+            server.SetVisibilityGrid(10f, 30f);           // cell size 10, radius 30
+            server.SetViewerPosition(ch.UniNetConnId, 0f, 0f, 0f);   // near (5 m) inside radius, far (500 m) outside
 
-            near.Score = 11;   // Score 초기값 1과 다른 값 — 실제 변경분 만들기
+            near.Score = 11;   // differs from the initial Score of 1 — creates a real delta
             far.Score = 11;
             server.TickReplication(server.SnapshotObjects(), 1.0);
             Assert.AreEqual(1, CountNetId(ch, near.NetId), "반경 내 오브젝트 — 델타 전송");
             Assert.AreEqual(0, CountNetId(ch, far.NetId), "반경 밖 오브젝트 — 그리드 컬");
 
-            server.SetViewerPosition(ch.UniNetConnId, 495f, 0f, 0f);   // 뷰어가 far 쪽으로 이동
+            server.SetViewerPosition(ch.UniNetConnId, 495f, 0f, 0f);   // viewer moves toward far
             near.Score = 12;
             far.Score = 12;
             server.TickReplication(server.SnapshotObjects(), 1.5);
@@ -50,11 +50,11 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             var near = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grid-open");
             near.transform.position = new Vector3(5f, 0f, 0f);
-            server.SetVisibilityGrid(10f, 30f);   // 그리드 ON — 그러나 뷰어 위치는 설정하지 않는다
+            server.SetVisibilityGrid(10f, 30f);   // grid on — but viewer position is never set
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
-            UniNetEnvironment.PumpMain();   // 캐치업 — 뷰어 없음 → 페일오픈(항상 관련) → 전체 상태 수신 + 시드
+            UniNetEnvironment.PumpMain();   // catch-up — no viewer → fail-open (always relevant) → receives full state + seed
             ch.Clear();
 
             near.Score = 21;

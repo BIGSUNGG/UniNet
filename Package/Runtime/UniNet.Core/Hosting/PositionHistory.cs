@@ -3,20 +3,22 @@ using System;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// P4 위치 히스토리 — 서버가 오브젝트 위치를 서버 시간축에 기록하고 과거 시점으로 되돌려 질의한다
-    /// (래그컴펜세이션 훅 — UE FLagCompensation 위치 히스토리 상응). 기록은 서버 권위 틱에서
-    /// UniNetTime.Now 도메인으로 수행하고, 질의는 인접 샘플 선형 보간 + 끝 값 홀드(clamp)다.
+    /// P4 position history — the server records object positions on the server time axis and queries them at
+    /// past timestamps (lag compensation hook; UE FLagCompensation position history equivalent). Recording runs
+    /// in the UniNetTime.Now domain on the authoritative server tick; sampling uses linear interpolation between
+    /// adjacent samples with end-value hold (clamp) outside the range.
     /// </summary>
     public sealed class PositionHistory
     {
         private readonly (double Time, float X, float Y, float Z)[] _ring;
         private readonly double _minInterval;
-        private int _head;    // 다음 쓰기 슬롯
+        private int _head;    // next write slot
         private int _count;
 
         /// <summary>
-        /// capacity는 보유 샘플 상한(≥2), minSampleInterval은 최소 기록 간격(초, 0 = 매 기록 수용).
-        /// 간격을 두면 고주사 프레임에서도 창(용량×간격)이 프레임레이트와 무관하게 보장된다 (UE 서버 틱 레이트 상응).
+        /// capacity is the sample retention limit (≥ 2); minSampleInterval is the minimum gap between records in
+        /// seconds (0 = accept every record). With a gap, the window (capacity × interval) stays guaranteed
+        /// regardless of frame rate (UE server tick-rate equivalent).
         /// </summary>
         public PositionHistory(int capacity = 128, double minSampleInterval = 0.0)
         {
@@ -25,14 +27,14 @@ namespace UniNet.Core.Hosting
             _minInterval = Math.Max(0.0, minSampleInterval);
         }
 
-        /// <summary>서버 틱에서 위치 기록 — 시간 역전·중복·최소 간격 미달 샘플은 폐기해 단조 시간축과 창 보장을 유지한다 (SnapshotBuffer.Add와 동일 계약).</summary>
+        /// <summary>Records a position on the server tick — discards time reversals, duplicates, and samples under the minimum gap, preserving the monotonic time axis and the window guarantee (same contract as SnapshotBuffer.Add).</summary>
         public void Record(double time, float x, float y, float z)
         {
             if (_count > 0)
             {
                 ref var last = ref _ring[(_head - 1 + _ring.Length) % _ring.Length];
-                if (time <= last.Time) return;   // 역전·중복 — 폐기
-                if (time - last.Time < _minInterval) return;   // 최소 간격 미달 — 폐기 (창 보장)
+                if (time <= last.Time) return;   // reversed or duplicate — discard
+                if (time - last.Time < _minInterval) return;   // under minimum gap — discard (window guarantee)
             }
             _ring[_head] = (time, x, y, z);
             _head = (_head + 1) % _ring.Length;
@@ -40,8 +42,9 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// 과거 시점 위치 질의 — 인접 샘플 선형 보간. 히스토리 범위 밖은 가장 가까운 끝 값 홀드.
-        /// 비어 있으면 false (리와인드 불가 — 호출자가 현재 위치로 폴백).
+        /// Queries a past position — linear interpolation between adjacent samples, nearest end-value hold
+        /// outside the history range. Returns false when empty (rewind unavailable — the caller falls back to
+        /// the current position).
         /// </summary>
         public bool Sample(double time, out float x, out float y, out float z)
         {
@@ -69,7 +72,7 @@ namespace UniNet.Core.Hosting
             return true;
         }
 
-        /// <summary>기록된 가장 오래된 시각 — 리와인드 하한 클램프용. 비어 있으면 false.</summary>
+        /// <summary>Oldest recorded timestamp — for clamping the rewind lower bound. Returns false when empty.</summary>
         public bool TryGetOldestTime(out double time)
         {
             if (_count == 0) { time = 0; return false; }
@@ -77,7 +80,7 @@ namespace UniNet.Core.Hosting
             return true;
         }
 
-        /// <summary>기록된 가장 최근 시각. 비어 있으면 false.</summary>
+        /// <summary>Most recent recorded timestamp. Returns false when empty.</summary>
         public bool TryGetLatestTime(out double time)
         {
             if (_count == 0) { time = 0; return false; }
@@ -85,14 +88,14 @@ namespace UniNet.Core.Hosting
             return true;
         }
 
-        /// <summary>버퍼 비우기.</summary>
+        /// <summary>Empties the buffer.</summary>
         public void Clear()
         {
             _head = 0;
             _count = 0;
         }
 
-        /// <summary>현재 보유 샘플 수 (진단용).</summary>
+        /// <summary>Number of samples currently held (for diagnostics).</summary>
         public int SampleCount => _count;
     }
 }

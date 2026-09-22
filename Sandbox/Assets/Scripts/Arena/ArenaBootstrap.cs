@@ -3,27 +3,28 @@ using System.Collections.Generic;
 using UniNet.Core.Hosting;
 using UniNet.Unity;
 using UnityEngine;
-using static UniNet.Unity.Net;   // NetworkInstantiate/NetworkDestroy 를 한정자 없이 — 일반 Instantiate/Destroy처럼
+using static UniNet.Unity.Net;   // import NetworkInstantiate/NetworkDestroy for qualifier-free calls — like regular Instantiate/Destroy
 
 namespace Arena
 {
     /// <summary>
-    /// 아레나 부트스트랩 — 씬에 1개 존재하며 역할에 따라 UniNet을 시작한다.
-    /// 서버(권위)는 접속 수와 플레이어 수를 일치시킨다: 접속이 늘면 스폰, 줄면 잉여 플레이어를 파괴한다.
-    /// 소유권은 라이브러리의 라운드로빈 최소 정책이 배정하므로, 게임은 "누가 무엇을 소유하는가"를 가정하지
-    /// 않고 클라이언트는 IsOwner로 내 아바타를 찾는다 (이름·색은 아바타 고유값).
+    /// Arena bootstrap — one per scene; starts UniNet according to the resolved role.
+    /// The server (authority) keeps the player count equal to the connection count:
+    /// spawns on join, destroys surplus avatars on leave.
+    /// The library's round-robin policy assigns ownership, so the game never assumes
+    /// "who owns what" — clients find their own avatar via IsOwner (name and color are avatar-unique values).
     /// </summary>
     public sealed class ArenaBootstrap : MonoBehaviour
     {
         [SerializeField] private ArenaRole _role = ArenaRole.Auto;
         [SerializeField] private int _port = ArenaConfig.Port;
 
-        /// <summary>서버 인스턴스 (클라 역할이면 null) — 플레이어 수 관리에 사용.</summary>
+        /// <summary>Server instance (null in client role) — used for player count management.</summary>
         private NetworkServer _server;
         private float _nextManageUtc;
         private int _spawnCounter;
         private ArenaRole _resolvedRole;
-        private bool _started;   // 리슨/접속이 실제 시작됐는가 (Stop은 시작된 것만 정리)
+        private bool _started;   // whether listen/connect actually started (Stop only cleans up what was started)
 
         private async void Start()
         {
@@ -58,16 +59,17 @@ namespace Arena
             _server = UniNetEnvironment.Server;
             if (_server != null)
             {
-                // P3-⑤ 채널 예산 — 플레이어 유형 틱당 전송량을 제한하는 유형별 대역폭 관리 예시 (P4 전환으로 총알이 제거되어 대상 변경)
+                // P3-⑤ channel budget — per-type bandwidth management example limiting per-tick bytes for the player type
+                // (retargeted from bullets to players after the P4 switch removed bullets)
                 _server.SetReplicationChannelBudget(typeof(ArenaPlayer), ArenaConfig.PlayerChannelBudgetPerTickBytes);
 
-                // 연결 수명주기 게이트웨이 — 접속 시 즉시 관리(아바타 스폰)와 HUD 표시, 퇴장 시 소유 아바타 정밀 파괴
+                // Connection lifecycle gateway — spawn avatars and update the HUD on join, precisely destroy the departed connection's avatar on leave
                 _server.ClientConnected += OnClientConnected;
                 _server.ClientDisconnected += OnClientDisconnected;
             }
         }
 
-        /// <summary>Play 모드 종료 — 리스너·연결을 정리해 소켓을 언바인딩한다 (미정지 시 동일 포트 재시작이 바인딩 실패한다).</summary>
+        /// <summary>Play mode exit — stops listeners and connections so the socket unbinds (restarting on the same port fails to bind otherwise).</summary>
         private void OnApplicationQuit()
         {
             if (!_started) return;            switch (_resolvedRole)
@@ -88,13 +90,13 @@ namespace Arena
         private void Update()
         {
             if (_server == null) return;
-            if (UniNetEnvironment.Server != _server) return;   // 다른 런타임(테스트 등)이 환경을 점유하면 관리에서 물러난다
+            if (UniNetEnvironment.Server != _server) return;   // step aside if another runtime (e.g. tests) has taken over the environment
             if (Time.unscaledTime < _nextManageUtc) return;
             _nextManageUtc = Time.unscaledTime + 0.5f;
             ManagePlayers();
         }
 
-        /// <summary>클라 접속 — HUD 표시 + 관리 주기를 즉시 돌려 아바타 스폰을 폴링 대기 없이 처리한다.</summary>
+        /// <summary>Client connected — update the HUD and run the management cycle immediately so the avatar spawns without waiting for the next poll.</summary>
         private void OnClientConnected(long connId)
         {
             ArenaHud.NoteLifecycle($"+ 플레이어 접속 (연결 {connId})");
@@ -102,8 +104,9 @@ namespace Arena
             _nextManageUtc = 0f;
         }
 
-        /// <summary>클라 퇴장 — 해제 연결이 소유한 아바타를 즉시 파괴한다 (이벤트는 소유권 재배정 전에 발화되므로
-        /// 소유자 조회로 정확히 식별된다). 처리하지 않으면 아바타가 다른 연결로 재배정돼 좀비로 남는다.</summary>
+        /// <summary>Client disconnected — immediately destroys avatars owned by the departed connection (the event fires before
+        /// ownership is reassigned, so the owner lookup identifies them exactly). Unhandled, the avatar would be
+        /// reassigned to another connection and linger as a zombie.</summary>
         private void OnClientDisconnected(long connId)
         {
             ArenaHud.NoteLifecycle($"- 플레이어 퇴장 (연결 {connId})");
@@ -118,7 +121,7 @@ namespace Arena
             }
         }
 
-        /// <summary>서버 — 접속 수와 동적 플레이어 수를 일치시키고, 연결별 뷰어 위치를 소유 플레이어 좌표로 유지한다 (P3-①).</summary>
+        /// <summary>Server — matches the dynamic player count to the connection count and keeps each connection's viewer position at its owned player's coordinates (P3-①).</summary>
         private void ManagePlayers()
         {
             int connections = 0;
@@ -128,7 +131,7 @@ namespace Arena
 
             var players = FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 
-            // P3-① 뷰어 위치 — 컬 거리 판정의 기준점. 각 연결의 소유 플레이어 좌표를 서버에 제공한다
+            // P3-① viewer position — the reference point for cull-distance checks; feeds each connection's owned player coordinates to the server
             foreach (var player in players)
             {
                 var ownerConnId = _server.GetEntry(player.NetId)?.OwnerConnId ?? 0;
@@ -153,20 +156,20 @@ namespace Arena
             template.AddComponent<ArenaPlayer>();
 
             string displayName = ArenaConfig.DisplayNames[_spawnCounter % ArenaConfig.DisplayNames.Length];
-            int colorSeed = _spawnCounter * 173 + 57;   // 이름별 고유 색 시드 (InitialOnly — 스폰 기준선에 실린다)
+            int colorSeed = _spawnCounter * 173 + 57;   // unique color seed per spawn (InitialOnly — rides on the spawn baseline)
             _spawnCounter++;
 
-            // 복제 → 구성(비직렬화 InitialOnly 상태) → 등록·전파 — NetworkInstantiate 한 줄
+            // clone → configure (set non-serialized InitialOnly state) → register and broadcast — one NetworkInstantiate call
             var go = NetworkInstantiate(template,
                 clone => clone.GetComponent<ArenaPlayer>().InitServerState(displayName, colorSeed));
-            Destroy(template);   // 템플릿 정리 — 상태는 복제·구성 시점에 클론에 반영됐다
+            Destroy(template);   // clean up the template — its state was captured into the clone at configure time
             var player = go.GetComponent<ArenaPlayer>();
             Debug.Log($"[Arena] 플레이어 스폰 name={player.DisplayName} netId={player.NetId}");
         }
 
         private static void DestroySurplus(ArenaPlayer[] players, int count)
         {
-            // 최근 스폰(netId 큰 순)부터 잉여분 제거 — 남은 플레이어는 재배정된 소유자가 이어받는다
+            // remove surplus starting with the most recently spawned (highest netId) — remaining players are handed to reassigned owners
             System.Array.Sort(players, (a, b) => b.NetId.CompareTo(a.NetId));
             var destroyed = new HashSet<ulong>();
             for (int i = 0; i < count && i < players.Length; i++)

@@ -7,8 +7,8 @@ using UnityEngine;
 
 namespace UniNet.Tests
 {
-    /// <summary>리플리케이션 우선순위·예산(ReplicationBudgetPerTickBytes) 코어 로직 테스트 (네트워킹 없음)
-    /// — 예산 초과 연기·우선순위 순서·기아 방지·무제한 기본값.</summary>
+    /// <summary>Replication priority and budget (ReplicationBudgetPerTickBytes) core-logic tests (no networking)
+    /// — over-budget deferral, priority ordering, starvation prevention, unlimited default.</summary>
     public sealed class PriorityTests
     {
         [SetUp]
@@ -22,7 +22,7 @@ namespace UniNet.Tests
             var go = new GameObject(name);
             var player = go.AddComponent<SpawnablePlayer>();
             player.Score = score;
-            server.RegisterSceneObject(player.NetId, new object[] { player });   // 실제 등록 경로와 동일 — 컴포넌트 NetId 키
+            server.RegisterSceneObject(player.NetId, new object[] { player });   // same as the real registration path — keyed by component NetId
             return player;
         }
 
@@ -30,7 +30,7 @@ namespace UniNet.Tests
         public void 예산_초과_델타는_대기열로_연기되고_다음_틱에_전송된다()
         {
             var server = new NetworkServer();
-            server.ReplicationBudgetPerTickBytes = 8;   // SpawnablePlayer Score 델타 = mask(4)+int(4) = 8바이트 — 1개만 허용
+            server.ReplicationBudgetPerTickBytes = 8;   // a SpawnablePlayer Score delta = mask(4) + int(4) = 8 bytes — allows exactly one
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
             UniNetEnvironment.PumpMain();
@@ -43,7 +43,7 @@ namespace UniNet.Tests
 
             try
             {
-                high.Score = 11;   // 등록 후 변경 — 델타 발생 (스냅샷은 등록 시점 값)
+                high.Score = 11;   // changed after registration — produces a delta (the snapshot holds the registration-time value)
                 low.Score = 22;
 
                 server.TickReplication(server.SnapshotObjects(), 1.0);
@@ -76,7 +76,7 @@ namespace UniNet.Tests
             var a = RegisterScenePlayer(server, "prio-a", 1);
             var b = RegisterScenePlayer(server, "prio-b", 2);
             a.NetworkPriority = 1f;
-            b.NetworkPriority = 3f;   // b가 더 높음
+            b.NetworkPriority = 3f;   // b is higher
             a.Score = 10;
             b.Score = 20;
             ch.Clear();
@@ -106,23 +106,23 @@ namespace UniNet.Tests
             server.AttachConnection(ch);
             UniNetEnvironment.PumpMain();
 
-            var high = RegisterScenePlayer(server, "starve-high", 1);   // 매 틱 변경 — 우선순위 2
-            var low = RegisterScenePlayer(server, "starve-low", 1);     // 한 번만 변경 — 우선순위 1
+            var high = RegisterScenePlayer(server, "starve-high", 1);   // changed every tick — priority 2
+            var low = RegisterScenePlayer(server, "starve-low", 1);     // changed once — priority 1
             high.NetworkPriority = 2f;
             low.NetworkPriority = 1f;
             ch.Clear();
 
             try
             {
-                low.Score = 99;                          // low의 유일한 변경 — 연기될 것
+                low.Score = 99;                          // low's only change — will be deferred
                 for (int i = 0; i < 7; i++)
                 {
                     double now = 1.0 + i * 0.5;
-                    high.Score = 10 + i;                 // high는 매 틱 변경 — 예산을 매번 차지
+                    high.Score = 10 + i;                 // high changes every tick — claims the budget each time
                     server.TickReplication(server.SnapshotObjects(), now);
                 }
 
-                // 기아 지수가 쌓인 low의 연기 델타(99)가 결국 전송된다 — 스타베이션 방지
+                // once low's starvation index builds, its deferred delta (99) eventually goes out — anti-starvation
                 bool lowConverged = false;
                 foreach (var (_, payload) in ch.Replicates)
                     if (BitConverter.ToUInt32(payload, 0) == (1u << 0) && BitConverter.ToInt32(payload, 4) == 99)
@@ -139,7 +139,7 @@ namespace UniNet.Tests
         [Test]
         public void 예산_0은_무제한으로_기존_동작을_유지한다()
         {
-            var server = new NetworkServer();   // 기본 예산 0 = 무제한
+            var server = new NetworkServer();   // default budget 0 = unlimited
             Assert.AreEqual(0, server.ReplicationBudgetPerTickBytes);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
@@ -172,25 +172,25 @@ namespace UniNet.Tests
             server.AttachConnection(ch);
             UniNetEnvironment.PumpMain();
 
-            var x = RegisterScenePlayer(server, "prio-x", 1);   // 우선순위 1 — 계속 연기
-            var y = RegisterScenePlayer(server, "prio-y", 1);   // 우선순위 2 — 예산 선점
+            var x = RegisterScenePlayer(server, "prio-x", 1);   // priority 1 — keeps getting deferred
+            var y = RegisterScenePlayer(server, "prio-y", 1);   // priority 2 — claims the budget
             y.NetworkPriority = 2f;
             ch.Clear();
 
             try
             {
-                // 틱1 — X는 Score 창이 연기되고
+                // tick 1 — X's Score window is deferred
                 x.Score = 50;
                 y.Score = 10;
                 server.TickReplication(server.SnapshotObjects(), 1.0);
                 Assert.AreEqual(1, ch.Replicates.Count);
 
-                // 틱2 — X의 다른 필드(TeamId) 창이 또 연기된다
+                // tick 2 — X's other field (TeamId) window is deferred again
                 x.TeamId = 7;
                 y.Score = 11;
                 server.TickReplication(server.SnapshotObjects(), 1.5);
 
-                // 이후 틱 — 대기열 FIFO 배출로 두 창 모두 전송 (어느 쪽도 유실 없음)
+                // later ticks — queue drains FIFO, sending both windows (neither is lost)
                 server.TickReplication(server.SnapshotObjects(), 2.0);
                 server.TickReplication(server.SnapshotObjects(), 2.5);
 
@@ -225,7 +225,7 @@ namespace UniNet.Tests
 
             try
             {
-                // Score+TeamId 동시 변경 — others 페이로드 12바이트 > 예산 8
+                // Score+TeamId changed together — payload 12 bytes > budget 8
                 x.Score = 30;
                 x.TeamId = 7;
 

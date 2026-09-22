@@ -5,9 +5,11 @@ using System.Runtime.ExceptionServices;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// 서버 런타임 — 씬/동적 오브젝트 등록(오브젝트당 1 netId + NetworkBehaviour 서브 테이블), 연결별 허브 보관,
-    /// 소유권 최소 정책, 리플리케이션 틱, 스폰/파괴 전파, 후발 접속 캐치업.
-    /// 네트워크 스레드에서 호출될 수 있어 상태 접근은 락으로 보호한다. 브로드캐스트·캐치업은 메인 스레드에서 호출한다.
+    /// Server-side runtime — registers scene/dynamic objects (one netId per object plus a NetworkBehaviour sub
+    /// table), keeps per-connection hubs, applies the minimal ownership policy, runs the replication tick,
+    /// propagates spawns/destroys, and catches late joiners up.
+    /// Calls can arrive on network threads, so state access is lock-protected. Broadcasts and catch-up run on
+    /// the main thread.
     /// </summary>
     public sealed class NetworkServer
     {
@@ -18,7 +20,8 @@ namespace UniNet.Core.Hosting
         private ulong _nextDynamicNetId = 1;
         private int _rrCursor;
 
-        // P3 — 가시성·우선순위·예산 스케줄링 상태. 틱·브로드캐스트·캐치업·뷰어 설정이 모두 메인 스레드에서만 접근한다 (무락).
+        // P3 — visibility, priority, and budget scheduling state. Tick, broadcast, catch-up, and viewer setup
+        // all touch it on the main thread only (lock-free).
         private readonly Dictionary<long, ViewerPosition> _viewerPositions = new();
         private readonly Dictionary<long, HashSet<ulong>> _visible = new();
         private readonly Dictionary<long, HashSet<ulong>> _everVisible = new();
@@ -29,80 +32,81 @@ namespace UniNet.Core.Hosting
         private bool[] _relevanceScratch = Array.Empty<bool>();
         private long _seq;
 
-        // P4 — 그리드 공간 분할 가시성 (RepGraph 스타일) 상태. 메인 스레드 전용.
+        // P4 — grid spatial-partition visibility (RepGraph style) state. Main thread only.
         private bool _gridEnabled;
         private float _gridCellSize = 32f;
         private float _gridRadius = 48f;
         private readonly Dictionary<(int X, int Z), List<ulong>> _gridBuckets = new();
         private readonly List<ulong> _gridAlwaysRelevant = new();
         private readonly Dictionary<long, HashSet<ulong>> _gridRelevant = new();
-        private readonly List<List<ulong>> _bucketFree = new();   // 재사용 가능한 빈 셀 버킷
-        private readonly List<List<ulong>> _bucketUsed = new();   // 이번 틱에 배정된 셀 버킷
+        private readonly List<List<ulong>> _bucketFree = new();   // pooled empty cell buckets available for reuse
+        private readonly List<List<ulong>> _bucketUsed = new();   // cell buckets assigned during this tick
 
-        /// <summary>틱당 리플리케이션 전역 바이트 예산 — 0 = 무제한(기본). 초과 델타는 대기열로 연기됐다가 다음 틱에 전송된다.</summary>
+        /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 
         /// <summary>
-        /// 클라이언트 접속 이벤트 — 환영·소유권 배정·캐치업까지 끝난 뒤 메인 스레드에서 발화한다.
-        /// 게임은 여기서 아바타 스폰·HUD 갱신 등을 처리한다 (연결 수명주기 게이트웨이).
+        /// Client connected event — fired on the main thread after Welcome, ownership assignment, and catch-up
+        /// have completed. Spawn the player's avatar, update HUD, etc. here (connection lifecycle gateway).
         /// </summary>
         public event Action<long> ClientConnected;
 
         /// <summary>
-        /// 클라이언트 연결 종료 이벤트 — 소유권 재배정 이전(해제 연결 소유 오브젝트를 소유자로 아직 식별할 수 있다)
-        /// 메인 스레드에서 발화한다. 게임은 여기서 퇴장 플레이어의 오브젝트를 파괴한다 (파괴하지 않으면 재배정된 소유자로 남는다).
+        /// Client disconnected event — fired on the main thread BEFORE ownership is reassigned (objects owned by
+        /// the leaving connection can still be identified by owner). Destroy the leaving player's objects here
+        /// (otherwise they remain with the reassigned owner).
         /// </summary>
         public event Action<long> ClientDisconnected;
 
-        /// <summary>네트워크 오브젝트 1개의 서버 측 상태 — 오브젝트(게임오브젝트) 단위. 소유권·파괴·가시성의 단위다.</summary>
+        /// <summary>Server-side state of one network object — per GameObject. The unit of ownership, destruction, and visibility.</summary>
         public sealed class ServerObjectEntry
         {
-            /// <summary>대표 인스턴스 (첫 NetworkBehaviour — 고스트 스윕·변환 조회용).</summary>
+            /// <summary>Representative instance (the first NetworkBehaviour — used for ghost sweeps and transform lookup).</summary>
             public object Instance { get; }
 
-            /// <summary>소유 클라이언트 연결 ID (0 = 미할당).</summary>
+            /// <summary>Owning client connection ID (0 = unassigned).</summary>
             public long OwnerConnId;
 
-            /// <summary>동적 스폰 오브젝트인가 (후발 접속 캐치업에서 스폰 메시지로 재전달된다).</summary>
+            /// <summary>Whether the object was dynamically spawned (resent as a spawn message during late-join catch-up).</summary>
             public bool IsDynamic;
 
-            /// <summary>서브오브젝트 테이블 — 슬롯(SubId)순. 각 NetworkBehaviour의 리플리케이션 상태를 가진다.</summary>
+            /// <summary>Sub-object table in slot (SubId) order — holds each NetworkBehaviour's replication state.</summary>
             public SubObjectEntry[] Subs = Array.Empty<SubObjectEntry>();
 
             public ServerObjectEntry(object instance) => Instance = instance;
         }
 
-        /// <summary>서브오브젝트 1개(NetworkBehaviour)의 서버 측 리플리케이션 상태.</summary>
+        /// <summary>Server-side replication state of one sub-object (a NetworkBehaviour).</summary>
         public sealed class SubObjectEntry
         {
-            /// <summary>이 슬롯의 인스턴스 (NetworkBehaviour).</summary>
+            /// <summary>The instance in this slot (a NetworkBehaviour).</summary>
             public object Instance { get; }
 
-            /// <summary>이 타입의 리플리케이션 핸들러 (Replicated 필드가 있을 때만).</summary>
+            /// <summary>This type's replication handler (only when it has Replicated fields).</summary>
             public UniNetReplicationHandler Replication;
 
-            /// <summary>클라 생성용 타입 식별자 (UniNetSpawnRegistry).</summary>
+            /// <summary>Type identifier for client-side creation (UniNetSpawnRegistry).</summary>
             public ulong TypeKey;
 
-            /// <summary>서버 측 마지막 전송 스냅샷 (dirty 비교 기준).</summary>
+            /// <summary>Server-side last-sent snapshot (baseline for dirty comparison).</summary>
             public object[] Snapshot = Array.Empty<object>();
 
-            /// <summary>다음 전송 허용 시각 (NetUpdateFrequency 스케줄링 — TickReplication의 시간 축).</summary>
+            /// <summary>Earliest time the next send is allowed (NetUpdateFrequency scheduling — on TickReplication's time axis).</summary>
             public double NextReplicateTime;
 
             public SubObjectEntry(object instance) => Instance = instance;
         }
 
-        /// <summary>연결별 서버 상태 — 허브와 시스템 전송 채널(생성 허브가 구현)을 함께 보관.</summary>
+        /// <summary>Per-connection server state — holds the hub together with its system send channel (implemented by the generated hub).</summary>
         public sealed class ServerConnection
         {
-            /// <summary>서버가 부여한 연결 ID.</summary>
+            /// <summary>Connection ID assigned by the server.</summary>
             public long ConnId { get; }
 
-            /// <summary>연결 종료 여부.</summary>
+            /// <summary>Whether the connection has ended.</summary>
             public bool Disconnected { get; internal set; }
 
-            /// <summary>연결의 전송 채널 (생성 서버 허브 — 생성 코드가 타입 캐스팅해 송신에 쓴다).</summary>
+            /// <summary>The connection's send channel (the generated server hub — generated code type-casts it for sends).</summary>
             public IUniNetSystemChannel Channel { get; }
 
             internal ServerConnection(long connId, IUniNetSystemChannel channel)
@@ -112,7 +116,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>씬 오브젝트를 등록한다 — 오브젝트당 1회, 컴포넌트 전체를 슬롯 순서로. netId는 양단이 같은 규칙(씬 경로 해시)으로 계산한다.</summary>
+        /// <summary>Registers a scene object — once per object, with all components in slot order. Both sides compute the netId with the same rule (scene path hash).</summary>
         public void RegisterSceneObject(ulong netId, IReadOnlyList<object> components)
         {
             lock (_gate)
@@ -124,15 +128,16 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// 동적 오브젝트를 등록하고 서버가 할당한 netId를 반환한다. 컴포넌트 전체를 슬롯 순서로 받는다.
-        /// 소유 연결은 라운드로빈으로 즉시 배정한다. 이후 BroadcastSpawn(netId)로 클라 전체에 전파한다 (메인 스레드).
+        /// Registers a dynamic object and returns its server-assigned netId. Accepts all components in slot
+        /// order. The owning connection is assigned immediately by round-robin. Afterwards call
+        /// BroadcastSpawn(netId) to propagate it to all clients (main thread).
         /// </summary>
         public ulong RegisterDynamicObject(IReadOnlyList<object> components)
         {
             lock (_gate)
             {
                 ulong netId = _nextDynamicNetId;
-                while (_objects.ContainsKey(netId)) netId++;   // 씬 해시와의 충돌 회피 — 등록 불변식 보장
+                while (_objects.ContainsKey(netId)) netId++;   // skip collisions with scene hashes — keeps the registration invariant
                 _nextDynamicNetId = netId + 1;
 
                 var entry = new ServerObjectEntry(components[0]) { IsDynamic = true };
@@ -147,7 +152,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>등록된 오브젝트를 제거하고 전 연결에 파괴를 전파한다. 등록이 없으면 false (메인 스레드).</summary>
+        /// <summary>Removes a registered object and propagates the destroy to all connections. Returns false if it was not registered (main thread).</summary>
         public bool DestroyObject(ulong netId)
         {
             lock (_gate)
@@ -155,8 +160,8 @@ namespace UniNet.Core.Hosting
                 if (!_objects.Remove(netId)) return false;
             }
 
-            // P3 가시성 상태 정리 — 파괴 netId 잔존 방지 (동적 스폰/파괴 churn의 완만한 누수).
-            // 씬 리로드 재등록 시에도 신선한 기준선(첫 평가 조용한 시드)을 보장한다. P3 상태와 같은 메인 스레드다.
+            // P3 visibility cleanup — prevents destroyed netIds from lingering (a slow leak under spawn/destroy churn).
+            // Also guarantees a fresh baseline on scene-reload re-registration (first evaluation silently seeds). Same main thread as P3 state.
             foreach (var set in _visible.Values) set.Remove(netId);
             foreach (var set in _everVisible.Values) set.Remove(netId);
 
@@ -166,7 +171,7 @@ namespace UniNet.Core.Hosting
             return true;
         }
 
-        /// <summary>동적 스폰을 전 연결에 전파한다 — 스폰 메시지(변환·서브 타입·전체 상태) + 소유권 알림 (메인 스레드).</summary>
+        /// <summary>Propagates a dynamic spawn to all connections — the spawn message (transform, sub types, full state) plus the ownership notice (main thread).</summary>
         public void BroadcastSpawn(ulong netId)
         {
             var entry = GetEntry(netId);
@@ -176,7 +181,7 @@ namespace UniNet.Core.Hosting
             foreach (var conn in SnapshotConnections())
             {
                 if (conn.Disconnected) continue;
-                if (!IsRelevant(entry, conn, netId)) continue;   // 비관련 연결 — 스폰 생략 (관련 전환 시 전송된다)
+                if (!IsRelevant(entry, conn, netId)) continue;   // irrelevant connection — skip the spawn (sent when it becomes relevant)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
                 SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, conn.ConnId == entry.OwnerConnId);
@@ -187,13 +192,13 @@ namespace UniNet.Core.Hosting
                         conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
         }
 
-        /// <summary>netId로 등록된 오브젝트의 대표 인스턴스를 조회한다 (고스트 스윕 등 오브젝트 단위 조회).</summary>
+        /// <summary>Returns the representative instance of a registered object by netId (object-level lookup, e.g. for ghost sweeps).</summary>
         public object Get(ulong netId)
         {
             lock (_gate) return _objects.TryGetValue(netId, out var e) ? e.Instance : null;
         }
 
-        /// <summary>오브젝트 소유자 조회 (0 = 미할당). 생성 ServerRpc 디스패치의 소유자 강제가 사용한다 (ADR-0016).</summary>
+        /// <summary>Returns an object's owner (0 = unassigned). Used by the generated ServerRpc dispatch to enforce ownership (ADR-0016).</summary>
         public long GetOwner(ulong netId)
         {
             lock (_gate) return _objects.TryGetValue(netId, out var e) ? e.OwnerConnId : 0;
@@ -201,18 +206,20 @@ namespace UniNet.Core.Hosting
 
         private static readonly HashSet<long> _rejectionLoggedConns = new();
         private static DateTime _lastRejectionLogUtc;
-        private static readonly object _rejectionGate = new();   // static 스로틀 상태 전용 잠금 — 인스턴스 _gate와 분리
+        private static readonly object _rejectionGate = new();   // lock for the static throttle state only — separate from the instance _gate
 
         /// <summary>
-        /// ServerRpc 거부 경고를 로그해야 하는가 (ADR-0016 로그 유량 제한 — 로그 플러딩 DoS 방어).
-        /// 발신자별 최초 1회 + 전역 5초당 최대 1회. Core 무로그 계약 유지 — 판단만 반환한다.
-        /// 5초 창 안에 처음 거부된 발신자는 기록만 되고 로그되지 않는다(다음 거부 시 재시도 없음 — churn 상한 우선).
+        /// Should a ServerRpc rejection be logged (ADR-0016 log throttling — defends against log-flooding DoS).
+        /// First rejection per sender, plus at most one global log per 5 seconds. Core keeps its no-logging
+        /// contract — this only decides.
+        /// A sender first rejected inside an open 5-second window is recorded but not logged (and not retried —
+        /// churn cap takes priority).
         /// </summary>
         public static bool ReportServerRpcRejection(long senderConnId)
         {
             lock (_rejectionGate)
             {
-                if (!_rejectionLoggedConns.Add(senderConnId)) return false;   // 이미 로그한 발신자
+                if (!_rejectionLoggedConns.Add(senderConnId)) return false;   // already logged this sender
                 var now = DateTime.UtcNow;
                 if (_lastRejectionLogUtc != default && (now - _lastRejectionLogUtc).TotalMilliseconds < 5000) return false;
                 _lastRejectionLogUtc = now;
@@ -220,7 +227,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>서브슬롯의 인스턴스를 조회한다 (RPC 라우팅).</summary>
+        /// <summary>Returns the instance in a sub slot (RPC routing).</summary>
         public object Get(ulong netId, byte subId)
         {
             lock (_gate)
@@ -230,13 +237,13 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>서버 측 오브젝트 엔트리를 조회한다.</summary>
+        /// <summary>Returns the server-side object entry.</summary>
         public ServerObjectEntry GetEntry(ulong netId)
         {
             lock (_gate) return _objects.TryGetValue(netId, out var e) ? e : null;
         }
 
-        /// <summary>서버 측 등록 오브젝트 전체를 순회한다 (드라이버 틱용, 락 내 복사본).</summary>
+        /// <summary>Enumerates all registered server-side objects (for the driver tick, copied inside the lock).</summary>
         public IReadOnlyList<(ulong NetId, ServerObjectEntry Entry)> SnapshotObjects()
         {
             lock (_gate)
@@ -248,7 +255,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>새 연결을 붙인다 — 연결 ID 부여·소유권 재배정·기존 상태 캐치업을 메인 큐로 예약한다.</summary>
+        /// <summary>Attaches a new connection — schedules connection ID assignment, ownership reassignment, and catch-up of existing state onto the main queue.</summary>
         public long AttachConnection(IUniNetSystemChannel channel)
         {
             lock (_gate)
@@ -262,13 +269,13 @@ namespace UniNet.Core.Hosting
                     channel.SendWelcome(connId);
                     ReassignOwnership();
                     SendCatchup(conn);
-                    RaiseLifecycle(ClientConnected, connId);   // 캐치업 이후 — 게임이 이 시점에 스폰해도 캐치업과 충돌 없다
+                    RaiseLifecycle(ClientConnected, connId);   // after catch-up — spawns raised here never race the catch-up
                 });
                 return conn.ConnId;
             }
         }
 
-        /// <summary>연결을 뗀다 (허브 Disconnect 관측 시).</summary>
+        /// <summary>Detaches a connection (observed when the hub disconnects).</summary>
         public void DetachConnection(IUniNetSystemChannel channel)
         {
             lock (_gate)
@@ -282,18 +289,18 @@ namespace UniNet.Core.Hosting
                         _connections.RemoveAt(i);
                         UniNetEnvironment.QueueOnMain(() =>
                         {
-                            _viewerPositions.Remove(conn.ConnId);   // P3/P4 상태 정리 — 틱과 같은 메인 스레드에서
+                            _viewerPositions.Remove(conn.ConnId);   // P3/P4 cleanup — same main thread as the tick
                             _visible.Remove(conn.ConnId);
-                            _everVisible.Remove(conn.ConnId);   // 재접속마다 잔존하는 HashSet 누수 방지 (connId 단조 증가)
-                            _gridRelevant.Remove(conn.ConnId);   // P4 그리드 집합도 정리
+                            _everVisible.Remove(conn.ConnId);   // prevents HashSets lingering across reconnects (connIds are monotonically increasing)
+                            _gridRelevant.Remove(conn.ConnId);   // clears the P4 grid sets too
                             try
                             {
-                                RaiseLifecycle(ClientDisconnected, conn.ConnId);   // 재배정 전 — 게임이 소유 오브젝트를 식별해 처리한다
+                                RaiseLifecycle(ClientDisconnected, conn.ConnId);   // before reassignment — the game can identify and handle owned objects
                             }
                             finally
                             {
-                                // 구독자 예외와 무관하게 항상 실행 — 죽은 연결이 소유자로 남는 것을 막는 서버 불변식
-                                // (재던진 예외가 같은 람다의 잔여 문장을 건너뛰게 두면 OwnerOnly 델타 수신자를 잃는다)
+                                // Always runs regardless of subscriber exceptions — server invariant that keeps dead connections from
+                                // staying owners (letting a rethrown exception skip the rest of this lambda would lose OwnerOnly delta receivers)
                                 ReassignOwnership();
                             }
                         });
@@ -303,15 +310,16 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>살아있는 연결 목록 (복사본).</summary>
+        /// <summary>List of live connections (a copy).</summary>
         public IReadOnlyList<ServerConnection> SnapshotConnections()
         {
             lock (_gate) return _connections.ToArray();
         }
 
         /// <summary>
-        /// 소유권 최소 정책 — 연결 순서대로 오브젝트(netId 오름차순)를 한 바퀴씩 배정하고 전 클라에 알린다.
-        /// ponytail: 라운드로빈 최소 정책, 실서비스 요구 시 명시적 소유권 이전 API로 대체.
+        /// Minimal ownership policy — assigns objects (ascending netId) to connections in order, one lap per
+        /// pass, and notifies every client.
+        /// ponytail: round-robin minimal policy; replace with an explicit ownership-transfer API if production demands it.
         /// </summary>
         private void ReassignOwnership()
         {
@@ -331,13 +339,13 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>후발 접속 캐치업 — 동적 오브젝트는 스폰으로, 씬 오브젝트는 서브별 전체 상태 리플리케이션으로 뒤늦게 합류시킨다.</summary>
+        /// <summary>Late-join catch-up — dynamic objects arrive as spawn messages; scene objects as per-sub full-state replication.</summary>
         private void SendCatchup(ServerConnection conn)
         {
             bool isOwner;
             foreach (var (netId, entry) in SnapshotObjects())
             {
-                if (!IsRelevant(entry, conn, netId)) continue;   // 비관련 오브젝트 — 캐치업 제외 (관련 전환 시 전송)
+                if (!IsRelevant(entry, conn, netId)) continue;   // irrelevant object — excluded from catch-up (sent on relevance transition)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
                 isOwner = entry.OwnerConnId == conn.ConnId;
@@ -353,7 +361,7 @@ namespace UniNet.Core.Hosting
                         var handler = entry.Subs[subId].Replication;
                         if (handler == null || !handler.HasFields) continue;
                         byte[] state = handler.WriteFull(entry.Subs[subId].Instance, isOwner);
-                        if (state != null && state.Length > 0)   // 전 필드가 조건으로 제외되면 null — 캐치업 생략
+                        if (state != null && state.Length > 0)   // null when every field is filtered out by conditions — skip catch-up
                             conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
                     }
                 }
@@ -361,45 +369,48 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// 리플리케이션 틱(드라이버 Update에서 호출) — 서브오브젝트별로 변경된 [Replicated] 필드만 골라 수신 그룹별(OwnerOnly/SkipOwner) 델타를 전송한다.
-        /// 드라이버는 고스트 스윕과 스냅샷을 공유해 프레임당 복사를 1회로 제한할 수 있다.
-        /// 시간을 주지 않으면 즉시 모드(주기·기아·예산 정책 미적용)로 동작한다 — P2 호환 경로.
+        /// Replication tick (call from the driver Update) — picks only changed [Replicated] fields per sub-object
+        /// and sends deltas per receive group (OwnerOnly/SkipOwner).
+        /// The driver can share ghost sweeps and snapshots to limit copying to once per frame.
+        /// Without a time argument it runs in immediate mode (no rate, starvation, or budget policy) — the P2-compatible path.
         /// </summary>
         public void TickReplication()
             => TickReplication(SnapshotObjects());
 
-        /// <summary>스냅샷을 받는 틱 오버로드 — 즉시 모드(정책 미적용).</summary>
+        /// <summary>Tick overload accepting a snapshot — immediate mode (no policy applied).</summary>
         public void TickReplication(IReadOnlyList<(ulong NetId, ServerObjectEntry Entry)> objects)
             => TickReplication(objects, double.NaN);
 
         /// <summary>
-        /// P3 틱 — 가시성 갱신(컬 거리·관련성 훅) → 휴면·주기 필터를 거친 델타 후보를 우선순위(기아 보정)순으로
-        /// 전역·유형별 예산 안에서 전송하고, 예산 초과분은 다음 틱으로 연기한다. time은 초 단위 단조 시계.
+        /// P3 tick — refreshes visibility (cull distance, relevancy hook), then sends delta candidates filtered by
+        /// dormancy and update rate, ordered by priority (with starvation boost), within the global and per-type
+        /// budgets; anything over budget is deferred to the next tick. time is a monotonic clock in seconds.
         /// </summary>
         public void TickReplication(IReadOnlyList<(ulong NetId, ServerObjectEntry Entry)> objects, double time)
         {
-            var connections = SnapshotConnections();   // 틱당 1회 캡처 (오브젝트마다 복사 방지)
+            var connections = SnapshotConnections();   // capture once per tick (avoids per-object copies)
             if (connections.Count == 0) return;
 
             bool timed = !double.IsNaN(time);
-            int budget = timed ? ReplicationBudgetPerTickBytes : 0;   // 즉시 모드는 예산 정책도 미적용 (P2 호환 계약)
+            int budget = timed ? ReplicationBudgetPerTickBytes : 0;   // immediate mode skips the budget policy too (P2-compatible contract)
             int budgetLeft = budget > 0 ? budget : int.MaxValue;
-            if (_gridEnabled) RefreshGrid(objects, connections);   // P4 — 그리드 가시성 갱신 (틱당 1회)
+            if (_gridEnabled) RefreshGrid(objects, connections);   // P4 — refresh grid visibility once per tick
 
             _pending.Clear();
             foreach (var (netId, entry) in objects)
             {
-                if (!UpdateVisibility(netId, entry, connections)) continue;   // 어느 연결에도 비관련 — 비교·전송 모두 생략 (재진입 시 기준선 복구)
+                if (!UpdateVisibility(netId, entry, connections)) continue;   // irrelevant to every connection — skip compare and send (restores the baseline on re-entry)
 
-                // 연결별 관련 여부를 인큐 시점에 비트마스크로 스냅샷 — 전송 루프의 항목×연결 재평가(훅·transform 네이티브 호출) 제거.
-                // 64 초과 연결은 전송 시점 재평가로 폴백한다 (드문 대규모 토폴로지).
+                // Snapshot per-connection relevancy as a bitmask at enqueue time — removes per-item × per-connection
+                // re-evaluation (hook + transform native calls) from the send loop.
+                // Falls back to re-evaluation at send time with more than 64 connections (rare large topology).
                 ulong relevantMask = 0;
                 int maskCount = Math.Min(connections.Count, 64);
                 for (int i = 0; i < maskCount; i++)
                     if (_relevanceScratch[i]) relevantMask |= 1ul << i;
 
                 var policy = entry.Instance as IUniNetReplicationPolicy;
-                if (policy != null && policy.IsNetworkDormant) continue;   // 휴면 — 델타 비교 중단 (깨우면 누적 변경분이 나간다)
+                if (policy != null && policy.IsNetworkDormant) continue;   // dormant — skip delta compare (flushing dormancy sends the accumulated changes)
 
                 float hz = policy?.NetworkUpdateFrequencyHz ?? 0f;
                 for (byte subId = 0; subId < entry.Subs.Length; subId++)
@@ -407,7 +418,7 @@ namespace UniNet.Core.Hosting
                     var sub = entry.Subs[subId];
                     var handler = sub.Replication;
                     if (handler == null || !handler.HasFields) continue;
-                    if (timed && hz > 0f && time < sub.NextReplicateTime) continue;   // 주기 미도달 — 스냅샷 유지, 도달 틱에 변경분 전송
+                    if (timed && hz > 0f && time < sub.NextReplicateTime) continue;   // rate not due yet — snapshot kept, changes go on the due tick
 
                     var (toOwner, toOthers) = handler.CompareAndWriteDelta(sub);
                     if (IsEmpty(toOwner) && IsEmpty(toOthers)) continue;
@@ -429,7 +440,7 @@ namespace UniNet.Core.Hosting
                 }
             }
 
-            // 후보 + 이전 틱 연기분 병합 → 기아 보정 우선순위 순 전송 (UE GetNetPriority: priority × (1 + 대기초/0.1))
+            // Merge candidates with the previous tick's deferrals → send in starvation-boosted priority order (UE GetNetPriority: priority × (1 + waitSec / 0.1))
             _pending.AddRange(_queue);
             _pending.Sort((a, b) =>
             {
@@ -440,25 +451,26 @@ namespace UniNet.Core.Hosting
             });
 
             _queue.Clear();
-            _typeBudgetLeft.Clear();   // 유형별 채널 예산 리필 — 즉시 모드는 비워 둔다 (예산 정책 미적용)
+            _typeBudgetLeft.Clear();   // refill per-type channel budgets — left empty in immediate mode (no budget policy)
             if (timed)
                 foreach (var kv in _channelBudgets) _typeBudgetLeft[kv.Key] = kv.Value;
 
             foreach (var item in _pending)
             {
                 var entry = GetEntry(item.NetId);
-                if (entry == null) continue;   // 틱 도중 파괴 — 연기분 폐기
+                if (entry == null) continue;   // destroyed mid-tick — drop the deferral
 
                 var entryPolicy = entry.Instance as IUniNetReplicationPolicy;
                 if (entryPolicy != null && entryPolicy.IsNetworkDormant)
                 {
-                    // 휴면 진입 — 연기분도 보류한다. 드롭하면 스냅샷이 이미 갱신돼 변경분이 영구 유실되므로, 깨우면 전송된다.
+                    // Went dormant — hold the deferrals too. Dropping them would lose changes permanently (the snapshot
+                    // was already updated), so they are sent once dormancy is flushed.
                     _queue.Add(item);
                     continue;
                 }
 
                 int size = Math.Max(item.Owner?.Length ?? 0, item.Others?.Length ?? 0);
-                bool globalOk = budgetLeft >= size || (budget > 0 && size > budget);   // 예산보다 큰 단일 델타는 기아 방지 강제 전송
+                bool globalOk = budgetLeft >= size || (budget > 0 && size > budget);   // force-send a single delta larger than the budget (anti-starvation)
                 bool typeOk = true;
                 if (_typeBudgetLeft.TryGetValue(item.SenderType, out int typeLeft))
                 {
@@ -467,7 +479,7 @@ namespace UniNet.Core.Hosting
                 }
                 if (!globalOk || !typeOk)
                 {
-                    _queue.Add(item);   // 연기 — EnqueuedAt 보존으로 기아 보정이 계속 성장한다
+                    _queue.Add(item);   // defer — EnqueuedAt is preserved so the starvation boost keeps growing
                     continue;
                 }
 
@@ -478,7 +490,7 @@ namespace UniNet.Core.Hosting
                     if (conn.Disconnected) continue;
                     bool relevant = i < 64
                         ? (item.RelevantMask & (1ul << i)) != 0
-                        : IsRelevant(entry, conn, item.NetId);   // 64 초과 연결 — 전송 시점 재평가 (드문 대규모 토폴로지)
+                        : IsRelevant(entry, conn, item.NetId);   // >64 connections — re-evaluate at send time (rare large topology)
                     if (!relevant) continue;
                     var payload = conn.ConnId == entry.OwnerConnId ? item.Owner : item.Others;
                     if (IsEmpty(payload)) continue;
@@ -493,16 +505,16 @@ namespace UniNet.Core.Hosting
 
         private static bool IsEmpty(byte[] payload) => payload == null || payload.Length == 0;
 
-        // ── P3 — 가시성(Relevancy)·채널 예산 ·뷰어 ────────────────────────────
+        // ── P3 — visibility (relevancy), channel budget, viewers ────────────────────────────
 
-        /// <summary>연결의 뷰어 위치를 설정한다 — 컬 거리 판정 기준점 (메인 스레드). 설정하지 않은 연결은 거리 컬을 받지 않는다(항상 관련).</summary>
+        /// <summary>Sets a connection's viewer position — the reference point for cull-distance tests (main thread). Connections without one are never distance-culled (always relevant).</summary>
         public void SetViewerPosition(long connId, float x, float y, float z)
             => _viewerPositions[connId] = new ViewerPosition(x, y, z);
 
-        /// <summary>연결의 뷰어 위치 설정을 해제한다 — 이후 해당 연결은 거리 컬을 받지 않는다 (메인 스레드).</summary>
+        /// <summary>Clears a connection's viewer position — the connection is no longer distance-culled (main thread).</summary>
         public void ClearViewerPosition(long connId) => _viewerPositions.Remove(connId);
 
-        /// <summary>네트워크 유형(채널)별 틱당 전송 예산을 설정한다 — 한 유형의 과다 전송이 다른 유형을 굶기지 않게 한다 (bytesPerTick ≤ 0 = 해제, 메인 스레드).</summary>
+        /// <summary>Sets a per-type (channel) send budget per tick — stops one type's flood from starving others (bytesPerTick ≤ 0 disables; main thread).</summary>
         public void SetReplicationChannelBudget(Type behaviourType, int bytesPerTick)
         {
             if (behaviourType == null) throw new ArgumentNullException(nameof(behaviourType));
@@ -511,9 +523,10 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// P4 그리드 공간 분할 가시성 (RepGraph 스타일) — 월드를 cellSize 격자(XZ 평면)로 나눠 뷰어 주변 visibleRadius
-        /// 반경 셀의 오브젝트만 관련으로 판정한다. 거리 판정을 셀 멤버십으로 대체하는 양자화 판정(경계 오차 cellSize 이하)이며,
-        /// 오브젝트별 NetworkCullDistance>0는 그리드와 AND로 유지된다. 뷰어 위치 미설정 연결은 P3 계약대로 페일오픈 (메인 스레드).
+        /// P4 grid spatial-partition visibility (RepGraph style) — divides the world into a cellSize grid (XZ
+        /// plane) and treats only objects in cells within visibleRadius of a viewer as relevant. This is a
+        /// quantized test replacing exact distance (boundary error ≤ cellSize); per-object NetworkCullDistance > 0
+        /// still applies, ANDed with the grid. Connections without a viewer position fail open per the P3 contract (main thread).
         /// </summary>
         public void SetVisibilityGrid(float cellSize, float visibleRadius)
         {
@@ -524,14 +537,14 @@ namespace UniNet.Core.Hosting
             _gridEnabled = true;
         }
 
-        /// <summary>그리드 가시성을 해제한다 — P3 거리 컬로 복귀한다 (메인 스레드).</summary>
+        /// <summary>Disables grid visibility — falls back to P3 distance culling (main thread).</summary>
         public void ClearVisibilityGrid() => _gridEnabled = false;
 
-        /// <summary>P4 그리드 갱신 — 오브젝트를 셀에 분배하고 연결별(뷰어 반경 내) 관련 집합을 계산한다 (틱당 1회).
-        /// 버킷 리스트·연결 집합은 재사용해 틱당 GC 압력을 없앤다. ponytail: 오브젝트·연결 수가 매우 크면 풀링으로 확장.</summary>
+        /// <summary>P4 grid refresh — assigns objects to cells and computes each connection's (viewer-radius) relevant set, once per tick.
+        /// Bucket lists and connection sets are reused to eliminate per-tick GC pressure. ponytail: extend pooling if object/connection counts grow very large.</summary>
         private void RefreshGrid(IReadOnlyList<(ulong NetId, ServerObjectEntry Entry)> objects, IReadOnlyList<ServerConnection> connections)
         {
-            // 버킷 회수 — 이전 틱 리스트를 비워 재사용 가능하게 만든다 (딕셔너리는 키가 바뀌므로 재구성)
+            // Recycle buckets — clear the previous tick's lists for reuse (the dictionary is rebuilt because keys change)
             foreach (var bucket in _bucketUsed) bucket.Clear();
             _bucketFree.AddRange(_bucketUsed);
             _bucketUsed.Clear();
@@ -551,17 +564,17 @@ namespace UniNet.Core.Hosting
                     }
                     bucket.Add(netId);
                 }
-                else _gridAlwaysRelevant.Add(netId);   // 위치 없는 오브젝트 — 항상 관련 (페일오픈)
+                else _gridAlwaysRelevant.Add(netId);   // object without position — always relevant (fail-open)
             }
 
-            // 연결별 집합 재사용 — 딕셔너리를 유지한 채 Clear 후 재기입 (GC 압력 제거). 끊긴 연결 키는 DetachConnection에서 제거
+            // Reuse per-connection sets — keep the dictionary, clear and refill each set (no GC pressure). Keys of dropped connections are removed in DetachConnection
             int range = (int)Math.Ceiling(_gridRadius / _gridCellSize);
             foreach (var conn in connections)
             {
                 if (conn.Disconnected) continue;
-                if (!_viewerPositions.TryGetValue(conn.ConnId, out var viewer)) continue;   // 집합 미생성 — IsRelevant의 페일오픈이 처리
+                if (!_viewerPositions.TryGetValue(conn.ConnId, out var viewer)) continue;   // no set created — IsRelevant's fail-open handles it
                 if (!_gridRelevant.TryGetValue(conn.ConnId, out var set)) _gridRelevant[conn.ConnId] = set = new HashSet<ulong>();
-                set.Clear();   // 기존 인스턴스 재사용 — 용량 유지
+                set.Clear();   // reuse the existing instance — keeps capacity
                 int cx = (int)Math.Floor(viewer.X / _gridCellSize);
                 int cz = (int)Math.Floor(viewer.Z / _gridCellSize);
                 for (int dx = -range; dx <= range; dx++)
@@ -580,7 +593,7 @@ namespace UniNet.Core.Hosting
             return last;
         }
 
-        /// <summary>오브젝트가 연결에 관련되는가 — 관련성 훅 + (그리드 멤버십 또는 뷰어 위치 대비 컬 거리). 정책이 없으면 항상 관련.</summary>
+        /// <summary>Whether an object is relevant to a connection — relevancy hook AND (grid membership OR cull distance against the viewer position). Always relevant without a policy.</summary>
         private bool IsRelevant(ServerObjectEntry entry, ServerConnection conn, ulong netId)
         {
             if (entry.Instance is not IUniNetReplicationPolicy policy) return true;
@@ -589,8 +602,8 @@ namespace UniNet.Core.Hosting
             float cull = policy.NetworkCullDistance;
             if (_gridEnabled && _viewerPositions.ContainsKey(conn.ConnId))
             {
-                if (cull <= 0f) return GridContains(conn.ConnId, netId);   // 그리드 멤버십으로 거리 판정 대체 (양자화 오차 cellSize 이하)
-                if (!GridContains(conn.ConnId, netId)) return false;   // 전역 반경 통과 후 오브젝트 컬도 검사 (AND)
+                if (cull <= 0f) return GridContains(conn.ConnId, netId);   // grid membership replaces the distance test (quantization error ≤ cellSize)
+                if (!GridContains(conn.ConnId, netId)) return false;   // after the global radius passes, still check the object's own cull (AND)
             }
             if (cull > 0f
                 && _viewerPositions.TryGetValue(conn.ConnId, out var viewer)
@@ -607,9 +620,11 @@ namespace UniNet.Core.Hosting
             => _gridRelevant.TryGetValue(connId, out var set) && set.Contains(netId);
 
         /// <summary>
-        /// 오브젝트 단위 가시성 갱신 — 연결별 관련 변화를 추적하고 관련 여부를 되돌린다. 씬 오브젝트의 첫 평가는
-        /// 조용히 시드만 한다 (P2 계약 — 등록 이후 변경분 델타만 전송). 재진입(비관련→관련 복귀)과 동적 오브젝트
-        /// 첫 평가(클라에 없음)는 스폰/전체 상태로 기준선을 복구한다 — 비관련 기간 중 놓친 델타의 유실을 막는다.
+        /// Per-object visibility refresh — tracks per-connection relevancy changes and returns whether anything
+        /// is relevant. A scene object's first evaluation silently seeds only (P2 contract — after registration,
+        /// only subsequent change deltas are sent). Re-entry (irrelevant → relevant again) and a dynamic
+        /// object's first evaluation (the client doesn't have it) restore the baseline with a spawn/full state —
+        /// preventing loss of deltas missed while irrelevant.
         /// </summary>
         private bool UpdateVisibility(ulong netId, ServerObjectEntry entry, IReadOnlyList<ServerConnection> conns)
         {
@@ -624,18 +639,18 @@ namespace UniNet.Core.Hosting
                     _relevanceScratch[i] = anyRelevant = true;
                     bool everNew = GetEverVisibleSet(conn.ConnId).Add(netId);
                     if (seen.Add(netId) && (!everNew || entry.IsDynamic))
-                        SendVisibilityState(conn, netId, entry);   // 재진입 기준선 복구 · 동적 오브젝트 생성
+                        SendVisibilityState(conn, netId, entry);   // re-entry baseline restore · dynamic object creation
                 }
                 else
                 {
                     _relevanceScratch[i] = false;
-                    seen.Remove(netId);   // 관련→비관련 — 델타 중단 (클라는 마지막 상태 유지 — 전파 파괴 미지원 계약)
+                    seen.Remove(netId);   // relevant → irrelevant — stop deltas (client keeps the last state; propagation destroy is out of contract)
                 }
             }
             return anyRelevant;
         }
 
-        /// <summary>관련 전이 전송 — 동적 오브젝트는 클라에 없으므로 스폰으로, 씬 오브젝트는 전체 상태 리플리케이션으로 기준선을 복구한다 (캐치업과 같은 경로, 예산 외).</summary>
+        /// <summary>Sends a relevancy transition — dynamic objects arrive as spawns (the client lacks them); scene objects as full-state replication (same path as catch-up, outside the budget).</summary>
         private void SendVisibilityState(ServerConnection conn, ulong netId, ServerObjectEntry entry)
         {
             bool isOwner = conn.ConnId == entry.OwnerConnId;
@@ -672,8 +687,10 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// 수명주기 이벤트 발화 — 구독자별 격리(첫 예외가 나머지 구독자를 묻지 않는다) 후 마지막 예외를 재던진다.
-        /// 재던진 예외는 메인 펌프 보호(드라이버·생성 코드의 catch)가 로그하고, 펌프 잔여 작업은 다음 프레임에서 재개된다.
+        /// Raises a lifecycle event — isolates subscribers (the first exception never silences the rest) and
+        /// rethrows the last exception afterwards.
+        /// The rethrown exception is logged by the main-pump guard (driver/generated code catch), and remaining
+        /// pump work resumes next frame.
         /// </summary>
         private static void RaiseLifecycle(Action<long> handlers, long connId)
         {
@@ -684,17 +701,17 @@ namespace UniNet.Core.Hosting
                 try { handler(connId); }
                 catch (Exception e) { last = e; }
             }
-            if (last != null) ExceptionDispatchInfo.Capture(last).Throw();   // 원본 스택 트레이스 보존 — 로그는 유니티 계층 담당, 코어는 무로그
+            if (last != null) ExceptionDispatchInfo.Capture(last).Throw();   // preserves the original stack trace — logging belongs to the Unity layer; core stays log-free
         }
 
-        /// <summary>뷰어 위치 (컬 거리 판정 기준점).</summary>
+        /// <summary>Viewer position (the reference point for cull-distance tests).</summary>
         private readonly struct ViewerPosition
         {
             public readonly float X, Y, Z;
             public ViewerPosition(float x, float y, float z) { X = x; Y = y; Z = z; }
         }
 
-        /// <summary>예산 초과로 연기된 델타 1건 — EnqueuedAt이 기아 보정의 기준, RelevantMask가 전송 대상 연결 비트(하위 64개)다.</summary>
+        /// <summary>One delta deferred for exceeding a budget — EnqueuedAt anchors the starvation boost; RelevantMask holds the target connection bits (low 64).</summary>
         private sealed class DeferredDelta
         {
             public ulong NetId;
@@ -709,7 +726,7 @@ namespace UniNet.Core.Hosting
             public long Seq;
         }
 
-        /// <summary>서브 테이블을 구성한다 — 슬롯 순서 = 컴포넌트 순서, 리플리케이션 핸들 부착·스냅샷 초기화 포함.</summary>
+        /// <summary>Builds the sub table — slot order = component order, including attaching replication handlers and initializing snapshots.</summary>
         private static void AttachSubs(ServerObjectEntry entry, IReadOnlyList<object> components)
         {
             if (components.Count > byte.MaxValue)
@@ -727,7 +744,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>수신자용 스폰 메시지 조립 — [변환 7값][서브 수][서브별 typeKey+전체 상태] (서브슬롯은 순서 암시).</summary>
+        /// <summary>Assembles the spawn message for a receiver — [7 transform values][sub count][per-sub typeKey + full state] (sub slots implied by order).</summary>
         private static void SendSpawnState(IUniNetSystemChannel channel, ulong netId, ServerObjectEntry entry,
             float px, float py, float pz, float qx, float qy, float qz, float qw, bool isOwner)
         {

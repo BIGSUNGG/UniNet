@@ -3,22 +3,22 @@ using System;
 namespace UniNet.Core
 {
     /// <summary>
-    /// [Replicated] 필드의 리플리케이션 조건 — 생성자 인자로 지정하며 비트 조합이 가능하다.
-    /// OwnerOnly|SkipOwner 동시 지정은 모순이라 컴파일 타임 진단(UNINET010)으로 거부된다.
+    /// Replication conditions for [Replicated] fields — set via the attribute constructor, combinable as a bit mask.
+    /// Combining OwnerOnly|SkipOwner is contradictory and rejected at compile time with diagnostic UNINET010.
     /// </summary>
     [Flags]
     public enum ReplicateCondition
     {
-        /// <summary>조건 없음 — 모든 수신자에게 항상 전송.</summary>
+        /// <summary>No condition — always sent to every receiver.</summary>
         None = 0,
 
-        /// <summary>소유 연결에만 전송 (UE COND_OwnerOnly 상당).</summary>
+        /// <summary>Send only to the owning connection (UE COND_OwnerOnly equivalent).</summary>
         OwnerOnly = 1,
 
-        /// <summary>소유 연결을 제외한 전체에게 전송 (UE COND_SkipOwner 상당).</summary>
+        /// <summary>Send to everyone except the owning connection (UE COND_SkipOwner equivalent).</summary>
         SkipOwner = 2,
 
-        /// <summary>스폰/첫 동기화 시에만 전송, 이후 델타 추적에서 제외 (UE COND_InitialOnly 상당).</summary>
+        /// <summary>Sent only on spawn/initial sync, then excluded from delta tracking (UE COND_InitialOnly equivalent).</summary>
         InitialOnly = 4,
     }
 }

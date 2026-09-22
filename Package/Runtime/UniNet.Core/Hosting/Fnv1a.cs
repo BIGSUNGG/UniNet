@@ -2,10 +2,11 @@ using System.Text;
 
 namespace UniNet.Core.Hosting
 {
-    /// <summary>FNV-1a 해시 — 네트워크 ID·메서드 ID의 결정적 할당에 사용 (양단 같은 코드 → 같은 ID, 무합의).</summary>
+    /// <summary>Deterministic FNV-1a hashing — assigns network and method IDs so both sides compute the same
+    /// ID from the same string without any coordination.</summary>
     public static class Fnv1a
     {
-        /// <summary>64비트 FNV-1a.</summary>
+        /// <summary>Computes the 64-bit FNV-1a hash of a string.</summary>
         public static ulong Hash64(string value)
         {
             ulong hash = 14695981039346656037;
@@ -17,7 +18,8 @@ namespace UniNet.Core.Hosting
             return hash;
         }
 
-        /// <summary>32비트 FNV-1a. RPC 메서드 ID용 — 시스템 예약(0~63)과 겹치지 않게 64 이상을 보장한다.</summary>
+        /// <summary>Computes a 32-bit FNV-1a hash for RPC method IDs. Guarantees a value of 64 or higher
+        /// so it never collides with the system-reserved range (0–63).</summary>
         public static int MethodId(string value)
         {
             uint hash = 2166136261;

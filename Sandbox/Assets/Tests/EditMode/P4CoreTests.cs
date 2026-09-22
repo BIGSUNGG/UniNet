@@ -4,7 +4,7 @@ using UniNet.Core.Hosting;
 
 namespace UniNet.Tests
 {
-    /// <summary>P4 코어 프리미티브 — UniNetTime(시간 동기화)·SnapshotBuffer(인터폴레이션)·PositionHistory(리와인드) 테스트.</summary>
+    /// <summary>P4 core primitives — UniNetTime (time sync), SnapshotBuffer (interpolation), and PositionHistory (rewind).</summary>
     public sealed class P4CoreTests
     {
         private Func<double> _originalClock;
@@ -26,11 +26,11 @@ namespace UniNet.Tests
             UniNetTime.LocalClock = () => local;
             Assert.IsFalse(UniNetTime.IsSynced, "미동기화 상태에서 시작");
 
-            UniNetTime.ApplyServerTime(105.0);   // 첫 동기화 — 오프셋 +5 즉시 채택
+            UniNetTime.ApplyServerTime(105.0);   // first sync — adopt the +5 offset immediately
             Assert.IsTrue(UniNetTime.IsSynced);
             Assert.AreEqual(105.0, UniNetTime.Now, 1e-9);
 
-            UniNetTime.ApplyServerTime(107.0);   // 새 오프셋 +7 — EMA α=0.25 → 5 + (7-5)×0.25 = 5.5
+            UniNetTime.ApplyServerTime(107.0);   // new offset +7 — EMA α=0.25 → 5 + (7-5)×0.25 = 5.5
             Assert.AreEqual(100.0 + 5.5, UniNetTime.Now, 1e-9);
         }
 
@@ -57,7 +57,7 @@ namespace UniNet.Tests
             var buffer = new SnapshotBuffer<float>(4, (a, b, t) => b);
             buffer.Add(1.0, 1f);
             buffer.Add(2.0, 2f);
-            buffer.Add(0.5, 99f);   // 늦게 도착한 과거 스냅샷 — 폐기
+            buffer.Add(0.5, 99f);   // late-arriving past snapshot — discarded
 
             Assert.IsTrue(buffer.TrySample(2.5, out var latest));
             Assert.AreEqual(2f, latest, 1e-5, "역전분이 최신 값을 오염시키지 않는다");
@@ -84,7 +84,7 @@ namespace UniNet.Tests
         {
             var history = new PositionHistory(8);
             history.Record(1.0, 0f, 0f, 0f);
-            history.Record(1.0, 5f, 0f, 0f);   // 같은 틱 중복 기록 — 폐기 (단조 시간축 유지, SnapshotBuffer와 동일 계약)
+            history.Record(1.0, 5f, 0f, 0f);   // duplicate record for the same time — discarded (keeps the time axis monotonic, same contract as SnapshotBuffer)
 
             Assert.IsTrue(history.Sample(1.0, out var x, out _, out _));
             Assert.AreEqual(0f, x, 1e-4);

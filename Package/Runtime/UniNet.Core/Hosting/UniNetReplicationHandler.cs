@@ -4,34 +4,36 @@ using MessageProtocol.Serialize;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// 타입별 리플리케이션 핸들 계약 — [Replicated] 필드가 있는 타입마다 코드 생성기가 구현·등록한다.
-    /// 서버: 스냅샷 비교로 변경분만 직렬화(수신 그룹별 — OwnerOnly/SkipOwner). 클라: 델타 적용 + RepNotify(이전값) 호출.
-    /// 오브젝트당 여러 NetworkBehaviour(서브오브젝트)가 각자 이 핸들을 가진다 (ADR-0010).
+    /// Per-type replication handler contract — the code generator implements and registers one for every type
+    /// with [Replicated] fields. Server: compares snapshots to serialize only the changed part, per receive
+    /// group (OwnerOnly/SkipOwner). Client: applies the delta and fires RepNotify (previous value).
+    /// Each NetworkBehaviour on an object (sub-object) has its own handler (ADR-0010).
     /// </summary>
     public abstract class UniNetReplicationHandler
     {
-        /// <summary>이 타입 리플리케이션 전용 DRPC 메서드 ID (생성 시 할당).</summary>
+        /// <summary>DRPC method ID dedicated to this type's replication (assigned at generation time).</summary>
         public int MethodId { get; protected set; }
 
-        /// <summary>[Replicated] 필드가 있는가 (없으면 틭에서 제외된다).</summary>
+        /// <summary>Whether the type has any [Replicated] fields (otherwise it is excluded from ticks).</summary>
         public bool HasFields { get; protected set; }
 
-        /// <summary>서버 — 첫 등록 시 스냅샷을 초기화한다.</summary>
+        /// <summary>Server — initializes the snapshot on first registration.</summary>
         public abstract void InitSnapshot(NetworkServer.SubObjectEntry sub);
 
-        /// <summary>클라 — 등록 시 이전값(Seen) 스냅샷을 초기화한다 (호스트 모드 prev 정확성).</summary>
+        /// <summary>Client — initializes the previous-value (seen) snapshot on registration (for accurate host-mode prev values).</summary>
         public abstract void InitClientSnapshot(object instance);
 
         /// <summary>
-        /// 서버 — 스냅샷과 비교해 수신 그룹별 델타를 쓴다 (Owner = 소유 연결용, Others = 나머지용).
-        /// 조건 없는 타입은 둘 다 같은 페이로드다. 변경 없으면 둘 다 null. 스냅샷은 이 호출에서 1회 갱신된다.
+        /// Server — compares against the snapshot and writes a delta per receive group (Owner = for the owning
+        /// connection, Others = for the rest). For types without conditions both payloads are identical. Both
+        /// are null when nothing changed. The snapshot is updated once inside this call.
         /// </summary>
         public abstract (byte[] Owner, byte[] Others) CompareAndWriteDelta(NetworkServer.SubObjectEntry sub);
 
-        /// <summary>서버 — 스폰·후발 접속 캐치업용 전체 상태 페이로드 (InitialOnly 포함, 수신 그룹별 조건 필터링).</summary>
+        /// <summary>Server — full state payload for spawns and late-join catch-up (includes InitialOnly, filtered per receive-group conditions).</summary>
         public abstract byte[] WriteFull(object instance, bool isOwner);
 
-        /// <summary>클라 — 델타를 적용하고 선언된 RepNotify(이전값)를 호출한다 (메인 스레드).</summary>
+        /// <summary>Client — applies a delta and invokes the declared RepNotify (previous value) on the main thread.</summary>
         public abstract void ApplyDelta(object instance, ref MessageBufferReader reader);
     }
 }

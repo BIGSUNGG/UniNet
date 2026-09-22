@@ -3,19 +3,21 @@ using System;
 namespace UniNet.Core.Hosting
 {
     /// <summary>
-    /// P4 인터폴레이션 버퍼 — 클라가 수신한 상태 스냅샷을 시간축에 적재하고 과거 시점(renderTime)으로
-    /// 보간 질의한다. 리모트 오브젝트의 "적용 시점"을 게임이 제어하게 하는 틱 스케줄링 훅의 클라 측 상응물
-    /// (UE 클라 보간 버퍼 상응 — 서버 시간보다 InterpolationDelay 만큼 뒤처진 시점으로 렌더).
-    /// 값은 유한한 링 버퍼에 적재되며, 범위 밖 질의는 가장 가까운 끝 값을 홀드해 반환한다(스타베이션 시 프리즈).
+    /// P4 interpolation buffer — a client-side store for received state snapshots on a time axis, sampled with
+    /// interpolation at a past timestamp (renderTime). This is the client-side counterpart of the tick-scheduling
+    /// hook that lets the game control "when" remote objects are applied (UE client interpolation buffer
+    /// equivalent — render InterpolationDelay seconds behind server time).
+    /// Values live in a finite ring buffer; queries outside the range hold the nearest end value (a freeze under
+    /// starvation).
     /// </summary>
     public sealed class SnapshotBuffer<T>
     {
         private readonly (double Time, T Value)[] _ring;
         private readonly Func<T, T, double, T> _lerp;
-        private int _head;    // 다음 쓰기 슬롯
+        private int _head;    // next write slot
         private int _count;
 
-        /// <summary>capacity는 보유 스냅샷 상한(≥2), lerp는 t∈[0,1] 구간 보간 함수다.</summary>
+        /// <summary>capacity is the snapshot retention limit (≥ 2); lerp interpolates for t in [0,1].</summary>
         public SnapshotBuffer(int capacity, Func<T, T, double, T> lerp)
         {
             if (capacity < 2) throw new ArgumentOutOfRangeException(nameof(capacity), "인터폴레이션 버퍼는 최소 2 샘플이 필요하다");
@@ -23,7 +25,7 @@ namespace UniNet.Core.Hosting
             _lerp = lerp ?? throw new ArgumentNullException(nameof(lerp));
         }
 
-        /// <summary>수신 스냅샷 적재 — 시간 역전(늦게 도착한 과거 스냅샷)은 폐기해 단조 시간축을 유지한다.</summary>
+        /// <summary>Adds a received snapshot — discards time reversals (late-arriving older snapshots) to keep the time axis monotonic.</summary>
         public void Add(double time, T value)
         {
             if (_count > 0)
@@ -36,7 +38,7 @@ namespace UniNet.Core.Hosting
             _count = Math.Min(_count + 1, _ring.Length);
         }
 
-        /// <summary>가장 최근 스냅샷 시각 — 버퍼가 비어 있으면 false.</summary>
+        /// <summary>Timestamp of the most recent snapshot — returns false when the buffer is empty.</summary>
         public bool TryGetLatestTime(out double time)
         {
             if (_count == 0) { time = 0; return false; }
@@ -45,7 +47,8 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// renderTime 시점 보간 값 — 두 스냅샷 사이는 lerp, 범위 밖은 끝 값 홀드. 버퍼가 비어 있으면 false.
+        /// Interpolated value at renderTime — lerp between two snapshots, end-value hold outside the range.
+        /// Returns false when the buffer is empty.
         /// </summary>
         public bool TrySample(double renderTime, out T value)
         {
@@ -64,18 +67,18 @@ namespace UniNet.Core.Hosting
                     return true;
                 }
             }
-            value = Peek(-1).Value;   // 최신 이후 — 홀드 (스타베이션 시 프리즈)
+            value = Peek(-1).Value;   // past the latest — hold (freeze under starvation)
             return true;
         }
 
-        /// <summary>버퍼 비우기 (재접속·오브젝트 교체 등).</summary>
+        /// <summary>Empties the buffer (reconnect, object replacement, etc.).</summary>
         public void Clear()
         {
             _head = 0;
             _count = 0;
         }
 
-        /// <summary>현재 보유 샘플 수 (진단용).</summary>
+        /// <summary>Number of samples currently held (for diagnostics).</summary>
         public int SampleCount => _count;
 
         private ref readonly (double Time, T Value) Peek(int offsetFromHead)

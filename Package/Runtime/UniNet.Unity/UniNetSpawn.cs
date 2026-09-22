@@ -4,22 +4,23 @@ using UnityEngine;
 namespace UniNet.Unity
 {
     /// <summary>
-    /// 클라 측 동적 스폰·파괴 적용 — 생성 클라 허브의 Spawn/Destroy 수신이 메인 큐로 넘겨 호출한다.
-    /// 오브젝트는 첫 서브 타입의 카탈로그(RegisterPrefab) 또는 기본 팩토리로 생성하고, 스폰 메시지의 서브 구성과 실제 컴포넌트를 대조 검증한다.
-    /// 공개 이유는 생성 코드(사용자 어셈블리) 접근 — 직접 호출하지 않는다.
+    /// Applies client-side dynamic spawns and destroys — called from the generated client hub when a Spawn/Destroy
+    /// message arrives (marshalled through the main queue). Objects are created from the primary sub type's catalog
+    /// (RegisterPrefab) or the default factory, then verified against the sub composition in the spawn message.
+    /// Public only so generated code (in user assemblies) can call it — never call it directly.
     /// </summary>
     public static class UniNetSpawn
     {
-        /// <summary>서버의 스폰 메시지를 적용한다 — 오브젝트 생성·netId·변환·서브 등록·전체 상태 반영 (메인 스레드). 생성 코드 전용.</summary>
+        /// <summary>Applies a spawn message from the server — creates the object, assigns the netId and transform, registers subs, and applies full state (main thread). Generated code only.</summary>
         public static void Apply(ulong netId,
             float px, float py, float pz, float qx, float qy, float qz, float qw,
             byte subCount, ulong[] typeKeys, byte[][] states)
         {
             var client = UniNetEnvironment.Client;
             if (client == null) return;
-            if (client.Get(netId) != null) return;   // 이미 등록됨 — 중복 스폰 무시
+            if (client.Get(netId) != null) return;   // already registered — ignore the duplicate spawn
 
-            // 호스트 — 서버의 컴포넌트 배열을 클라 등록으로 재사용 (이중 생성 방지). 값·변환은 이미 서버 원본이라 그대로 둔다.
+            // Host — reuse the server's component array as the client registration (avoids double instantiation). Values and transform are already the server originals, left as-is.
             var server = UniNetEnvironment.Server;
             var serverEntry = server?.GetEntry(netId);
             if (serverEntry != null && serverEntry.Subs.Length > 0)
@@ -31,7 +32,7 @@ namespace UniNet.Unity
                 {
                     var nb = (NetworkBehaviour)own[i];
                     nb.MarkClientRegistered();
-                    UniNetTypeRegistry.Find(nb.GetType())?.InitClientSnapshot(nb);   // RepNotify 이전값 기준선
+                    UniNetTypeRegistry.Find(nb.GetType())?.InitClientSnapshot(nb);   // seed the RepNotify previous-value baseline
                 }
                 return;
             }
@@ -42,7 +43,7 @@ namespace UniNet.Unity
                 return;
             }
 
-            // 오브젝트 생성 — 첫 서브 타입의 카탈로그(프리팹) 우선, 없으면 기본 팩토리(단일 컴포넌트)
+            // Create the object — prefer the primary sub type's catalog (prefab), else the default factory (single component)
             var primary = UniNetSpawnRegistry.Create(typeKeys[0]) as NetworkBehaviour;
             if (primary == null)
             {
@@ -50,9 +51,9 @@ namespace UniNet.Unity
                 return;
             }
 
-            // 서브 복원 — 스폰 메시지의 타입 키 순서대로 누락된 NetworkBehaviour를 추가한다.
-            // 기본 팩토리는 첫 서브만 생성하므로, 멀티 컴포넌트 오브젝트(예: ArenaPlayer + NetworkTransform)도
-            // RegisterPrefab 없이 서버와 동일한 슬롯 구성으로 복원된다 (ADR-0014).
+            // Sub restoration — add any missing NetworkBehaviours in the spawn message's type-key order.
+            // The default factory only creates the primary sub, so multi-component objects (e.g. ArenaPlayer + NetworkTransform)
+            // are restored to the server's exact slot composition even without RegisterPrefab (See ADR-0014).
             for (int i = 1; i < typeKeys.Length; i++)
             {
                 if (HasSub(primary.gameObject, typeKeys[i])) continue;
@@ -89,12 +90,12 @@ namespace UniNet.Unity
                 if (states != null && i < states.Length && states[i] != null && states[i].Length > 0 && handler != null)
                 {
                     var reader = new MessageProtocol.Serialize.MessageBufferReader(states[i]);
-                    handler.ApplyDelta(comps[i], ref reader);   // 전체 상태 — InitialOnly 포함, RepNotify(로컬 초기값) 발생
+                    handler.ApplyDelta(comps[i], ref reader);   // full state — includes InitialOnly; raises RepNotify (local initial values)
                 }
             }
         }
 
-        /// <summary>오브젝트에 해당 타입 키의 서브가 이미 존재하는가.</summary>
+        /// <summary>Checks whether the object already has a sub with the given type key.</summary>
         private static bool HasSub(GameObject go, ulong typeKey)
         {
             foreach (var nb in go.GetComponents<NetworkBehaviour>())
@@ -103,7 +104,7 @@ namespace UniNet.Unity
             return false;
         }
 
-        /// <summary>서버의 파괴 메시지를 적용한다 — 등록 해제 + 로컬 파괴 (메인 스레드). 이미 없으면 아무것도 안 한다. 생성 코드 전용.</summary>
+        /// <summary>Applies a destroy message from the server — unregisters and destroys locally (main thread). No-op if the object is already gone. Generated code only.</summary>
         public static void Remove(ulong netId)
         {
             var client = UniNetEnvironment.Client;
@@ -111,14 +112,14 @@ namespace UniNet.Unity
 
             var comps = client.Get(netId);
             client.Unregister(netId);
-            if (comps != null && comps.Length > 0 && comps[0] is NetworkBehaviour nb && nb != null)   // 호스트: 서버가 이미 로컬 파괴 — 파괴 스킵, 등록만 해제
+            if (comps != null && comps.Length > 0 && comps[0] is NetworkBehaviour nb && nb != null)   // host: the server side already destroyed locally — skip the destroy, just unregister
             {
                 if (Application.isPlaying) Object.Destroy(nb.gameObject);
-                else Object.DestroyImmediate(nb.gameObject);   // 에디트 모드(배치 검증) — Destroy 불가
+                else Object.DestroyImmediate(nb.gameObject);   // edit mode (batch validation) — Destroy is not allowed there
             }
         }
 
-        /// <summary>생성된 오브젝트의 컴포넌트 구성이 스폰 메시지의 서브 타입 목록과 슬롯별로 일치하는가.</summary>
+        /// <summary>Checks that the instantiated object's components match the spawn message's sub type list slot by slot.</summary>
         private static bool VerifySlots(NetworkBehaviour[] comps, ulong[] typeKeys)
         {
             if (comps.Length != typeKeys.Length) return false;

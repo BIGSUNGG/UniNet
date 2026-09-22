@@ -7,14 +7,14 @@ using UnityEngine;
 
 namespace UniNet.Tests
 {
-    /// <summary>2층 식별자(netId+SubId) 다중 컴포넌트 테스트 — 등록·subId RPC 라우팅·서브별 델타·다중 서브 스폰·클라 슬롯 대조.</summary>
+    /// <summary>Two-tier identifier (netId+SubId) multi-component tests — registration, subId RPC routing, per-sub deltas, multi-sub spawn, and client slot reconciliation.</summary>
     public sealed class MultiComponentTests
     {
         [SetUp]
         public void RegisterGeneratedCode()
         {
             global::UniNet.Generated.__UniNetRegistration.Register();
-            UniNetEnvironment.SetClient(new NetworkClient());   // 클라 스폰 적용 검증용
+            UniNetEnvironment.SetClient(new NetworkClient());   // for verifying client-side spawn application
         }
 
         private static NetworkBehaviour[] CreatePair()
@@ -53,7 +53,7 @@ namespace UniNet.Tests
             GameObject instance = null;
             try
             {
-                // 실제 흐름 — NetworkInstantiate가 원본을 복제·등록하며 netId·SubId를 주입한다
+                // real flow — NetworkInstantiate clones and registers the original, injecting netId and SubIds
                 var server = new NetworkServer();
                 UniNetEnvironment.SetServer(server);
                 instance = UniNetManager.NetworkInstantiate(go);
@@ -86,15 +86,15 @@ namespace UniNet.Tests
                 UniNetEnvironment.SetServer(server);
                 server.RegisterSceneObject(9003, comps);
 
-                // 와이어 [netId][subId][int] — 실제 디스패치 테이블 경유 (생성 __Req 핸들 호출)
+                // wire [netId][subId][int] — through the real dispatch table (calls the generated __Req handler)
                 int moveId = Fnv1a.MethodId("UniNet.Tests.MovementBrain.RpcMove");
                 int healId = Fnv1a.MethodId("UniNet.Tests.HealthTank.RpcHeal");
 
-                Dispatch(moveId, 9003, 0, 3);   // 슬롯 0 — MovementBrain
-                Dispatch(healId, 9003, 1, 4);   // 슬롯 1 — HealthTank
-                Dispatch(healId, 9003, 0, 4);   // 슬롯 0에 HealthTank 핸들 — 캐스팅 실패로 무시
+                Dispatch(moveId, 9003, 0, 3);   // slot 0 — MovementBrain
+                Dispatch(healId, 9003, 1, 4);   // slot 1 — HealthTank
+                Dispatch(healId, 9003, 0, 4);   // HealthTank handler on slot 0 — ignored after a failed cast
 
-                UniNetEnvironment.PumpMain();   // 지연 디스패치 실행
+                UniNetEnvironment.PumpMain();   // run deferred dispatches
 
                 Assert.AreEqual(1, brain.MoveCalls, "subId 0 → MovementBrain만 실행");
                 Assert.AreEqual(1, tank.HealCalls, "subId 1 → HealthTank만 실행");
@@ -122,7 +122,7 @@ namespace UniNet.Tests
                 var brainHandler = UniNetTypeRegistry.Find(brain.GetType());
                 var tankHandler = UniNetTypeRegistry.Find(tank.GetType());
 
-                brain.Speed = 7;   // MovementBrain만 변경
+                brain.Speed = 7;   // only MovementBrain changes
                 var (brainDelta, _) = brainHandler.CompareAndWriteDelta(entry.Subs[0]);
                 var (tankDelta, _) = tankHandler.CompareAndWriteDelta(entry.Subs[1]);
                 Assert.IsNotNull(brainDelta, "변경된 서브는 델타 생성");
@@ -171,14 +171,14 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             UniNetEnvironment.SetServer(server);
 
-            // 서버 측 오브젝트 — 다중 컴포넌트
+            // server-side object — multiple components
             var comps = CreatePair();
             var brain = (MovementBrain)comps[0];
             var tank = (HealthTank)comps[1];
             brain.Speed = 42;
             tank.Armor = 77;
 
-            // 클라 생성용 프리팹 템플릿 — 같은 구성(MovementBrain+HealthTank)
+            // prefab template for client creation — same composition (MovementBrain+HealthTank)
             var template = new GameObject("template");
             template.AddComponent<MovementBrain>();
             template.AddComponent<HealthTank>();
@@ -195,7 +195,7 @@ namespace UniNet.Tests
                     UniNetTypeRegistry.Find(tank.GetType()).WriteFull(tank, true),
                 };
 
-                // 클라 적용 (호스트 아님 — 순수 클라 경로)
+                // client-side apply (not a host — pure client path)
                 UniNetEnvironment.SetServer(null);
                 UniNetSpawn.Apply(netId, 1f, 2f, 3f, 0f, 0f, 0f, 1f, 2, typeKeys, states);
 
@@ -211,7 +211,7 @@ namespace UniNet.Tests
                 Assert.AreEqual(0, clientBrain.SubId, "클라 슬롯 주입");
                 Assert.AreEqual(1, clientTank.SubId, "클라 슬롯 주입");
 
-                // 서브 자동 복원 (ADR-0014) — 단일 컴포넌트 템플릿(슬롯 0)이어도 누락 서브는 typeKeys 순서대로 자동 추가된다
+                // sub auto-restore (see ADR-0014) — even with a single-component template (slot 0 only), missing subs are added automatically in typeKeys order
                 var solo = new GameObject("solo");
                 solo.AddComponent<MovementBrain>();
                 UniNetManager.RegisterPrefab<MovementBrain>(solo);
@@ -234,7 +234,7 @@ namespace UniNet.Tests
         [Test]
         public void 컴포넌트_256개_초과는_거부되고_서버_방어가_예외를_던진다()
         {
-            // (a) Unity 진입점 — NetworkInstantiate 가드: 에러 로그 + null 반환·서버 미등록
+            // (a) Unity entry point — NetworkInstantiate guard: error log + null return, nothing registered on the server
             var go = new GameObject("too-many");
             for (int i = 0; i < 256; i++) go.AddComponent<HealthTank>();
             try
@@ -245,7 +245,7 @@ namespace UniNet.Tests
                 Assert.IsNull(UniNetManager.NetworkInstantiate(go), "상한 초과 — null 반환");
                 Assert.AreEqual(0, server.SnapshotObjects().Count, "상한 초과 — 서버 미등록 (랩어라운드 루프 도달 불가)");
 
-                // (b) Core 최종 방어 — AttachSubs 예외 (직접 등록 경유)
+                // (b) Core final defense — AttachSubs throws (via direct registration)
                 var tooMany = new object[256];
                 for (int i = 0; i < tooMany.Length; i++) tooMany[i] = new object();
                 Assert.Throws<System.ArgumentOutOfRangeException>(() => server.RegisterDynamicObject(tooMany), "SubId byte 상한 — 서버 등록 최종 방어");
@@ -257,7 +257,7 @@ namespace UniNet.Tests
             }
         }
 
-        /// <summary>[netId][subId][int amount] 페이로드를 실제 디스패치 테이블로 보낸다.</summary>
+        /// <summary>Sends a [netId][subId][int amount] payload through the real dispatch table.</summary>
         private static void Dispatch(int methodId, ulong netId, byte subId, int amount)
         {
             var w = MessageProtocol.Serialize.MessageBufferWriter.Create();

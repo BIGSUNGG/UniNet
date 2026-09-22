@@ -3,7 +3,7 @@ using UniNet.Unity;
 
 namespace UniNet.Tests
 {
-    /// <summary>채널 예산 검증용 2번 타입 픽스처 — 단일 무조건 필드 (델타 = mask 4바이트 + int 4바이트 = 8바이트).</summary>
+    /// <summary>Second fixture type for channel-budget tests — one unconditional field (delta = 4-byte mask + 4-byte int = 8 bytes).</summary>
     public sealed partial class PulseBeacon : NetworkBehaviour
     {
         [Replicated] public int Charge;

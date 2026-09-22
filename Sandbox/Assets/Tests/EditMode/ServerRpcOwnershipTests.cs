@@ -7,7 +7,7 @@ using UnityEngine.TestTools;
 
 namespace UniNet.Tests
 {
-    /// <summary>ServerRpc 소유자 자동 강제 (ADR-0016) — 소유자 허용·비소유 거부·옵트아웃·로컬 권위 경로.</summary>
+    /// <summary>ServerRpc owner enforcement (see ADR-0016) — owner allowed, non-owner rejected, opt-out, and local-authority paths.</summary>
     public sealed class ServerRpcOwnershipTests
     {
         private NetworkServer _server = null!;
@@ -31,13 +31,13 @@ namespace UniNet.Tests
             _guestCh = new RecordingChannel();
             _server.AttachConnection(_ownerCh);
             _server.AttachConnection(_guestCh);
-            UniNetEnvironment.PumpMain();   // 환영·소유권 배정 — 오브젝트 1개라 첫 연결이 소유
+            UniNetEnvironment.PumpMain();   // welcome + ownership assignment — single object, so the first connection owns it
         }
 
         [TearDown]
         public void TearDown()
         {
-            UniNetEnvironment.PumpMain();   // 잔여 큐 배출 — 다른 테스트로 지연 디스패치 새지 않게
+            UniNetEnvironment.PumpMain();   // drain the pending queue — keep delayed dispatch from leaking into other tests
             UniNetEnvironment.SetServer(null);
             Object.DestroyImmediate(_go);
         }
@@ -65,7 +65,7 @@ namespace UniNet.Tests
         [Test]
         public void 옵트아웃_RPC는_비소유_발신도_실행된다()
         {
-            byte[] wire = HealthTank.__UniNetEncode_RpcHeal(_brain.NetId, 1, 4);   // 서브슬롯 1 = HealthTank (RegisterSceneObject는 컴포넌트 SubId 미주입 — 슬롯 순서 계약)
+            byte[] wire = HealthTank.__UniNetEncode_RpcHeal(_brain.NetId, 1, 4);   // subslot 1 = HealthTank (RegisterSceneObject does not inject component SubIds — slot-order contract)
             DispatchServer(_guestCh.UniNetConnId, HealId, wire);
             UniNetEnvironment.PumpMain();
             Assert.AreEqual(1, _tank.HealCalls, "RequireOwnership=false는 비소유 발신도 실행한다");
@@ -74,14 +74,14 @@ namespace UniNet.Tests
         [Test]
         public void 로컬_권위_경로는_대조_없이_실행된다()
         {
-            MovementBrain.__UniNetServerDispatch_RpcMove(_brain, 0, 3);   // senderConnId 0 — 서버·호스트·오프라인 직접 경로
+            MovementBrain.__UniNetServerDispatch_RpcMove(_brain, 0, 3);   // senderConnId 0 — direct server/host/offline path
             Assert.AreEqual(1, _brain.MoveCalls, "senderConnId 0은 소유자 대조 없이 실행된다");
         }
 
         private static readonly int MoveId = Fnv1a.MethodId("UniNet.Tests.MovementBrain.RpcMove");
         private static readonly int HealId = Fnv1a.MethodId("UniNet.Tests.HealthTank.RpcHeal");
 
-        /// <summary>등록된 서버 수신 핸들 경유 — 실제 와이어와 동일한 전체 수신 경로 (디스패치 테이블 → 디스패치).</summary>
+        /// <summary>Dispatches through the registered server receive handler — the same full receive path a real wire message takes.</summary>
         private static void DispatchServer(long senderConnId, int methodId, byte[] wire)
         {
             UniNetDispatch.ServerHandlers()[methodId].Handler(senderConnId, wire).GetAwaiter().GetResult();

@@ -1,84 +1,84 @@
 namespace Arena
 {
-    /// <summary>아레나 시뮬레이션 상수 — 씬 비주얼·서버 로직·테스트가 함께 쓰는 단일 진실 공급원.</summary>
+    /// <summary>Arena simulation constants — the single source of truth shared by scene visuals, server logic, and tests.</summary>
     internal static class ArenaConfig
     {
-        /// <summary>네트워크 포트 (메인 에디터 서버가 연다).</summary>
+        /// <summary>Network port (opened by the main editor server).</summary>
         public const int Port = 7777;
 
-        /// <summary>플레이 가능 영역 절반 크기 — 바닥은 (-Half..Half) 정사각형.</summary>
+        /// <summary>Half extent of the playable area — the floor is a (-Half..Half) square.</summary>
         public const float Half = 18f;
 
-        /// <summary>플레이어 이동 속도 (유닛/초).</summary>
+        /// <summary>Player movement speed (units/second).</summary>
         public const float MoveSpeed = 5f;
 
-        /// <summary>플레이어 충돌 반경 (기둥·경계 회피 판정).</summary>
+        /// <summary>Player collision radius (pillar and boundary avoidance checks).</summary>
         public const float PlayerRadius = 0.5f;
 
-        /// <summary>최대 HP.</summary>
+        /// <summary>Max HP.</summary>
         public const int MaxHp = 100;
 
-        /// <summary>최대 탄약.</summary>
+        /// <summary>Max ammo.</summary>
         public const int MaxAmmo = 8;
 
-        /// <summary>탄약 1발 재생 주기 (초).</summary>
+        /// <summary>Seconds to regenerate one round of ammo.</summary>
         public const float AmmoRegenSeconds = 1.5f;
 
-        /// <summary>발사 쿨다운 (초).</summary>
+        /// <summary>Fire cooldown (seconds).</summary>
         public const float FireCooldown = 0.25f;
 
-        /// <summary>기본 데미지 — 4발 사망.</summary>
+        /// <summary>Base damage — four hits to kill.</summary>
         public const int Damage = 25;
 
-        /// <summary>치명타 판정 — seed % CritEvery == 0 면 2배.</summary>
+        /// <summary>Crit check — 2x damage when seed % CritEvery == 0.</summary>
         public const int CritEvery = 4;
 
-        /// <summary>총알 속도 (유닛/초).</summary>
+        /// <summary>Bullet speed (units/second).</summary>
         public const float BulletSpeed = 12f;
 
-        /// <summary>총알 수명 (초) — 수명 만료 시 스스로 파괴.</summary>
+        /// <summary>Bullet lifetime (seconds) — bullets destroy themselves on expiry.</summary>
         public const float BulletLifetime = 2f;
 
-        /// <summary>P3-④ 총알 전송 주기 (Hz) — 궤적은 30Hz면 충분 (플레이어 상태는 매 틱). UE NetUpdateFrequency 상응.</summary>
+        /// <summary>P3-④ bullet replication frequency (Hz) — 30 Hz suffices for trajectories (player state replicates every tick). UE NetUpdateFrequency equivalent.</summary>
         public const float BulletUpdateFrequencyHz = 30f;
 
-        /// <summary>P3-① 총알 가시성 컬 거리 (월드 단위 반경) — 멀리 있는 연결은 총알 궤적을 추적하지 않는다. UE NetCullDistance 상응.</summary>
+        /// <summary>P3-① bullet visibility cull distance (world-unit radius) — distant connections stop tracking bullet trajectories. UE NetCullDistance equivalent.</summary>
         public const float BulletCullDistance = 24f;
 
-        /// <summary>P4-⑤ 플레이어 유형 틱당 전송 예산 (바이트) — 유형별 대역폭 관리 예시 (P4 전환으로 총알이 제거되어 대상이 플레이어).</summary>
+        /// <summary>P4-⑤ per-tick send budget for the player type (bytes) — per-type bandwidth management example (retargeted from bullets to players after the P4 switch).</summary>
         public const int PlayerChannelBudgetPerTickBytes = 512;
 
-        /// <summary>P3-② 플레이어 리플리케이션 우선순위 — 대역폭 부족 시 총알(기본 1)보다 먼저 전송된다. UE NetPriority 상응.</summary>
+        /// <summary>P3-② player replication priority — under bandwidth pressure, player state is sent before lower-priority types (default 1). UE NetPriority equivalent.</summary>
         public const float PlayerNetworkPriority = 2f;
 
-        /// <summary>P4-① 리모트 오브젝트 인터폴레이션 지연 (초) — 렌더 시점을 서버 시간보다 이만큼 뒤로 밀어 부드럽게 만든다.</summary>
+        /// <summary>P4-① remote object interpolation delay (seconds) — rendering is delayed this far behind server time for smooth motion.</summary>
         public const float InterpolationDelay = 0.12f;
 
-        /// <summary>P4-② 리와인드 허용 창 (초) — 히트 타임이 이보다 과거/미래면 클램프한다 (신뢰 경계 — 과도한 리와인드 거부).</summary>
+        /// <summary>P4-② rewind window (seconds) — hit times outside this past/future window are clamped (trust boundary — rejects excessive rewinds).</summary>
         public const double RewindWindowSeconds = 1.0;
 
-        /// <summary>P4-② 히트스캔 사거리 (월드 단위) — 사거리 밖은 트레이서 끝점만 표시된다.</summary>
+        /// <summary>P4-② hitscan range (world units) — shots beyond range stop at the tracer endpoint.</summary>
         public const float HitscanRange = 40f;
 
-        /// <summary>총알 충돌 반경 + 플레이어 반경 = 히트 판정 거리.</summary>
+        /// <summary>Hit check distance = bullet collision radius + player radius.</summary>
         public const float HitDistance = 1.0f;
 
-        /// <summary>사망 후 리스폰 대기 (초).</summary>
+        /// <summary>Respawn delay after death (seconds).</summary>
         public const float RespawnDelay = 2f;
 
-        /// <summary>스폰 지점 4곳 (x, z).</summary>
+        /// <summary>Four spawn points (x, z).</summary>
         public static readonly (float X, float Z)[] SpawnPoints =
         {
             (-12f, -12f), (12f, -12f), (12f, 12f), (-12f, 12f),
         };
 
-        /// <summary>중앙 기둥 4개 — (중심 x, 중심 z, 반폭). 총알·플레이어가 서버에서 회피한다.</summary>
+        /// <summary>Four central pillars — (center x, center z, half-width). Bullets and players avoid them in server simulation.</summary>
         public static readonly (float X, float Z, float Half)[] Pillars =
         {
             (-7f, -7f, 1.5f), (7f, -7f, 1.5f), (7f, 7f, 1.5f), (-7f, 7f, 1.5f),
         };
 
-        /// <summary>스폰 순번 기반 고유 표시 이름 — 소유권 재배정(라운드로빈)과 무관하게 아바타 식별용.</summary>
+        /// <summary>Unique display names by spawn order — identify avatars independently of ownership reassignment (round-robin).</summary>
         public static readonly string[] DisplayNames = { "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot" };
     }
 }

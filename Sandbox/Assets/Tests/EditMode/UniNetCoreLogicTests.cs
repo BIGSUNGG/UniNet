@@ -6,13 +6,13 @@ using UnityEngine;
 
 namespace UniNet.Tests
 {
-    /// <summary>코어 순수 로직 단위 테스트 (네트워킹 없음) — FNV 안정성·설정 매핑·소유권 정책·델타 직렬화.</summary>
+    /// <summary>Core pure-logic unit tests (no networking) — FNV stability, options mapping, ownership policy, and delta serialization.</summary>
     public sealed class UniNetCoreLogicTests
     {
         [SetUp]
         public void RegisterGeneratedCode()
         {
-            // RuntimeInitializeOnLoadMethod는 플레이 모드에서만 실행되므로 EditMode에서는 명시 등록 (멱등)
+            // RuntimeInitializeOnLoadMethod only runs in play mode, so EditMode registers explicitly (idempotent)
             global::UniNet.Generated.__UniNetRegistration.Register();
         }
 
@@ -55,13 +55,13 @@ namespace UniNet.Tests
             var ch2 = new FakeChannel();
             server.AttachConnection(ch1);
             server.AttachConnection(ch2);
-            UniNetEnvironment.PumpMain();   // 지연된 Welcome·재배정 일괄 실행 (최종 연결 2개 기준)
+            UniNetEnvironment.PumpMain();   // run the deferred Welcome/reassignment batch (against the final set of 2 connections)
 
             Assert.AreEqual(1, server.GetEntry(100).OwnerConnId, "첫 오브젝트는 첫 연결 소유");
             Assert.AreEqual(2, server.GetEntry(200).OwnerConnId, "둘째 오브젝트는 둘째 연결 소유");
             Assert.AreEqual(1, ch1.WelcomeConnId);
             Assert.AreEqual(2, ch2.WelcomeConnId);
-            // 재배정 2회 × 오브젝트 2개 × 연결 2개 = 8통지
+            // 2 reassignments × 2 objects × 2 connections = 8 notifications
             Assert.AreEqual(8, ch1.OwnerUpdates.Count + ch2.OwnerUpdates.Count);
         }
 
@@ -79,16 +79,16 @@ namespace UniNet.Tests
                 var entry = new NetworkServer.SubObjectEntry(player);
                 Assert.AreSame(player, entry.Instance);
 
-                // 서버: 스냅샷 → 변경 없으면 빈 델타 → 변경 시 델타
+                // server: snapshot → no change, no delta → change, delta
                 handler.InitSnapshot(entry);
-                handler.InitClientSnapshot(player);   // 클라 이전값 스냅샷(100)도 변경 전에 초기화
+                handler.InitClientSnapshot(player);   // also initializes the client's previous-value snapshot (100) before any change
                 Assert.IsNull(handler.CompareAndWriteDelta(entry).Owner, "변경 없으면 델타 없음");
 
                 player.Score = 93;
                 byte[] delta = handler.CompareAndWriteDelta(entry).Owner;
                 Assert.Greater(delta.Length, 0, "변경분이 있으면 델타 생성");
 
-                // 클라: 적용 → RepNotify(이전값)
+                // client: apply → RepNotify (previous value)
                 Assert.IsFalse(player.ScoreNotified);
                 var reader = new MessageProtocol.Serialize.MessageBufferReader(delta);
                 handler.ApplyDelta(player, ref reader);

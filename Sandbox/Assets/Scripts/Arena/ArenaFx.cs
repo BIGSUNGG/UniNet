@@ -3,16 +3,16 @@ using UnityEngine;
 namespace Arena
 {
     /// <summary>
-    /// 로컬 FX — 네트워크 오브젝트가 아니다. MulticastRpc 구현이 전원(서버 포함)에서 호출해
-    /// 각 인스턴스가 자기 화면에 도형 FX를 띄운다. 생성 프리미티브는 스스로 사라진다.
+    /// Local FX — not network objects. MulticastRpc implementations run on everyone (server included), so each
+    /// instance pops shape FX on its own screen. Spawned primitives remove themselves.
     /// </summary>
     internal static class ArenaFx
     {
-        /// <summary>InitialOnly 색 시드 → 표시 색 (플레이어·총알 공용).</summary>
+        /// <summary>InitialOnly color seed → display color (shared by players and bullets).</summary>
         public static Color SeedToColor(int seed)
             => Color.HSVToRGB((seed % 1000) / 1000f, 0.75f, 0.95f);
 
-        /// <summary>발사·피격 섬광 — 구가 팽창하며 사라진다.</summary>
+        /// <summary>Fire and hit flash — a sphere expands and fades out.</summary>
         public static void Flash(Vector3 position, Color color, float size)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -26,7 +26,7 @@ namespace Arena
             fx.Color = new Color(color.r, color.g, color.b, 0.9f);
         }
 
-        /// <summary>사망 폭발 — 큰 구가 빠르게 팽창한다.</summary>
+        /// <summary>Death explosion — a large sphere expands quickly.</summary>
         public static void Explosion(Vector3 position)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -39,7 +39,7 @@ namespace Arena
             fx.Color = new Color(1f, 0.45f, 0.1f, 0.85f);
         }
 
-        /// <summary>P4 히트스캔 트레이서 — 발사선을 잇는 가느다란 박스가 순간 나타났다 사라진다.</summary>
+        /// <summary>P4 hitscan tracer — a thin box along the shot line appears briefly and disappears.</summary>
         public static void Tracer(Vector3 from, Vector3 to, Color color)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -55,7 +55,7 @@ namespace Arena
             fx.Color = new Color(color.r, color.g, color.b, 0.85f);
         }
 
-        /// <summary>트레이서 페이드 — 늘어진 스케일을 유지한 채 알파만 줄인다 (FxParticle의 균일 스케일과 다름).</summary>
+        /// <summary>Tracer fade — keeps the stretched scale and only lowers alpha (unlike FxParticle's uniform scale).</summary>
         private sealed class TracerFade : MonoBehaviour
         {
             public float Lifetime;
@@ -87,7 +87,7 @@ namespace Arena
             }
         }
 
-        /// <summary>스스로 팽창·페이드 후 제거되는 1회용 FX 파티클.</summary>
+        /// <summary>One-shot FX particle that expands, fades, and removes itself.</summary>
         private sealed class FxParticle : MonoBehaviour
         {
             public float TargetScale;
@@ -117,7 +117,7 @@ namespace Arena
                     return;
                 }
                 transform.localScale = Vector3.one * Mathf.Lerp(0.2f, TargetScale, t);
-                Color.a = 1f - t;   // 자체 재질 인스턴스 — 다른 FX와 공유되지 않는다
+                Color.a = 1f - t;   // own material instance — never shared with other FX
                 _material.color = Color;
             }
         }

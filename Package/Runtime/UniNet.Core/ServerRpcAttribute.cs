@@ -2,18 +2,18 @@ using System;
 
 namespace UniNet.Core
 {
-    /// <summary>클라이언트 → 서버 RPC. 서버에서만 실행된다 (서버 권위).
-    /// 기본으로 오브젝트 소유자의 호출만 허용되며, 비소유 발신은 서버 디스패치에서 거부된다 (ADR-0016).</summary>
+    /// <summary>Client-to-server RPC. Runs on the server only (server authority).
+    /// By default only the object's owner may call it; calls from non-owners are rejected at server dispatch (See ADR-0016).</summary>
     [AttributeUsage(AttributeTargets.Method)]
     public sealed class ServerRpcAttribute : Attribute
     {
-        /// <summary>true(기본) — 발신자가 오브젝트 소유자일 때만 실행한다 (비소유 발신 거부 + 경고 로그).
-        /// false — 모든 클라 발신을 허용한다 (예: 전 클라가 상태를 보고하는 RPC — 서버가 권위 검증).</summary>
+        /// <summary>true (default) — executes only when the sender owns the object (non-owner calls are rejected with a warning log).
+        /// false — accepts calls from any client (e.g. an RPC every client reports state through — the server remains responsible for validating it).</summary>
         public bool RequireOwnership { get; set; } = true;
 
-        /// <summary>true — 서버 디스패치 직전에 검증 훅 &lt;RPC&gt;_Validate(같은 매개변수, Task&lt;bool&gt; 반환)를 실행하고,
-        /// false 반환 시 RPC 구현은 실행되지 않는다 (옵트인 — [ServerRpc(Validate = true)]).
-        /// 자동 감지는 없다 — 플래그 없이 _Validate 메서드만 두면 실행되지 않는다 (제너레이터가 경고).</summary>
+        /// <summary>true — runs the validation hook &lt;RPC&gt;_Validate (same parameters, returns Task&lt;bool&gt;) right before server dispatch;
+        /// returning false skips the RPC implementation (opt-in via [ServerRpc(Validate = true)]).
+        /// There is no auto-detection — a _Validate method without the flag simply never runs (the generator emits a warning).</summary>
         public bool Validate { get; set; } = false;
     }
 }

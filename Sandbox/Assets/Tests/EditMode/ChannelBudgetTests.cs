@@ -3,7 +3,7 @@ using UniNet.Core.Hosting;
 
 namespace UniNet.Tests
 {
-    /// <summary>P3-⑤ 채널 우선순위 큐 — 유형별 대역폭 예산 검증 (네트워킹 없음).</summary>
+    /// <summary>P3 channel budget — verifies per-type bandwidth budgets (no networking involved).</summary>
     public sealed class ChannelBudgetTests
     {
         [SetUp]
@@ -15,11 +15,11 @@ namespace UniNet.Tests
         [Test]
         public void 유형_예산을_넘은_유형만_연기되고_다른_유형은_계속_흐른다()
         {
-            var server = new NetworkServer();   // 전역 예산 0 = 무제한
+            var server = new NetworkServer();   // global budget 0 = unlimited
             var beaconA = ReplicationTestSupport.RegisterScene<PulseBeacon>(server, "ch-beacon-a");
             var beaconB = ReplicationTestSupport.RegisterScene<PulseBeacon>(server, "ch-beacon-b");
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "ch-player");
-            server.SetReplicationChannelBudget(typeof(PulseBeacon), 8);   // 비콘 유형은 틱당 8바이트 (델타 1건)
+            server.SetReplicationChannelBudget(typeof(PulseBeacon), 8);   // beacon type gets 8 bytes per tick (one delta)
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
@@ -52,7 +52,7 @@ namespace UniNet.Tests
             ch.Clear();
 
             server.SetReplicationChannelBudget(typeof(PulseBeacon), 8);
-            server.SetReplicationChannelBudget(typeof(PulseBeacon), 0);   // 해제
+            server.SetReplicationChannelBudget(typeof(PulseBeacon), 0);   // removes the cap
 
             beaconA.Charge = 1;
             beaconB.Charge = 2;

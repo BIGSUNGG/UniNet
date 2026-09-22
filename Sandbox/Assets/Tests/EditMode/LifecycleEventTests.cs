@@ -4,7 +4,7 @@ using UniNet.Core.Hosting;
 
 namespace UniNet.Tests
 {
-    /// <summary>연결 수명주기 이벤트 — 서버 ClientConnected/ClientDisconnected 발화·발화 순서 계약·구독자 격리 검증 (네트워킹 없음).</summary>
+    /// <summary>Connection lifecycle events — verifies server ClientConnected/ClientDisconnected firing, firing-order contract, and subscriber isolation (no networking).</summary>
     public sealed class LifecycleEventTests
     {
         [SetUp]
@@ -66,12 +66,12 @@ namespace UniNet.Tests
             bool pumped = false;
 
             server.ClientConnected += _ => throw new InvalidOperationException("구독자 버그");
-            server.ClientConnected += _ => counterRan = true;   // 첫 구독자가 던져도 호출 보장
+            server.ClientConnected += _ => counterRan = true;   // guaranteed to run even if the first subscriber throws
 
             server.AttachConnection(ch);
             UniNetEnvironment.QueueOnMain(() => pumped = true);
 
-            // 예외는 구독자 전원 호출 후 펌프 밖으로 전파된다 — 로그는 유니티 계층(드라이버 펌프 보호)이 담당
+            // the exception propagates out of the pump after every subscriber has run — logging is the Unity layer's job (protects the driver pump)
             Assert.Throws<InvalidOperationException>(() => UniNetEnvironment.PumpMain());
             Assert.IsTrue(counterRan, "예외 구독자 뒤 구독자도 호출된다");
 
@@ -97,7 +97,7 @@ namespace UniNet.Tests
             server.ClientDisconnected += _ => seen = true;
 
             server.DetachConnection(ch1);
-            // 재던짐은 유지(펌프 보호가 로그 담당) — finally로 재배정은 보장된다
+            // the exception is still rethrown (the pump wrapper owns logging) — reassignment is guaranteed via finally
             Assert.Throws<InvalidOperationException>(() => UniNetEnvironment.PumpMain());
             Assert.IsTrue(seen, "예외 구독자 뒤 구독자도 호출된다");
             Assert.AreEqual(ch2.UniNetConnId, server.GetEntry(player.NetId).OwnerConnId,

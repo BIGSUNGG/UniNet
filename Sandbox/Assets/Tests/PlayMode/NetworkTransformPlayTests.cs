@@ -7,10 +7,10 @@ using UnityEngine.TestTools;
 
 namespace UniNet.Tests
 {
-    /// <summary>P4 NetworkTransform 컴포넌트 — 기반 컴포넌트 RPC·서버 시뮬레이션·위치 복제 검증 (PlayMode 루프백).</summary>
+    /// <summary>P4 NetworkTransform component — verifies base-component RPC, server simulation, and position replication (PlayMode loopback).</summary>
     public sealed class NetworkTransformPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 8;   // 실행별 랜덤 포트 — 플레이 모드 종료 후 리스너 소켓이 에디터 프로세스에 잔존하는 환경 문제 회피
+        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 8;   // random port per run — avoids listeners lingering in the editor process after play mode ends
 
         [TearDown]
         public void StopListeners() => UniNetManager.HostStop();
@@ -28,9 +28,9 @@ namespace UniNet.Tests
             var nt = go.GetComponent<NetworkTransform>();
             UnityEngine.Object.Destroy(template);
             nt.MovementRule = (ref float x, ref float y, ref float z, float ix, float iy, float iz, float dt) =>
-                x += ix * 4f * dt;   // 게임 이동 규칙 주입 (DIP) — 델리게이트(비직렬화·비전파)라 스폰 후 클론에 주입
+                x += ix * 4f * dt;   // injected game movement rule (DIP) — a delegate (not serialized, not replicated), so inject it into the clone after spawn
 
-            // SubmitMove → 기반 컴포넌트 ServerRpc(루프백) → 서버 권위 입력 → MovementRule 스텝
+            // SubmitMove → base-component ServerRpc (loopback) → authoritative server input → MovementRule step
             nt.SubmitMove(1f, 0f, 0f);
             float deadline = Time.realtimeSinceStartup + 5f;
             while (go.transform.position.x <= 0.3f && Time.realtimeSinceStartup < deadline)
@@ -53,7 +53,7 @@ namespace UniNet.Tests
             UnityEngine.Object.Destroy(template);
 
             nt.SetNetworkPosition(new Vector3(5f, 1f, 6f));
-            yield return null;   // 서버 틱 1프레임 — 권위 좌표 유지 확인
+            yield return null;   // one server tick frame — confirm the authoritative position holds
 
             Assert.AreEqual(5f, go.transform.position.x, 0.01f, "SetNetworkPosition — 권위 좌표 반영");
             Assert.AreEqual(6f, go.transform.position.z, 0.01f);

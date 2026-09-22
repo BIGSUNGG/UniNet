@@ -2,10 +2,11 @@ using DRPC;
 
 namespace UniNet.Core.Hosting
 {
-    /// <summary>클라 허브 송신 계약 — 생성 클라 허브가 구현하고 환경 슬롯에 등록한다 (어셈블리 무관 송신).</summary>
+    /// <summary>Send contract implemented by the generated client hub and registered into the environment
+    /// slot — lets any assembly send to the server without referencing it.</summary>
     public interface IUniNetClientSender
     {
-        /// <summary>서버로 RPC 페이로드를 전송한다 (페이로드에 netId 포함).</summary>
+        /// <summary>Sends an RPC payload to the server (the payload already includes the target netId).</summary>
         void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode);
     }
 }

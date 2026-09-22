@@ -7,22 +7,23 @@ using UnityEngine;
 namespace UniNet.Tests
 {
     /// <summary>
-    /// MP [Message] 타입 지원 단위 테스트 — 생성된 인코더/디스패치 경로로 왕복·다형성·리플리케이션 메시지 필드를 증명한다.
+    /// Unit tests for MP [Message] type support — proves round-trip, polymorphism, and replication
+    /// message fields through the generated encoder/dispatch path.
     /// </summary>
     public sealed class MessageSupportTests
     {
         [SetUp]
         public void RegisterGeneratedCode()
-            => global::UniNet.Generated.__UniNetRegistration.Register();   // EditMode 명시 등록 (멱등)
+            => global::UniNet.Generated.__UniNetRegistration.Register();   // explicit EditMode registration (idempotent)
 
         [Test]
         public void 메시지_파라미터_인코딩은_MessageId_헤더로_다형성을_보존한다()
         {
-            // 생성된 인코더로 [netId][Message: DerivedPayloadMsg] 페이로드 생성
+            // build a [netId][Message: DerivedPayloadMsg] payload with the generated encoder
             var msg = new DerivedPayloadMsg { Value = 42, Bonus = 7 };
             byte[] payload = VerifyPlayer.__UniNetEncode_RpcDeliver(1234UL, 0, msg);   // [netId][subId][Message]
 
-            // 수신측과 동일한 순서로 개봉: netId → subId → MessageId 디스패치
+            // unwrap in the same order the receiver does: netId → subId → MessageId dispatch
             var r = new MessageBufferReader(payload);
             Assert.AreEqual(1234UL, r.ReadUInt64(), "페이로드 앞은 netId");
             Assert.AreEqual(0, r.ReadByte(), "그 다음은 subId");
@@ -49,12 +50,12 @@ namespace UniNet.Tests
                 handler.InitClientSnapshot(player);
                 Assert.IsNull(handler.CompareAndWriteDelta(entry).Owner, "초기 상태는 변경 없음");
 
-                // 새 인스턴스 교체(참조 비교 dirty) — 값 복사가 아니어도 전송된다
+                // swapping in a new instance dirties via reference comparison — sent even without a value-level change
                 player.StateMsg = new PayloadMsg { Value = 99 };
                 byte[] delta = handler.CompareAndWriteDelta(entry).Owner;
                 Assert.Greater(delta.Length, 0, "메시지 필드 델타 생성");
 
-                // 클라 적용 — MessageId 경유 복원 + RepNotify(이전 참조)
+                // client-side apply — restore via MessageId + RepNotify (receives the previous reference)
                 var reader = new MessageBufferReader(delta);
                 handler.ApplyDelta(player, ref reader);
                 Assert.AreEqual(99, player.StateMsg.Value, "메시지 필드 적용값");

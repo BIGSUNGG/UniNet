@@ -5,10 +5,10 @@ using UnityEngine;
 namespace UniNet.Editor
 {
     /// <summary>
-    /// sln/csproj 재생성 진입점 — 배치모드에서도 솔루션을 갱신할 수 있게 한다.
-    /// 사용: Unity.exe -batchmode -quit -projectPath &lt;Sandbox&gt; -executeMethod UniNet.Editor.UniNetSolutionGenerator.Generate
-    /// 등록된 스크립트 에디터(Visual Studio/Rider 패키지 모두)의 SyncAll을 호출한다 (패키지 타입이 internal이라 리플렉션 경유 — 에디터 전용).
-    /// sln/csproj는 gitignore 대상(로컬 브라우징용 — ADR-0005).
+    /// Entry point to regenerate sln/csproj — lets batchmode refresh the solution too.
+    /// Usage: Unity.exe -batchmode -quit -projectPath &lt;Sandbox&gt; -executeMethod UniNet.Editor.UniNetSolutionGenerator.Generate
+    /// Calls SyncAll on the registered script editor (Visual Studio or Rider package — package types are internal, so via reflection; editor-only).
+    /// The sln/csproj are gitignored (for local browsing — ADR-0005).
     /// </summary>
     public static class UniNetSolutionGenerator
     {
