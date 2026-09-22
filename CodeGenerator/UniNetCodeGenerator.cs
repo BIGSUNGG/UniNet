@@ -133,6 +133,8 @@ namespace UniNet.CodeGenerator
                 IdKey = type.ToDisplayString() + "." + method.Name,
                 Parameters = method.Parameters.Select(p => new ParamModel { Name = p.Name, Type = p.Type }).ToList(),
             };
+            if (serverRpc != null)
+                rpc.RequireOwnership = GetRequireOwnership(serverRpc);   // 기본 true — [ServerRpc(RequireOwnership = false)]로 옵트아웃 (ADR-0016)
 
             // 매개변수 타입 검사 — 기본형·string 또는 [Message] 타입
             foreach (var p in rpc.Parameters)
@@ -274,6 +276,15 @@ namespace UniNet.CodeGenerator
             return null;
         }
 
+        /// <summary>ServerRpcAttribute.RequireOwnership 이름 지정 인자 (미지정 시 기본 true — 소유자 강제).</summary>
+        private static bool GetRequireOwnership(AttributeData attr)
+        {
+            foreach (var named in attr.NamedArguments)
+                if (named.Key == "RequireOwnership" && named.Value.Value is bool b)
+                    return b;
+            return true;
+        }
+
         /// <summary>ReplicatedAttribute 생성자의 조건 인자를 내부 비트로 변환한다 (ReplicateCondition 값과 1:1).</summary>
         private static int ParseCondition(AttributeData attr)
             => attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is int cond ? cond : 0;
@@ -331,6 +342,9 @@ namespace UniNet.CodeGenerator
         public string IdKey = "";
         public List<ParamModel> Parameters = new();
         public bool HasValidate;
+
+        /// <summary>ServerRpc 전용 — 서버 디스패치에서 발신자가 오브젝트 소유자임을 강제하는가 (기본 true, ADR-0016).</summary>
+        public bool RequireOwnership = true;
     }
 
     internal sealed class ParamModel

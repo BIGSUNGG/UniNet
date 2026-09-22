@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Communication.Shared.Channels;
 using DRPC.Client.Network;
 using DRPC.Server.Network;
 using DRPC.Shared.Network;
@@ -16,6 +17,17 @@ namespace UniNet.Unity
     public static class UniNetManager
     {
         private static RpcListenHandle _listenHandle;
+        private static volatile bool _clientConnected;   // 네트워크 스레드(Disconnected 핸들러)와 메인 스레드가 공유 — 가시성 보장
+
+        /// <summary>
+        /// 클라이언트 세션 종료 이벤트 — 원격 세션 종료(서버 종료·네트워크 단절) 시 메인 스레드에서 발화한다.
+        /// 자발 <see cref="ClientStop"/>은 <see cref="IsClientConnected"/> 상태만 즉시 해제하고 이 이벤트는 발화하지 않는다.
+        /// 게임은 여기서 재접속 안내·메인 메뉴 복귀 등을 처리한다 (연결 수명주기 게이트웨이).
+        /// </summary>
+        public static event Action ClientDisconnected;
+
+        /// <summary>클라이언트가 서버에 접속해 세션이 살아있는가 (ClientAsync 성공 후 true, 연결 종료 시 false).</summary>
+        public static bool IsClientConnected => _clientConnected;
 
         /// <summary>전용 서버를 시작하고 클라이언트 접속을 대기한다 (서버 권위).</summary>
         public static Task ServerAsync(int port)
@@ -49,16 +61,52 @@ namespace UniNet.Unity
             var factory = RequireFactory();
             UniNetDriver.Ensure();
             UniNetEnvironment.SetClient(new NetworkClient());
+            UniNetEnvironment.SetClientSender(null);   // 이전 세션 허브의 지연 Disconnected가 허브 동일성 필터를 통과하지 못하게
             NetworkBehaviour.RegisterAllToClient();
 
-            if (options != null)
+            // 클라 허브 생성을 감싸 세션 종료(Disconnected)를 관측한다 — 서버 쪽 OnConnected wiring과 대칭
+            Task connect = options != null
+                ? RpcClient.ConnectWithOptionsAsync<HubBase>(address, port, options.ToRpcEndpointOptions(), CreateWatchedHub)
+                : RpcClient.ConnectAsync<HubBase>(address, port, null, CreateWatchedHub);
+
+            try
             {
-                await RpcClient.ConnectWithOptionsAsync<HubBase>(address, port, options.ToRpcEndpointOptions(),
-                    factory.CreateClientHub);
+                await connect;
             }
-            else
+            catch
             {
-                await RpcClient.ConnectAsync<HubBase>(address, port, null, factory.CreateClientHub);
+                _clientConnected = false;   // 실패한 허브가 Disconnected를 발화하지 않아도 거짓 '접속 중' 고착 없음
+                throw;
+            }
+
+            return;
+
+            // 허브를 만들자마자 이 허브 전용 종료 관측을 단다. 플래그는 구독 직후 확정 — Disconnected가
+            // 네트워크 스레드에서 await 재개 전에 관측돼도 가드에 삼켜지지 않는다. volatile이 메인·네트워크
+            // 스레드 간 가시성을 보장하며, 팩토리 반환~대입 사이의 미시 창은 connect 실패 catch가 보정한다.
+            HubBase CreateWatchedHub(IMessageChannel channel)
+            {
+                var hub = factory.CreateClientHub(channel);
+                hub.Disconnected += () =>
+                {
+                    if (!ReferenceEquals(hub, UniNetEnvironment.ClientSender)) return;   // 이전 세션 허브의 지연 관측 무시
+                    if (!_clientConnected) return;   // 중복 발화·자발 ClientStop 흡수 — ClientStop은 플래그를 먼저 끊는다
+                    _clientConnected = false;
+                    UniNetEnvironment.QueueOnMain(RaiseClientDisconnected);   // 네트워크 스레드에서 올 수 있다 — 메인 큐로
+                };
+                _clientConnected = true;
+                return hub;
+            }
+        }
+
+        private static void RaiseClientDisconnected()
+        {
+            var handlers = ClientDisconnected;
+            if (handlers == null) return;
+            foreach (Action handler in handlers.GetInvocationList())
+            {
+                try { handler(); }
+                catch (Exception e) { Debug.LogException(e); }   // 구독자별 격리 — 생성 코드 메인 펌프 보호와 동일 패턴
             }
         }
 
@@ -77,6 +125,7 @@ namespace UniNet.Unity
         public static void ClientStop()
         {
             var sender = UniNetEnvironment.ClientSender;
+            _clientConnected = false;   // 명시 종료 — 세션 종료 이벤트 발화 여부와 무관하게 상태는 즉시 해제
             UniNetEnvironment.SetClientSender(null);
             UniNetEnvironment.SetClient(null);
             if (sender is global::DRPC.Shared.Network.HubBase hub)
@@ -210,7 +259,10 @@ namespace UniNet.Unity
 
         private void Update()
         {
-            UniNetEnvironment.PumpMain();
+            // 게임 이벤트 핸들러(수명주기 포함) 예외가 펌프를 죽이지 않게 한다 — 잔여 큐 작업은 다음 프레임에서 재개
+            // (생성 코드의 메인 펌프 보호와 동일 패턴)
+            try { UniNetEnvironment.PumpMain(); }
+            catch (Exception e) { Debug.LogException(e); }
             var server = UniNetEnvironment.Server;
             if (server != null)
             {

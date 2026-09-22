@@ -1,29 +1,184 @@
 <?xml version="1.0" encoding="utf-8"?>
-<test-run id="2" testcasecount="1" result="Passed" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-15 01:24:19Z" end-time="2026-09-15 01:24:24Z" duration="5.670021">
-  <test-suite type="TestSuite" id="1007" name="Sandbox" fullname="Sandbox" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-15 01:24:19Z" end-time="2026-09-15 01:24:24Z" duration="5.670021" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+<test-run id="2" testcasecount="15" result="Passed" total="15" passed="15" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-09-22 01:03:36Z" end-time="2026-09-22 01:03:46Z" duration="10.0849752">
+  <test-suite type="TestSuite" id="1028" name="Sandbox" fullname="Sandbox" runstate="Runnable" testcasecount="15" result="Passed" start-time="2026-09-22 01:03:36Z" end-time="2026-09-22 01:03:46Z" duration="10.084975" total="15" passed="15" failed="0" inconclusive="0" skipped="0" asserts="0">
     <properties>
       <property name="platform" value="PlayMode" />
     </properties>
-    <test-suite type="Assembly" id="1003" name="UniNet.Tests.PlayMode.dll" fullname="C:/Projects/DS/UniNet/Sandbox/Library/ScriptAssemblies/UniNet.Tests.PlayMode.dll" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-15 01:24:19Z" end-time="2026-09-15 01:24:24Z" duration="5.662754" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <test-suite type="Assembly" id="1024" name="UniNet.Tests.PlayMode.dll" fullname="C:/Projects/DS/UniNet/Sandbox/Library/ScriptAssemblies/UniNet.Tests.PlayMode.dll" runstate="Runnable" testcasecount="15" result="Passed" start-time="2026-09-22 01:03:36Z" end-time="2026-09-22 01:03:46Z" duration="10.079209" total="15" passed="15" failed="0" inconclusive="0" skipped="0" asserts="0">
       <properties>
-        <property name="_PID" value="45560" />
+        <property name="_PID" value="48184" />
         <property name="_APPDOMAIN" value="Unity Child Domain" />
         <property name="platform" value="PlayMode" />
         <property name="EditorOnly" value="False" />
       </properties>
-      <test-suite type="TestSuite" id="1004" name="UniNet" fullname="UniNet" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-15 01:24:19Z" end-time="2026-09-15 01:24:24Z" duration="5.662031" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <test-suite type="TestSuite" id="1025" name="UniNet" fullname="UniNet" runstate="Runnable" testcasecount="15" result="Passed" start-time="2026-09-22 01:03:36Z" end-time="2026-09-22 01:03:46Z" duration="10.078912" total="15" passed="15" failed="0" inconclusive="0" skipped="0" asserts="0">
         <properties />
-        <test-suite type="TestSuite" id="1005" name="Tests" fullname="UniNet.Tests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-15 01:24:19Z" end-time="2026-09-15 01:24:24Z" duration="5.661770" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <test-suite type="TestSuite" id="1026" name="Tests" fullname="UniNet.Tests" runstate="Runnable" testcasecount="15" result="Passed" start-time="2026-09-22 01:03:36Z" end-time="2026-09-22 01:03:46Z" duration="10.078703" total="15" passed="15" failed="0" inconclusive="0" skipped="0" asserts="0">
           <properties />
-          <test-suite type="TestFixture" id="1001" name="HostRoundtripTests" fullname="UniNet.Tests.HostRoundtripTests" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-15 01:24:19Z" end-time="2026-09-15 01:24:24Z" duration="5.660800" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <test-suite type="TestFixture" id="1001" name="ArenaRoundtripTests" fullname="UniNet.Tests.ArenaRoundtripTests" classname="UniNet.Tests.ArenaRoundtripTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-22 01:03:36Z" end-time="2026-09-22 01:03:39Z" duration="3.038063" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
             <properties />
-            <test-case id="1002" name="호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" fullname="UniNet.Tests.HostRoundtripTests.호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" methodname="호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" seed="2106345845" result="Passed" start-time="2026-09-15 01:24:19Z" end-time="2026-09-15 01:24:24Z" duration="5.647075" asserts="0">
+            <test-case id="1002" name="호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우" fullname="UniNet.Tests.ArenaRoundtripTests.호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우" methodname="호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우" classname="UniNet.Tests.ArenaRoundtripTests" runstate="Runnable" seed="50203834" result="Passed" start-time="2026-09-22 01:03:36Z" end-time="2026-09-22 01:03:39Z" duration="3.029539" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[ArenaDBG] SetUp — 씬 부트스트랩 비활성화 0개
+[Arena] Bravo 사망
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1003" name="HostRoundtripTests" fullname="UniNet.Tests.HostRoundtripTests" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-22 01:03:39Z" end-time="2026-09-22 01:03:45Z" duration="5.919785" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1006" name="호스트_다중_컴포넌트_오브젝트_왕복" fullname="UniNet.Tests.HostRoundtripTests.호스트_다중_컴포넌트_오브젝트_왕복" methodname="호스트_다중_컴포넌트_오브젝트_왕복" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" seed="1668292024" result="Passed" start-time="2026-09-22 01:03:39Z" end-time="2026-09-22 01:03:39Z" duration="0.132261" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[UNINET-VERIFY] MultiComponent PASS — Spawn(2 subs)/SubIdRouting/PerSubReplication/Destroy
+]]></output>
+            </test-case>
+            <test-case id="1005" name="호스트_동적_스폰_파괴_조건부_리플리케이션" fullname="UniNet.Tests.HostRoundtripTests.호스트_동적_스폰_파괴_조건부_리플리케이션" methodname="호스트_동적_스폰_파괴_조건부_리플리케이션" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" seed="813991753" result="Passed" start-time="2026-09-22 01:03:39Z" end-time="2026-09-22 01:03:39Z" duration="0.148482" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[UNINET-VERIFY] DynamicSpawnDestroy PASS — Spawn/HostReuse/Ownership/OwnerOnly/NetworkDestroy
+]]></output>
+            </test-case>
+            <test-case id="1004" name="호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" fullname="UniNet.Tests.HostRoundtripTests.호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" methodname="호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션" classname="UniNet.Tests.HostRoundtripTests" runstate="Runnable" seed="514603640" result="Passed" start-time="2026-09-22 01:03:39Z" end-time="2026-09-22 01:03:45Z" duration="5.637086" asserts="0">
               <properties>
                 <property name="_JOINTYPE" value="UnityCombinatorial" />
                 <property name="retryIteration" value="0" />
                 <property name="repeatIteration" value="0" />
               </properties>
               <output><![CDATA[[UNINET-VERIFY] HostRoundtrip PASS — ServerRpc/Validate/ClientRpc/Multicast/Replicated/RepNotify/MessageParam/MessageReplicate
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1007" name="LifecycleEventPlayTests" fullname="UniNet.Tests.LifecycleEventPlayTests" classname="UniNet.Tests.LifecycleEventPlayTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.204546" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1008" name="서버와_클라_수명주기_이벤트가_실제_세션에서_발화한다" fullname="UniNet.Tests.LifecycleEventPlayTests.서버와_클라_수명주기_이벤트가_실제_세션에서_발화한다" methodname="서버와_클라_수명주기_이벤트가_실제_세션에서_발화한다" classname="UniNet.Tests.LifecycleEventPlayTests" runstate="Runnable" seed="1814497165" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.101898" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[
+IgnoreFailingMessages:true
+
+IgnoreFailingMessages:true
+]]></output>
+            </test-case>
+            <test-case id="1009" name="퇴장_연결의_소유_아바타가_파괴되고_서버_등록이_해제된다" fullname="UniNet.Tests.LifecycleEventPlayTests.퇴장_연결의_소유_아바타가_파괴되고_서버_등록이_해제된다" methodname="퇴장_연결의_소유_아바타가_파괴되고_서버_등록이_해제된다" classname="UniNet.Tests.LifecycleEventPlayTests" runstate="Runnable" seed="1152152770" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.100509" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[
+IgnoreFailingMessages:true
+
+IgnoreFailingMessages:true
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1010" name="LifecycleStopTests" fullname="UniNet.Tests.LifecycleStopTests" classname="UniNet.Tests.LifecycleStopTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.334214" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1011" name="서버_정지후_동일_포트_재리슨_성공" fullname="UniNet.Tests.LifecycleStopTests.서버_정지후_동일_포트_재리슨_성공" methodname="서버_정지후_동일_포트_재리슨_성공" classname="UniNet.Tests.LifecycleStopTests" runstate="Runnable" seed="1210527262" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.106373" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[
+IgnoreFailingMessages:true
+
+IgnoreFailingMessages:true
+]]></output>
+            </test-case>
+            <test-case id="1012" name="클라_정지후_서버연결해제와_재접속_성공" fullname="UniNet.Tests.LifecycleStopTests.클라_정지후_서버연결해제와_재접속_성공" methodname="클라_정지후_서버연결해제와_재접속_성공" classname="UniNet.Tests.LifecycleStopTests" runstate="Runnable" seed="1822463017" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.072908" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[
+IgnoreFailingMessages:true
+
+IgnoreFailingMessages:true
+]]></output>
+            </test-case>
+            <test-case id="1013" name="호스트_정지후_재시작_성공" fullname="UniNet.Tests.LifecycleStopTests.호스트_정지후_재시작_성공" methodname="호스트_정지후_재시작_성공" classname="UniNet.Tests.LifecycleStopTests" runstate="Runnable" seed="166297028" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.153726" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[
+IgnoreFailingMessages:true
+
+IgnoreFailingMessages:true
+]]></output>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1014" name="NetworkTransformPlayTests" fullname="UniNet.Tests.NetworkTransformPlayTests" classname="UniNet.Tests.NetworkTransformPlayTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.244844" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1016" name="SetNetworkPosition이_권위_좌표를_즉시_반영한다" fullname="UniNet.Tests.NetworkTransformPlayTests.SetNetworkPosition이_권위_좌표를_즉시_반영한다" methodname="SetNetworkPosition이_권위_좌표를_즉시_반영한다" classname="UniNet.Tests.NetworkTransformPlayTests" runstate="Runnable" seed="1844379761" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.083976" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1015" name="SubmitMove가_기반_컴포넌트_RPC로_서버_시뮬레이션을_구동한다" fullname="UniNet.Tests.NetworkTransformPlayTests.SubmitMove가_기반_컴포넌트_RPC로_서버_시뮬레이션을_구동한다" methodname="SubmitMove가_기반_컴포넌트_RPC로_서버_시뮬레이션을_구동한다" classname="UniNet.Tests.NetworkTransformPlayTests" runstate="Runnable" seed="882307189" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.159886" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1017" name="P4HookPlayTests" fullname="UniNet.Tests.P4HookPlayTests" classname="UniNet.Tests.P4HookPlayTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:46Z" duration="0.141786" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1018" name="TimeSync_와이어로_서버_시각_수신이_제공된다" fullname="UniNet.Tests.P4HookPlayTests.TimeSync_와이어로_서버_시각_수신이_제공된다" methodname="TimeSync_와이어로_서버_시각_수신이_제공된다" classname="UniNet.Tests.P4HookPlayTests" runstate="Runnable" seed="30370572" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:45Z" duration="0.069432" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1019" name="리와인드_히스토리가_과거_위치를_반환한다" fullname="UniNet.Tests.P4HookPlayTests.리와인드_히스토리가_과거_위치를_반환한다" methodname="리와인드_히스토리가_과거_위치를_반환한다" classname="UniNet.Tests.P4HookPlayTests" runstate="Runnable" seed="1151264608" result="Passed" start-time="2026-09-22 01:03:45Z" end-time="2026-09-22 01:03:46Z" duration="0.071289" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1020" name="RelevancyDriverTests" fullname="UniNet.Tests.RelevancyDriverTests" classname="UniNet.Tests.RelevancyDriverTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-22 01:03:46Z" end-time="2026-09-22 01:03:46Z" duration="0.073205" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1021" name="일반_Destroy_직후_프레임의_틱은_예외_없이_돈다" fullname="UniNet.Tests.RelevancyDriverTests.일반_Destroy_직후_프레임의_틱은_예외_없이_돈다" methodname="일반_Destroy_직후_프레임의_틱은_예외_없이_돈다" classname="UniNet.Tests.RelevancyDriverTests" runstate="Runnable" seed="1818648426" result="Passed" start-time="2026-09-22 01:03:46Z" end-time="2026-09-22 01:03:46Z" duration="0.071776" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestFixture" id="1022" name="ServerRpcOwnershipPlayTests" fullname="UniNet.Tests.ServerRpcOwnershipPlayTests" classname="UniNet.Tests.ServerRpcOwnershipPlayTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-09-22 01:03:46Z" end-time="2026-09-22 01:03:46Z" duration="0.120897" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1023" name="소유자_왕복은_실행되고_비소유_발신은_거부된다" fullname="UniNet.Tests.ServerRpcOwnershipPlayTests.소유자_왕복은_실행되고_비소유_발신은_거부된다" methodname="소유자_왕복은_실행되고_비소유_발신은_거부된다" classname="UniNet.Tests.ServerRpcOwnershipPlayTests" runstate="Runnable" seed="1428121125" result="Passed" start-time="2026-09-22 01:03:46Z" end-time="2026-09-22 01:03:46Z" duration="0.119502" asserts="0">
+              <properties>
+                <property name="_JOINTYPE" value="UnityCombinatorial" />
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[UniNet] ServerRpc 거부 — 비소유 발신: UniNet.Tests.VerifyPlayer.RpcPing netId=411487349340227371 sender=1 owner=2
+[UNINET-VERIFY] ServerRpcOwnership PASS — 소유자 왕복 실행 + 비소유 발신 거부
+<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: [TestRunnerNoThrottle] Restored Interaction Mode after test run.
 Saving results to: C:/Projects/DS/UniNet/Sandbox/tests-playmode.xml
 ]]></output>
             </test-case>

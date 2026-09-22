@@ -21,12 +21,17 @@
 ### features/ — 기능 문서
 
 - [[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]] — MonoBehaviour RPC 3종 + [Replicated]/RepNotify + 동적 스폰/파괴·조건부 (P1 전체 + P2 전체, 구현됨)
+- [[features/connection-lifecycle|connection-lifecycle]] — 연결 수명주기 이벤트: 서버 접속/해제 이벤트·클라 해제 콜백·상태 조회 (구현됨)
 - [[features/replication-p3-policy|replication-p3-policy]] — 리플리케이션 고급 정책: 가시성·우선순위·휴면·전송 주기·채널 예산 (P3, 구현됨)
 - [[features/replication-p4-hooks|replication-p4-hooks]] — P4 훅: UniNetTime·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성 (구현됨)
 
 ### examples/ — 예시 게임 문서
 
 - [[examples/arena-shooter|arena-shooter]] — Sandbox 아레나 슈팅 예시 게임 (구현 기능 전부 활용·MPPM 실행 가이드·기능 매트릭스·2-프로세스 검증, 구현됨)
+
+### upstream-blockers — 상류 의존 과제
+
+- [[upstream-blockers]] — DRPC/MessageProtocol/Communication 저장소 수정이 필요한 잔여 과제 (커스텀 NetSerialize·FastArray — UniNet 단독 불가, 문서화만)
 
 ### decisions/ — 아키텍처 결정 기록 (ADR)
 
@@ -44,6 +49,8 @@
 - [[0012-P4-훅-시간동기화-인터폴레이션-리와인드-그리드]] — P4 완결: UniNetTime(TimeSync 와이어 5번)·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성·아레나 예측 전환
 - [[0013-NetworkTransform-컴포넌트]] — NetworkTransform 컴포넌트: 이동 예측의 라이브러리 승격(조합 채택 — 제너레이터 리프 스캔 한계)·MovementRule 주입·제너레이터 겹리(0.1.2)
 - [[0014-스폰-서브-자동-복원]] — 멀티 컴포넌트 스폰 슬롯 불일치 근본 해결: 클라 서브 자동 복원(typeKeys)·RegisterPrefab 필수 → 선택 완화
+- [[0015-연결-수명주기-이벤트-게이트웨이]] — 연결 수명주기 이벤트: 게임 콜백 위임 채택·발화 순서 계약(재배정 전/캐치업 후)·구독자 격리
+- [[0016-ServerRpc-소유자-자동-강제]] — ServerRpc 발신자-소유자 자동 대조(보안 기본값)·RequireOwnership 옵트아웃·마이그레이션 노트
 
 ### _templates/ — 문서 템플릿
 
@@ -52,6 +59,8 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-22 — **ServerRpc 소유자 자동 강제** (ADR-0016: 비소유 발신 거부 + RequireOwnership 옵트아웃 — netId 위조로 타 오브젝트 RPC 실행 불가화. 제너레이터 0.1.3. EditMode 60/60·PlayMode 15/15)
+- 2026-09-21 — **연결 수명주기 이벤트 — 게임 콜백 위임** (ADR-0015: 서버 접속/해제 이벤트·클라 해제 콜백·상태 조회 + Arena 퇴장 처리 + 상류 의존 잔여 과제 문서 신설. EditMode 56/56·PlayMode 14/14)
 - 2026-09-20 — **NetworkTransform 컴포넌트 + 스폰 서브 자동 복원** (ADR-0013·0014: 이동 예측 라이브러리 컴포넌트화 + 멀티 컴포넌트 스폰 슬롯 불일치 근본 해결. EditMode 52/52·PlayMode 12/12)
 - 2026-09-20 — **P4 훅 완결 — 시간 동기화·인터폴레이션·리와인드·그리드 가시성 구현** (ADR-0012: UniNet 단독 구현분 전부. EditMode 45/45·PlayMode 10/10·아레나 예측/히트스캔 전환)
 - 2026-09-18 — **P3 완결 — 리플리케이션 고급 정책 구현** (ADR-0011: 가시성·우선순위·휴면·전송 주기·채널 예산 — UniNet 단독 구현분 5종. EditMode 38/38·PlayMode 7/7·아레나 예시 통합)

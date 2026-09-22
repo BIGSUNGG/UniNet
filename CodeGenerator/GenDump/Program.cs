@@ -10,6 +10,8 @@ var fixtureFiles = new[]
     @"C:/Projects/DS/UniNet/Sandbox/Assets/Tests/Fixtures/VerifyPlayer.cs",
     @"C:/Projects/DS/UniNet/Sandbox/Assets/Tests/Fixtures/PayloadMsg.cs",
     @"C:/Projects/DS/UniNet/Sandbox/Assets/Tests/Fixtures/DerivedPayloadMsg.cs",
+    @"C:/Projects/DS/UniNet/Sandbox/Assets/Tests/Fixtures/MovementBrain.cs",
+    @"C:/Projects/DS/UniNet/Sandbox/Assets/Tests/Fixtures/HealthTank.cs",
 };
 var fixtureTrees = fixtureFiles.Select(f => CSharpSyntaxTree.ParseText(File.ReadAllText(f))).ToList();
 
@@ -17,7 +19,7 @@ var stubs = @"
 namespace UniNet.Unity { public abstract class NetworkBehaviour { } }
 namespace UniNet.Core {
     public enum Delivery { ReliableOrdered, Unreliable }
-    public sealed class ServerRpcAttribute : System.Attribute { }
+    public sealed class ServerRpcAttribute : System.Attribute { public bool RequireOwnership { get; set; } }
     public sealed class ClientRpcAttribute : System.Attribute { public Delivery Delivery { get; } public ClientRpcAttribute(Delivery d = Delivery.ReliableOrdered) { Delivery = d; } }
     public sealed class MulticastRpcAttribute : System.Attribute { public Delivery Delivery { get; } public MulticastRpcAttribute(Delivery d = Delivery.ReliableOrdered) { Delivery = d; } }
     public sealed class ReplicatedAttribute : System.Attribute { public string Notify { get; set; } }

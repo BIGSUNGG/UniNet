@@ -59,6 +59,10 @@ namespace Arena
             {
                 // P3-⑤ 채널 예산 — 플레이어 유형 틱당 전송량을 제한하는 유형별 대역폭 관리 예시 (P4 전환으로 총알이 제거되어 대상 변경)
                 _server.SetReplicationChannelBudget(typeof(ArenaPlayer), ArenaConfig.PlayerChannelBudgetPerTickBytes);
+
+                // 연결 수명주기 게이트웨이 — 접속 시 즉시 관리(아바타 스폰)와 HUD 표시, 퇴장 시 소유 아바타 정밀 파괴
+                _server.ClientConnected += OnClientConnected;
+                _server.ClientDisconnected += OnClientDisconnected;
             }
         }
 
@@ -87,6 +91,30 @@ namespace Arena
             if (Time.unscaledTime < _nextManageUtc) return;
             _nextManageUtc = Time.unscaledTime + 0.5f;
             ManagePlayers();
+        }
+
+        /// <summary>클라 접속 — HUD 표시 + 관리 주기를 즉시 돌려 아바타 스폰을 폴링 대기 없이 처리한다.</summary>
+        private void OnClientConnected(long connId)
+        {
+            ArenaHud.NoteLifecycle($"+ 플레이어 접속 (연결 {connId})");
+            Debug.Log($"[Arena] 클라 접속 connId={connId}");
+            _nextManageUtc = 0f;
+        }
+
+        /// <summary>클라 퇴장 — 해제 연결이 소유한 아바타를 즉시 파괴한다 (이벤트는 소유권 재배정 전에 발화되므로
+        /// 소유자 조회로 정확히 식별된다). 처리하지 않으면 아바타가 다른 연결로 재배정돼 좀비로 남는다.</summary>
+        private void OnClientDisconnected(long connId)
+        {
+            ArenaHud.NoteLifecycle($"- 플레이어 퇴장 (연결 {connId})");
+            Debug.Log($"[Arena] 클라 퇴장 connId={connId}");
+
+            foreach (var player in FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                var entry = _server.GetEntry(player.NetId);
+                if (entry == null || !entry.IsDynamic || entry.OwnerConnId != connId) continue;
+                Debug.Log($"[Arena] 퇴장 플레이어 아바타 파괴 connId={connId} name={player.DisplayName}");
+                UniNetManager.NetworkDestroy(player.gameObject);
+            }
         }
 
         /// <summary>서버 — 접속 수와 동적 플레이어 수를 일치시키고, 연결별 뷰어 위치를 소유 플레이어 좌표로 유지한다 (P3-①).</summary>

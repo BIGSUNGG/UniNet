@@ -25,12 +25,18 @@ namespace Arena
         /// <summary>마지막 점수 팝업 — RepNotify(점수) 관찰용.</summary>
         public static string LastScorePopup { get; internal set; } = "";
 
+        /// <summary>마지막 연결 수명주기 이벤트 — 접속/퇴장 표시·테스트 관찰용.</summary>
+        public static string LastLifecycle { get; internal set; } = "";
+
         private ArenaPlayer[] _players = System.Array.Empty<ArenaPlayer>();
         private ArenaPlayer _mine;
         private float _nextScan;
         private Camera _camera;
 
         public static void SetRole(ArenaRole role) => _role = role;
+
+        /// <summary>연결 수명주기 이벤트 기록 — HUD 표시·테스트 관찰용.</summary>
+        internal static void NoteLifecycle(string text) => LastLifecycle = text;
 
         /// <summary>RepNotify(HP 감소) — 피격 플래시.</summary>
         public static void NotifyHit(string victimName, int amount)
@@ -94,7 +100,7 @@ namespace Arena
                 GUI.Label(new Rect(10, 10, 360, 24), $"[서버] 연결 {conns} · 오브젝트 {playerCount()}");
             }
 
-            GUI.Label(new Rect(10, 30, 360, 24), $"역할: {_role}" + (_mine == null ? " · 관전" : ""));
+            GUI.Label(new Rect(10, 30, 360, 24), $"역할: {_role}" + (_mine == null ? " · 관전" : "") + (string.IsNullOrEmpty(LastLifecycle) ? "" : $"   {LastLifecycle}"));
 
             if (_mine != null)
             {

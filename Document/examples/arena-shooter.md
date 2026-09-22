@@ -62,6 +62,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 신뢰성 지정(Delivery) | FX 비신뢰(유실 허용)·사망/킬피드 신뢰 — 유실 허용 이벤트와 필수 이벤트 구분 | ArenaPlayer |
 | 오브젝트 단위 RPC | 총알·플레이어 각각이 독립 netId 오브젝트로 RPC/리플리케이션 | ArenaBullet·ArenaPlayer |
 | RPC 매개변수 신뢰 경계 | 서버가 입력 값 범위를 `_Validate`로 검증(클램프) | ArenaPlayer |
+| ServerRpc 소유자 강제 (ADR-0016) | 모든 ServerRpc가 소유자 발신만 허용(자동 강제, 기본값) — 비소유 클라가 타 아바타 netId로 조립한 페이로드는 서버 디스패치에서 거부 + 경고 로그. Arena RPC는 전부 소유자 전용 의미론이라 코드 변경 없이 적용 | ArenaPlayer |
 
 ### P2 — 변수 리플리케이션
 

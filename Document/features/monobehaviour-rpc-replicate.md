@@ -56,6 +56,23 @@ private void RpcApplyDamage_Implementation(DamageMsg damage)
 - [Replicated] 메시지 필드의 dirty 비교는 `object.Equals`(참조 비교) — 값 동일성이 필요하면 Equals 오버라이드. RepNotify는 이전 인스턴스 참조를 받는다
 - 검증: EditMode(MessageSupportTests — 다형성 보존·메시지 필드 델타) + PlayMode 호스트 왕복(네트워크 경로 전체)
 
+## ServerRpc 소유자 강제 (RequireOwnership)
+
+기본으로 **오브젝트 소유자의 발신만 실행**된다 — 서버 디스패치가 발신 연결(`senderConnId`)과 소유자(`NetworkServer.GetOwner`)를 대조하고, 비소유 발신은 구현을 실행하지 않고 경고 1줄을 남긴다 (ADR-0016). 악의적 클라가 타 오브젝트의 netId로 페이로드를 조립해도 ServerRpc를 실행시킬 수 없다:
+
+```csharp
+[ServerRpc]                                   // 기본 = RequireOwnership: true — 소유자 전용
+private partial void RpcSubmitAim(float yaw);
+
+[ServerRpc(RequireOwnership = false)]         // 옵트아웃 — 전 클라 보고 허용 (서버가 권위 검증)
+internal partial void RpcHeal(int amount);
+```
+
+- **로컬 권위 경로는 대조에서 제외**된다 — `senderConnId == 0`(서버·호스트 직접 호출·오프라인 실행)은 발신자 대조 없이 실행. 네트워크로 도달한 발신만 검사한다
+- 거부는 조용히 막히지 않는다 — `"[UniNet] ServerRpc 거부 — 비소유 발신: <타입>.<메서드> netId=… sender=… owner=…"` 경고 로그로 식별된다 — 로그는 유량 제한된다(발신자별 최초 1회 + 전역 5초당 최대 1회, `NetworkServer.ReportServerRpcRejection` — 비소유 churn 시 로그 플러딩 방어)
+- 호스트는 서버 권위 경로로 실행되므로 영향 없음. ClientRpc/MulticastRpc(서버→클라 방향)는 대상 아님
+- **마이그레이션** — 기본값이 보안 우선으로 바뀌었다. 기존에 비소유 클라가 호출하던 크로스-클라 ServerRpc는 업그레이드 후 거부되므로 명시적 `RequireOwnership = false`가 필요하다
+
 ## 동적 스폰/파괴 (명시적 API)
 
 서버에서 일반 `Instantiate` 후 `Spawn` 한 줄 — 전 클라에 스폰(netId·타입·변환·전체 상태)이 전파된다 (사용법: `Sandbox/Assets/Scripts/Weapon.cs`·`Projectile.cs`):
@@ -112,7 +129,7 @@ UniNetManager.Spawn(go);   // 서브 구성은 스폰 메시지의 typeKeys로 �
 
 ## 알려진 한계 (신뢰 경계 포함)
 
-- **ServerRpc 발신자 미검증** — 수신 핸들은 페이로드의 netId만으로 대상을 찾아 `_Implementation`를 실행한다. 악의적 클라가 다른 오브젝트의 netId로 페이로드를 조립하면 피해자 오브젝트의 ServerRpc가 실행될 수 있다. `_Validate`는 인자만 검증 가능(발신자 불가). 완화 플러밍은 마련됐다 — 연결별 허브가 발신 connId를 주입하고 디스패치까지 전달되므로(`senderConnId`), 소유권 대조 강화는 후속 과제다.
+- **ServerRpc 발신자 미검증** — 해소됨 (ADR-0016, 2026-09-21): 서버 디스패치가 발신자-소유자를 대조해 비소유 발신을 거부한다 (위 "ServerRpc 소유자 강제" 섹션). 네트워크로 도달한 발신만 검사하고, 정상 크로스-클라 RPC는 `RequireOwnership = false`로 옵트아웃한다. `_Validate`는 계속 인자 검증용 — 발신자 검증은 강제 계층이 담당한다
 - **접속 직후 첫 전송 레이스** — 접속 완료 직후(Welcome/소유권 수신 전) 즉발 one-way RPC가 유실될 수 있음 (ADR-0008 알려진 한계 — 상류 조사 후보). 연결 확정 후 전송하는 자연 패턴은 무영향.
 - **연결 종료 수명주기** — 해소됨: 아래 "수명주기 종료 (Stop API)" 섹션 참조 (2026-09-17 — 명시적 Stop API 구현)
 - **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가).

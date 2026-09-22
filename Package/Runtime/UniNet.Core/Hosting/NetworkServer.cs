@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 
 namespace UniNet.Core.Hosting
 {
@@ -40,6 +41,18 @@ namespace UniNet.Core.Hosting
 
         /// <summary>틱당 리플리케이션 전역 바이트 예산 — 0 = 무제한(기본). 초과 델타는 대기열로 연기됐다가 다음 틱에 전송된다.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
+
+        /// <summary>
+        /// 클라이언트 접속 이벤트 — 환영·소유권 배정·캐치업까지 끝난 뒤 메인 스레드에서 발화한다.
+        /// 게임은 여기서 아바타 스폰·HUD 갱신 등을 처리한다 (연결 수명주기 게이트웨이).
+        /// </summary>
+        public event Action<long> ClientConnected;
+
+        /// <summary>
+        /// 클라이언트 연결 종료 이벤트 — 소유권 재배정 이전(해제 연결 소유 오브젝트를 소유자로 아직 식별할 수 있다)
+        /// 메인 스레드에서 발화한다. 게임은 여기서 퇴장 플레이어의 오브젝트를 파괴한다 (파괴하지 않으면 재배정된 소유자로 남는다).
+        /// </summary>
+        public event Action<long> ClientDisconnected;
 
         /// <summary>네트워크 오브젝트 1개의 서버 측 상태 — 오브젝트(게임오브젝트) 단위. 소유권·파괴·가시성의 단위다.</summary>
         public sealed class ServerObjectEntry
@@ -180,6 +193,33 @@ namespace UniNet.Core.Hosting
             lock (_gate) return _objects.TryGetValue(netId, out var e) ? e.Instance : null;
         }
 
+        /// <summary>오브젝트 소유자 조회 (0 = 미할당). 생성 ServerRpc 디스패치의 소유자 강제가 사용한다 (ADR-0016).</summary>
+        public long GetOwner(ulong netId)
+        {
+            lock (_gate) return _objects.TryGetValue(netId, out var e) ? e.OwnerConnId : 0;
+        }
+
+        private static readonly HashSet<long> _rejectionLoggedConns = new();
+        private static DateTime _lastRejectionLogUtc;
+        private static readonly object _rejectionGate = new();   // static 스로틀 상태 전용 잠금 — 인스턴스 _gate와 분리
+
+        /// <summary>
+        /// ServerRpc 거부 경고를 로그해야 하는가 (ADR-0016 로그 유량 제한 — 로그 플러딩 DoS 방어).
+        /// 발신자별 최초 1회 + 전역 5초당 최대 1회. Core 무로그 계약 유지 — 판단만 반환한다.
+        /// 5초 창 안에 처음 거부된 발신자는 기록만 되고 로그되지 않는다(다음 거부 시 재시도 없음 — churn 상한 우선).
+        /// </summary>
+        public static bool ReportServerRpcRejection(long senderConnId)
+        {
+            lock (_rejectionGate)
+            {
+                if (!_rejectionLoggedConns.Add(senderConnId)) return false;   // 이미 로그한 발신자
+                var now = DateTime.UtcNow;
+                if (_lastRejectionLogUtc != default && (now - _lastRejectionLogUtc).TotalMilliseconds < 5000) return false;
+                _lastRejectionLogUtc = now;
+                return true;
+            }
+        }
+
         /// <summary>서브슬롯의 인스턴스를 조회한다 (RPC 라우팅).</summary>
         public object Get(ulong netId, byte subId)
         {
@@ -222,6 +262,7 @@ namespace UniNet.Core.Hosting
                     channel.SendWelcome(connId);
                     ReassignOwnership();
                     SendCatchup(conn);
+                    RaiseLifecycle(ClientConnected, connId);   // 캐치업 이후 — 게임이 이 시점에 스폰해도 캐치업과 충돌 없다
                 });
                 return conn.ConnId;
             }
@@ -245,7 +286,16 @@ namespace UniNet.Core.Hosting
                             _visible.Remove(conn.ConnId);
                             _everVisible.Remove(conn.ConnId);   // 재접속마다 잔존하는 HashSet 누수 방지 (connId 단조 증가)
                             _gridRelevant.Remove(conn.ConnId);   // P4 그리드 집합도 정리
-                            ReassignOwnership();
+                            try
+                            {
+                                RaiseLifecycle(ClientDisconnected, conn.ConnId);   // 재배정 전 — 게임이 소유 오브젝트를 식별해 처리한다
+                            }
+                            finally
+                            {
+                                // 구독자 예외와 무관하게 항상 실행 — 죽은 연결이 소유자로 남는 것을 막는 서버 불변식
+                                // (재던진 예외가 같은 람다의 잔여 문장을 건너뛰게 두면 OwnerOnly 델타 수신자를 잃는다)
+                                ReassignOwnership();
+                            }
                         });
                         return;
                     }
@@ -619,6 +669,22 @@ namespace UniNet.Core.Hosting
             if (!_everVisible.TryGetValue(connId, out var set))
                 _everVisible[connId] = set = new HashSet<ulong>();
             return set;
+        }
+
+        /// <summary>
+        /// 수명주기 이벤트 발화 — 구독자별 격리(첫 예외가 나머지 구독자를 묻지 않는다) 후 마지막 예외를 재던진다.
+        /// 재던진 예외는 메인 펌프 보호(드라이버·생성 코드의 catch)가 로그하고, 펌프 잔여 작업은 다음 프레임에서 재개된다.
+        /// </summary>
+        private static void RaiseLifecycle(Action<long> handlers, long connId)
+        {
+            if (handlers == null) return;
+            Exception last = null;
+            foreach (Action<long> handler in handlers.GetInvocationList())
+            {
+                try { handler(connId); }
+                catch (Exception e) { last = e; }
+            }
+            if (last != null) ExceptionDispatchInfo.Capture(last).Throw();   // 원본 스택 트레이스 보존 — 로그는 유니티 계층 담당, 코어는 무로그
         }
 
         /// <summary>뷰어 위치 (컬 거리 판정 기준점).</summary>

@@ -26,7 +26,7 @@ public sealed partial class Player : NetworkBehaviour
     // 클라에서 _hp가 네트워크로 변경될 때마다 실행 (이전값 1개 인자)
     private void OnHpChanged(int prevHp) { /* UI 갱신 */ }
 
-    [ServerRpc]                            // 클라 → 서버 (서버 권위)
+    [ServerRpc]                            // 클라 → 서버 (서버 권위) — 소유자 발신만 허용 (기본 강제, ADR-0016)
     private partial void RpcRequestHit(int damage);
 
     private Task<bool> RpcRequestHit_Validate(int damage)   // 선택 검증 후크
@@ -67,6 +67,8 @@ await UniNetManager.HostAsync(7777);          // 서버+클라 한 프로세스 
 // await UniNetManager.ServerAsync(7777);     // 전용 서버
 // await UniNetManager.ClientAsync("127.0.0.1", 7777);  // 클라이언트
 ```
+
+ServerRpc는 기본으로 **오브젝트 소유자 발신만 허용**된다 (ADR-0016 — 비소유 발신은 서버 디스패치에서 거부 + 경고 로그, 로컬 권위·호스트 경로는 무영향). 전 클라가 보고하는 정상 크로스-클라 RPC는 `[ServerRpc(RequireOwnership = false)]`로 옵트아웃한다.
 
 ### 동적 스폰/파괴 + 조건부 리플리케이션 (P2)
 
@@ -222,6 +224,28 @@ await UniNetManager.ServerStopAsync();   // 리스너 정지 + 환경 정리 (�
 ```
 
 게임은 `OnApplicationQuit` 등 종료 경로에서 동기 버전(`ServerStop`·`ClientStop`·`HostStop`)을 호출한다. 멱등 — 리슨 중이 아니면 무작동.
+
+## 연결 수명주기 이벤트 (접속·퇴장)
+
+```csharp
+// 서버(권위) — 접속/퇴장을 게임이 처리한다 (Arena 예제 참고)
+server.ClientConnected += connId =>
+{
+    // 환영·캐치업 이후 발화 — 여기서 즉시 아바타를 스폰할 수 있다
+    SpawnAvatar(connId);
+};
+server.ClientDisconnected += connId =>
+{
+    // 소유권 재배정 이전 발화 — 퇴장 연결 소유 오브젝트를 소유자로 식별해 파괴 (안 하면 좀비로 잔존)
+    DestroyOwnedAvatar(connId);   // → UniNetManager.NetworkDestroy로 전 클라에 despawn 전파
+};
+
+// 클라이언트 — 세션 종료 인지 (서버 종료·네트워크 단절 등)
+UniNetManager.ClientDisconnected += () => ShowReconnectPrompt();
+bool alive = UniNetManager.IsClientConnected;   // 접속 상태 조회
+```
+
+모든 이벤트는 메인 스레드에서 발화한다. 구독자 예외는 격리된다 — 한 구독자의 버그가 다른 구독자·펌프를 죽이지 않는다. 상세: [Document/features/connection-lifecycle.md](Document/features/connection-lifecycle.md)
 
 ## 예시 게임 (Sandbox)
 

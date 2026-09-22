@@ -12,7 +12,8 @@ namespace UniNet.Tests
         /// <summary>RpcHeal 실행 횟수 (라우팅 검증용).</summary>
         public int HealCalls;
 
-        [ServerRpc]
+        /// <summary>옵트아웃 예제 (ADR-0016) — 어떤 클라든 치유를 보고할 수 있는 RPC의 RequireOwnership=false 패턴.</summary>
+        [ServerRpc(RequireOwnership = false)]
         internal partial void RpcHeal(int amount);
 
         private void RpcHeal_Implementation(int amount)

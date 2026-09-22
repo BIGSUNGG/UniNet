@@ -559,6 +559,21 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine("        {");
                         sb.AppendLine("            try");
                         sb.AppendLine("            {");
+                        if (rpc.RequireOwnership)
+                        {
+                            // ServerRpc 소유자 강제 (ADR-0016) — senderConnId 0은 로컬 권위 경로(서버·호스트·오프라인 직접 호출)라 대조에서 제외한다.
+                            sb.AppendLine("                if (senderConnId != 0)");
+                            sb.AppendLine("                {");
+                            sb.AppendLine($"                    var server = {Env}.Server;");
+                            sb.AppendLine("                    long owner = server != null ? server.GetOwner(o.NetId) : 0;");
+                            sb.AppendLine("                    if (owner != senderConnId)");
+                            sb.AppendLine("                    {");
+                            sb.AppendLine("                        if (global::UniNet.Core.Hosting.NetworkServer.ReportServerRpcRejection(senderConnId))   // 로그 유량 제한 — 발신자별 최초 1회 + 전역 5초당 1회");
+                            sb.AppendLine($"                            UnityEngine.Debug.LogWarning($\"[UniNet] ServerRpc 거부 — 비소유 발신: {rpc.IdKey} netId={{o.NetId}} sender={{senderConnId}} owner={{owner}}\");");
+                            sb.AppendLine("                        return;");
+                            sb.AppendLine("                    }");
+                            sb.AppendLine("                }");
+                        }
                         if (rpc.HasValidate)
                             sb.AppendLine($"                if (!await o.{rpc.Name}_Validate({ArgList(rpc)})) return;");
                         sb.AppendLine($"                o.{rpc.Name}_Implementation({ArgList(rpc)});");

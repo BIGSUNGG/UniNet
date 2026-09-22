@@ -3,6 +3,42 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-22]
+
+### Added (ServerRpc 소유자 자동 강제 — RequireOwnership 옵트아웃)
+
+- **ServerRpc 소유자 자동 강제 — netId 위조로 타 오브젝트 RPC 실행 불가화** (ADR [[0016-ServerRpc-소유자-자동-강제]] · P1 때부터의 알려진 한계 해소 — [[features/monobehaviour-rpc-replicate]] "알려진 한계" 갱신)
+  - **속성** — `ServerRpcAttribute.RequireOwnership` 신설 (기본 `true`). 옵트아웃: `[ServerRpc(RequireOwnership = false)]` (NGO RequireOwnership 기본값 true 관례 — ADR-0007 API 스타일)
+  - **제너레이터** — 서버 디스패치(`__UniNetServerDispatch_*`) 머리에 발신자-소유자 대조 삽입: `senderConnId != NetworkServer.GetOwner(netId)`이면 구현 미실행 + 경고 1줄(`"[UniNet] ServerRpc 거부 — 비소유 발신: <타입>.<메서드> netId sender owner"`). **로컬 권위 경로(senderConnId 0 — 서버·호스트 직접·오프라인)는 대조 제외**. ClientRpc/MulticastRpc는 대상 아님. ClientRpc 경유의 정상 크로스-클라 ServerRpc는 옵트아웃 속성으로 유지
+  - **Core** — `NetworkServer.GetOwner(netId)` 신설 (0 = 미할당). 소유자 미배정 오브젝트로의 네트워크 발신은 거부(안전 기본값 — 등록 직후 창은 메인 큐 FIFO로 실질 노출 없음)
+  - **UniNet.CodeGenerator 0.1.4** — nupkg 재배포 (Sandbox Assets/Packages + 로컬 피드. 0.1.3 강제 삽입 + 0.1.4 거부 경고 유량 제한 — 발신자별 최초 1회 + 전역 5초당 1회, 비소유 churn의 로그 플러딩 방어)
+  - **in-repo RPC 영향 조사** — Arena(RpcSubmitAim·RpcFire)·NetworkTransform(SubmitMove)은 전부 소유자 전용 의미론이라 무변경 자동 보호. 옵트아웃 시연은 HealthTank.RpcHeal 픽스처 + 기능 문서 예제
+  - **마이그레이션 노트** — 기본값 변경으로 기존 비소유 발신 크로스-클라 ServerRpc는 업그레이드 후 거부된다(경고 로그로 식별) — 명시적 `RequireOwnership = false` 필요
+- **검증**: dotnet 빌드 5 프로젝트 녹색 · **EditMode 60/60**(`ServerRpcOwnershipTests` 4종 신규 — 소유자 실행·비소유 거부+경고·옵트아웃 실행·로컬 권위 경로) · **PlayMode 15/15**(`ServerRpcOwnershipPlayTests` 신규 — 실제 루프백 왕복 소유자 실행 + 게스트 연결 비소유 발신 거부) · Unity 6000.0.83f1 배치 EXIT=0
+
+## [2026-09-21]
+
+### Added (연결 수명주기 이벤트 — 게임 콜백 위임)
+
+- **연결 수명주기 게이트웨이 API** (ADR [[0015-연결-수명주기-이벤트-게이트웨이]] · 기능 문서 [[features/connection-lifecycle]])
+  - **서버** — `NetworkServer.ClientConnected`(환영·소유권 배정·캐치업 이후 발화) / `ClientDisconnected`(**소유권 재배정 이전** 발화 — 게임이 퇴장 연결 소유 오브젝트를 소유자로 식별해 파괴 가능). 전부 메인 스레드
+  - **클라** — `UniNetManager.ClientDisconnected`(클라 허브 세션 종료 관측 → 메인 스레드 발화) + `UniNetManager.IsClientConnected` 상태 조회
+  - **격리 계약** — 구독자별 try/catch로 첫 예외가 나머지 구독자를 묻지 않고, 마지막 예외 재던짐을 드라이버 메인 펌프 보호가 로그 — 펌프 잔여 작업은 다음 프레임 재개
+  - 배경 결함: 해제 알림 부재로 퇴장 플레이어 아바타가 좀비로 잔존(소유권만 재배정) — Arena의 0.5초 폴링 잉여 정리로도 연결-오브젝트 정밀 대응 불가
+- **Arena 예제에 수명주기 처리 추가** — ClientDisconnected에서 퇴장 연결 소유 아바타를 `NetworkDestroy`(좀비 소멸 — 폴링 잉여 정리는 백업으로 유지), ClientConnected에서 HUD 표시 + 관리 주기 즉시 실행(스폰 지연 제거). ArenaHud에 수명주기 표시 추가
+- **상류 의존 잔여 과제 문서 신설** — [[upstream-blockers]]: 커스텀 NetSerialize·FastArray 2종의 MP 수정 필요 사유·변경 요지·UniNet 측 준비 상태 정리 (roadmap 잔여 행에서 링크. 상류 저장소는 수정하지 않음 — ADR-0003 원칙)
+- **검증**: EditMode 55/55(LifecycleEventTests 3종 신규 — 발화 순서·재배정 전 발화·예외 격리) · PlayMode 14/14(LifecycleEventPlayTests 2종 신규 — 실제 세션 이벤트·퇴장 아바타 파괴 전파) · dotnet 빌드 3 프로젝트 녹색
+
+### Fixed (리뷰 라운드 1 — 수명주기 이벤트 결함 7건)
+
+- **[블로커] 해제 경로 구독자 예외가 소유권 재배정을 영구 생략** — `DetachConnection` 메인 큐 람다에서 `ClientDisconnected` 구독자가 예외를 던지면 재던짐이 같은 람다의 잔여 문장인 `ReassignOwnership()`을 건너뛰어 죽은 연결이 소유자로 고착(OwnerOnly 델타 수신자 상실) → 발화부를 `try/finally`로 감싸 재던짐·펌프 로깅 계약은 유지하면서 재배정은 예외와 무관하게 항상 실행. 해제 경로 예외 테스트 추가(`해제_경로에서도_구독자_예외가_소유권_재배정을_막지_않는다`)
+- **클라 플래그 레이스 제거** — `await connect` 재개 전 네트워크 스레드에서 허브 `Disconnected`가 관측되면 가드가 이벤트를 삼키고 `IsClientConnected`가 true로 고착 가능 → 플래그 확정을 허브 구독 직후로 이동(스레딩 가정 무관 안전), connect 실패 경로에서 플래그 리셋 후 재던짐. 추가로 `ClientAsync` 시작 시 `SetClientSender(null)`로 이전 세션 허브의 지연 관측분이 새 세션 wiring에서 통과하지 못게 차단
+- **거짓 ClientDisconnected 방지** — 이전 세션 허브의 지연 `Disconnected`가 재접속된 새 세션을 건드릴 수 있어 허브 동일성 필터(`ReferenceEquals(허브, ClientSender)`) 도입. 허브 래핑 람다 2분기 중복도 로컬 함수 1개로 정리
+- **XML 문서 정정** — `UniNetManager.ClientDisconnected` 주석의 “(자발 ClientStop 포함)”은 사실이 아님(ClientStop이 먼저 플래그를 끊어 가드가 발화를 흡수) → “자발 ClientStop은 상태만 즉시 해제하고 이벤트는 발화하지 않는다”로 정정, 기능 문서도 정렬
+- **구독자 예외 디버깅성 개선** — `RaiseLifecycle`의 `throw last` → `ExceptionDispatchInfo.Capture(last).Throw()`로 원본 스택 트레이스 보존(어떤 구독자가 던졌는지 추적 가능)
+- **이벤트 스톰 가이드 문서화** — 접속·해제는 연결당 1회씩 메인 스레드 발화 — 대량 churn 시 콜백 비용 비례, 콜백에서 전 씬 스캔 대신 connId→오브젝트 맵 유지 권장 ([[features/connection-lifecycle]])
+- **검증 (수정 후)**: dotnet 빌드 5 프로젝트 녹색 · EditMode 56/56 (해제 예외 테스트 1종 추가) · PlayMode 14/14 (Unity 6000.0.83f1 배치)
+
 ## [2026-09-20]
 
 ### Added (P4 훅 — 시간 동기화·인터폴레이션·리와인드·그리드 가시성)
