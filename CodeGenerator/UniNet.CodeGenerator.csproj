@@ -9,7 +9,7 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>UniNet.CodeGenerator</PackageId>
-    <Version>0.1.4</Version>
+    <Version>0.1.5</Version>
     <Authors>DS</Authors>
     <Description>Roslyn source generator for UniNet — scans NetworkBehaviour subclasses for [ServerRpc]/[ClientRpc]/[MulticastRpc]/[Replicated] members and emits DRPC hub wiring (typed stubs, incoming dispatch, replication delta handlers) against the DRPC runtime. Targets Roslyn 4.3 (Unity 6.0 LTS).</Description>
     <Tags>UniNet Roslyn SourceGenerator Analyzer DRPC Unity</Tags>

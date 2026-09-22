@@ -338,11 +338,11 @@ namespace Arena
         // ---------------------------------------------------------------- RPC 선언 (UniNet 소스 제너레이터 대상)
 
         /// <summary>클라 → 서버 조준각 (도 단위) — SkipOwner로 남에게만 전파된다.</summary>
-        [ServerRpc]
+        [ServerRpc(Validate = true)]
         private partial void RpcSubmitAim(float yaw);
 
         /// <summary>클라 → 서버 발사 요청 (단위 방향 벡터 + 발신자 조준 서버 시각). 서버가 쿨다운·탄약·리와인드 판정을 권위 수행한다.</summary>
-        [ServerRpc]
+        [ServerRpc(Validate = true)]
         private partial void RpcFire(float dirX, float dirY, double hitTime);
 
         /// <summary>서버 → 전원 히트스캔 트레이서. 유실 허용(비신뢰) — 다음 발사 트레이서가 자연스럽게 대체한다.</summary>

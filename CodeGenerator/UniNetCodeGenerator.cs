@@ -134,7 +134,10 @@ namespace UniNet.CodeGenerator
                 Parameters = method.Parameters.Select(p => new ParamModel { Name = p.Name, Type = p.Type }).ToList(),
             };
             if (serverRpc != null)
+            {
                 rpc.RequireOwnership = GetRequireOwnership(serverRpc);   // 기본 true — [ServerRpc(RequireOwnership = false)]로 옵트아웃 (ADR-0016)
+                rpc.HasValidate = GetValidate(serverRpc);                // 기본 false — [ServerRpc(Validate = true)]로 옵트인 (ADR-0018)
+            }
 
             // 매개변수 타입 검사 — 기본형·string 또는 [Message] 타입
             foreach (var p in rpc.Parameters)
@@ -152,14 +155,22 @@ namespace UniNet.CodeGenerator
                 return;
             }
 
-            // _Validate (선택) — 같은 매개변수 + Task<bool> 반환
+            // _Validate 검증 훅 — ServerRpc에서 Validate = true로 옵트인한 경우에만 연결된다 (자동 감지 없음 — ADR-0018)
             var validate = type.GetMembers(method.Name + "_Validate").OfType<IMethodSymbol>().FirstOrDefault();
-            if (validate != null)
+            if (rpc.Kind == RpcKind.Server)
             {
-                if (!SignatureMatches(validate, method) || validate.ReturnType.ToDisplayString() != "System.Threading.Tasks.Task<bool>")
-                    Report(Diagnostics.ValidateSignature, validate.Locations.Length > 0 ? validate.Locations[0] : method.Locations[0], method.Name);
-                else
-                    rpc.HasValidate = true;
+                if (rpc.HasValidate)
+                {
+                    if (validate == null)
+                        Report(Diagnostics.ValidateMissing, method.Locations[0], method.Name);
+                    else if (!SignatureMatches(validate, method) || validate.ReturnType.ToDisplayString() != "System.Threading.Tasks.Task<bool>")
+                        Report(Diagnostics.ValidateSignature, validate.Locations.Length > 0 ? validate.Locations[0] : method.Locations[0], method.Name);
+                }
+                else if (validate != null)
+                {
+                    // 플래그 없이 _Validate만 두면 실행되지 않는다 — 옵트인 누락 실수를 경고로 알린다
+                    Report(Diagnostics.ValidateNotOptedIn, validate.Locations.Length > 0 ? validate.Locations[0] : method.Locations[0], method.Name);
+                }
             }
 
             model.Rpcs.Add(rpc);
@@ -283,6 +294,15 @@ namespace UniNet.CodeGenerator
                 if (named.Key == "RequireOwnership" && named.Value.Value is bool b)
                     return b;
             return true;
+        }
+
+        /// <summary>ServerRpcAttribute.Validate 이름 지정 인자 (미지정 시 기본 false — _Validate 훅 없음, ADR-0018).</summary>
+        private static bool GetValidate(AttributeData attr)
+        {
+            foreach (var named in attr.NamedArguments)
+                if (named.Key == "Validate" && named.Value.Value is bool b)
+                    return b;
+            return false;
         }
 
         /// <summary>ReplicatedAttribute 생성자의 조건 인자를 내부 비트로 변환한다 (ReplicateCondition 값과 1:1).</summary>
@@ -439,5 +459,11 @@ namespace UniNet.CodeGenerator
 
         public static readonly DiagnosticDescriptor ContradictoryCondition =
             Make(10, "모순된 리플리케이션 조건", "필드 '{0}' 의 조건 OwnerOnly|SkipOwner 는 모순입니다 — 소유자에게도 보내지 않는 필드가 된다", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor ValidateMissing =
+            Make(11, "_Validate 누락", "RPC '{0}' 은(는) Validate = true 로 선언됐지만 대응하는 '{0}_Validate' 메서드가 없습니다 — 같은 매개변수에 Task<bool> 반환형으로 작성하세요", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor ValidateNotOptedIn =
+            Make(12, "_Validate가 옵트인되지 않음", "ServerRpc '{0}' 에 _Validate 메서드가 있지만 Validate 플래그가 없어 실행되지 않습니다 — [ServerRpc(Validate = true)]로 옵트인하세요", DiagnosticSeverity.Warning);
     }
 }

@@ -193,7 +193,7 @@ namespace UniNet.Unity
         // ---- 입력 전송 ServerRpc (컴포넌트 소유 — 기반 클래스 RPC 스캔·파생 인스턴스 라우팅 검증 대상) ----
 
         /// <summary>클라 → 서버 이동 입력 (부동 소수 벡터, [-1,1]). 서버가 권위 입력으로 유지한다.</summary>
-        [ServerRpc]
+        [ServerRpc(Validate = true)]
         private partial void RpcSubmitMove(float inX, float inY, float inZ);
 
         private Task<bool> RpcSubmitMove_Validate(float inX, float inY, float inZ)

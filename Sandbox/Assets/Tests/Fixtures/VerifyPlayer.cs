@@ -37,7 +37,7 @@ namespace UniNet.Tests
             ScoreNotified = true;
         }
 
-        [ServerRpc]
+        [ServerRpc(Validate = true)]
         internal partial void RpcPing(int amount);
 
         private Task<bool> RpcPing_Validate(int amount)
@@ -82,7 +82,7 @@ namespace UniNet.Tests
         /// <summary>StateMsg RepNotify가 받은 이전 참조.</summary>
         public PayloadMsg LastStatePrev;
 
-        [ServerRpc]
+        [ServerRpc(Validate = true)]
         internal partial void RpcDeliver(PayloadMsg msg);
 
         private System.Threading.Tasks.Task<bool> RpcDeliver_Validate(PayloadMsg msg)

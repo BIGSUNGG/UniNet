@@ -6,7 +6,7 @@
 
 ## 개요
 
-`NetworkBehaviour` 파생 타입에 `[ServerRpc]`·`[ClientRpc(Delivery)]`·`[MulticastRpc]` 속성으로 partial 선언하고 본문을 `{Name}_Implementation`에, 선택으로 `{Name}_Validate`에 쓰면 — UniNet 소스 제너레이터가 DRPC 허브 배선과 직렬화를 생성해 서버-클라 간 오브젝트 단위 RPC가 동작한다. `[Replicated(Notify = nameof(...))]` 필드는 서버에서 변경 시 델타가 클라에 동기화되고 RepNotify(이전값) 콜백이 호출된다. 동적 오브젝트는 `UniNetManager.NetworkInstantiate`/`NetworkDestroy`로 생애주기를 동기화하고, `[Replicated(ReplicateCondition.OwnerOnly)]` 등 조건으로 수신자를 제한할 수 있다.
+`NetworkBehaviour` 파생 타입에 `[ServerRpc]`·`[ClientRpc(Delivery)]`·`[MulticastRpc]` 속성으로 partial 선언하고 본문을 `{Name}_Implementation`에, 검증 훅이 필요하면 `[ServerRpc(Validate = true)]`로 옵트인하고 `{Name}_Validate`에 쓰면 — UniNet 소스 제너레이터가 DRPC 허브 배선과 직렬화를 생성해 서버-클라 간 오브젝트 단위 RPC가 동작한다 (ADR-0018 — 자동 감지 없음). `[Replicated(Notify = nameof(...))]` 필드는 서버에서 변경 시 델타가 클라에 동기화되고 RepNotify(이전값) 콜백이 호출된다. 동적 오브젝트는 `UniNetManager.NetworkInstantiate`/`NetworkDestroy`로 생애주기를 동기화하고, `[Replicated(ReplicateCondition.OwnerOnly)]` 등 조건으로 수신자를 제한할 수 있다.
 
 ## 요구사항 / 목표
 
@@ -72,6 +72,25 @@ internal partial void RpcHeal(int amount);
 - 거부는 조용히 막히지 않는다 — `"[UniNet] ServerRpc 거부 — 비소유 발신: <타입>.<메서드> netId=… sender=… owner=…"` 경고 로그로 식별된다 — 로그는 유량 제한된다(발신자별 최초 1회 + 전역 5초당 최대 1회, `NetworkServer.ReportServerRpcRejection` — 비소유 churn 시 로그 플러딩 방어)
 - 호스트는 서버 권위 경로로 실행되므로 영향 없음. ClientRpc/MulticastRpc(서버→클라 방향)는 대상 아님
 - **마이그레이션** — 기본값이 보안 우선으로 바뀌었다. 기존에 비소유 클라가 호출하던 크로스-클라 ServerRpc는 업그레이드 후 거부되므로 명시적 `RequireOwnership = false`가 필요하다
+
+## ServerRpc 검증 훅 (Validate)
+
+검증 훅은 **옵트인**이다 — `[ServerRpc(Validate = true)]`로 선언한 RPC에만 서버 디스패치가 소유자 강제(ADR-0016) 통과 직후 `<RPC>_Validate`를 `await`하고, `false`면 `_Implementation`을 실행하지 않는다 (ADR-0018). 훅은 RPC와 같은 매개변수 + `Task<bool>` 반환:
+
+```csharp
+[ServerRpc(Validate = true)]                 // 옵트인 — 서버 디스패치 전에 RpcFire_Validate 실행
+private partial void RpcFire(float dirX, float dirY, double hitTime);
+
+private Task<bool> RpcFire_Validate(float dirX, float dirY, double hitTime)
+    => Task.FromResult(쿨다운_통과() && 탄약_있음());   // false면 구현 미실행
+
+private void RpcFire_Implementation(float dirX, float dirY, double hitTime) { ... }
+```
+
+- **자동 감지 없음** — 플래그 없이 `_Validate` 메서드만 두면 실행되지 않는다 (경고 UNINET012로 노출)
+- **진단** — `Validate = true`인데 `_Validate` 누락 → 컴파일 에러(UNINET011) · 시그니처 불일치 → 컴파일 에러(UNINET005) · ServerRpc에 플래그 없이 `_Validate` 존재 → 경고(UNINET012)
+- **ClientRpc/MulticastRpc 대상 아님** — 검증 훅은 서버 권위 경로에만 의미가 있다. 두 속성에는 `Validate`가 없고, 붙은 `_Validate`는 일반 메서드 취급 (진단 없음)
+- 예제: `Sandbox/Assets/Scripts/Arena/ArenaPlayer.cs`(RpcSubmitAim·RpcFire) · `Package/Runtime/UniNet.Unity/NetworkTransform.cs`(RpcSubmitMove)
 
 ## 동적 스폰/파괴 (명시적 API)
 
@@ -176,3 +195,4 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 2026-09-16 — 다중 NetworkBehaviour 지원 — 2층 식별자(netId+SubId)·다중 서브 스폰/델타·슬롯 대조 (ADR-0010 — MultiComponentTests·PlayMode·2-프로세스 검증)
 - 2026-09-17 — 수명주기 종료 API 추가 — ServerStopAsync/ServerStop/ClientStop/HostStopAsync/HostStop (포트 잔존 바인딩 실패 근본 해소 — LifecycleStopTests 3종·동일 포트 재리슨 검증) + UniNet.CodeGenerator 0.1.1 (정지 경로 잔여 송신 예외를 경고 수준으로)
 - 2026-09-22 — 동적 스폰 API 교체 — `Spawn(instance)` 제거, `NetworkInstantiate`(복제 겸함·3종 오버로드·configure 콜백)로 통합 (ADR-0017)
+- 2026-09-22 — ServerRpc 검증 훅 옵트인화 — `_Validate` 자동 감지 제거, `[ServerRpc(Validate = true)]`로 연결 (진단 UNINET011 에러·UNINET012 경고 신설 — ADR-0018)

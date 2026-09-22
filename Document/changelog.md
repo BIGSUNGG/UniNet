@@ -5,6 +5,16 @@
 
 ## [2026-09-22]
 
+### Changed (ServerRpc 검증 훅 — 자동 감지 제거, Validate 옵트인)
+
+- **`_Validate` 자동 감지 제거 → `[ServerRpc(Validate = true)]` 옵트인** (ADR [[0018-ServerRpc-Validate-옵트인]])
+  - **속성** — `ServerRpcAttribute.Validate` 신설 (기본 `false`). 훅 계약 현행 유지: `<RPC>_Validate`는 RPC와 같은 매개변수 + `Task<bool>` 반환, 서버 디스패치에서 소유자 강제(ADR-0016) 통과 직후 `await` — `false`면 `_Implementation` 미실행
+  - **진단** — `Validate = true` + `_Validate` 누락 → 컴파일 에러(UNINET011 신설) · 시그니처 불일치 → 컴파일 에러(UNINET005 유지) · ServerRpc에 플래그 없이 `_Validate` 존재 → 경고(UNINET012 신설 — 옵트인 누락 실수 노출)
+  - **ClientRpc/MulticastRpc 대상 아님** — 두 속성에 `Validate` 없음, 검증 훅은 서버 권위 경로에만 의미. 붙은 `_Validate`는 일반 메서드 취급(진단 없음)
+  - **제너레이터 0.1.4 → 0.1.5** — nupkg 재배포 (Sandbox `Assets/Packages` + 로컬 피드 `C:/Projects/DS/unity-nuget`)
+  - **마이그레이션** — in-repo `_Validate` 5곳 전부 옵트인: NetworkTransform.RpcSubmitMove · Arena.RpcSubmitAim · Arena.RpcFire · VerifyPlayer.RpcPing · VerifyPlayer.RpcDeliver
+- **검증**: dotnet 빌드 녹색 · Unity 리프레시 컴파일 에러 0 (UNINET 진단 0 — 옵트인 5곳 훅 정상 연결) · **EditMode 60/60** · **PlayMode 15/15** (HostRoundtripTests `_Validate` 거부 경로 포함)
+
 ### Added (Net 정적 파사드 — 무한정자 스폰/파괴 호출)
 
 - **`UniNet.Unity.Net` 정적 클래스** — `NetworkInstantiate`(3종 오버로드)·`NetworkDestroy`의 전달 전용 진입점. 파일 상단 `using static UniNet.Unity.Net;` 한 줄로 일반 `Instantiate`/`Destroy`처럼 한정자 없이 호출한다 (구현은 UniNetManager에 그대로 — 전달만). 사용례: ArenaBootstrap(라이브 에디터 루프백 검증)

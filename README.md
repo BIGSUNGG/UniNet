@@ -15,7 +15,7 @@ RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Frame
 
 ## 사용법 (구현됨 — P1 전체 + P2 전체 + P3 + P4 훅)
 
-RPC 메서드는 `partial` 선언 + 본문은 `{Name}_Implementation`에, 선택 검증은 `{Name}_Validate`에 작성한다 (ADR-0007 변경 이력·ADR-0008).
+RPC 메서드는 `partial` 선언 + 본문은 `{Name}_Implementation`에, 검증 훅이 필요하면 `[ServerRpc(Validate = true)]`로 옵트인하고 `{Name}_Validate`에 작성한다 (ADR-0007 변경 이력·ADR-0008·ADR-0018).
 
 ```csharp
 public sealed partial class Player : NetworkBehaviour
@@ -26,10 +26,10 @@ public sealed partial class Player : NetworkBehaviour
     // 클라에서 _hp가 네트워크로 변경될 때마다 실행 (이전값 1개 인자)
     private void OnHpChanged(int prevHp) { /* UI 갱신 */ }
 
-    [ServerRpc]                            // 클라 → 서버 (서버 권위) — 소유자 발신만 허용 (기본 강제, ADR-0016)
+    [ServerRpc(Validate = true)]           // 클라 → 서버 (서버 권위) — 소유자 발신만 허용 (기본 강제, ADR-0016) + 검증 훅 옵트인 (ADR-0018)
     private partial void RpcRequestHit(int damage);
 
-    private Task<bool> RpcRequestHit_Validate(int damage)   // 선택 검증 후크
+    private Task<bool> RpcRequestHit_Validate(int damage)   // 검증 후크 (옵트인 시에만 실행 — false면 구현 미실행)
         => Task.FromResult(damage > 0);
 
     private void RpcRequestHit_Implementation(int damage)    // 서버에서만 실행
