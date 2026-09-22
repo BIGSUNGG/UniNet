@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UniNet.Core.Hosting;
 using UniNet.Unity;
 using UnityEngine;
+using static UniNet.Unity.Net;   // NetworkInstantiate/NetworkDestroy 를 한정자 없이 — 일반 Instantiate/Destroy처럼
 
 namespace Arena
 {
@@ -156,7 +157,7 @@ namespace Arena
             _spawnCounter++;
 
             // 복제 → 구성(비직렬화 InitialOnly 상태) → 등록·전파 — NetworkInstantiate 한 줄
-            var go = UniNetManager.NetworkInstantiate(template,
+            var go = NetworkInstantiate(template,
                 clone => clone.GetComponent<ArenaPlayer>().InitServerState(displayName, colorSeed));
             Destroy(template);   // 템플릿 정리 — 상태는 복제·구성 시점에 클론에 반영됐다
             var player = go.GetComponent<ArenaPlayer>();
@@ -172,7 +173,7 @@ namespace Arena
             {
                 if (!destroyed.Add(players[i].NetId)) continue;
                 Debug.Log($"[Arena] 잉여 플레이어 파괴 name={players[i].DisplayName} netId={players[i].NetId}");
-                UniNetManager.NetworkDestroy(players[i].gameObject);
+                NetworkDestroy(players[i].gameObject);
             }
         }
     }

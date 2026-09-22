@@ -74,7 +74,8 @@ ServerRpc는 기본으로 **오브젝트 소유자 발신만 허용**된다 (ADR
 
 ```csharp
 // 서버에서 NetworkInstantiate 한 줄 — 원본(프리팹·템플릿)을 복제·등록·전 클라 스폰 전파. 반환값이 등록된 인스턴스 (사용법: Scripts/Arena/ArenaBootstrap.cs)
-var projectile = UniNetManager.NetworkInstantiate(_projectilePrefab, pos, rot);
+// 파일 상단에 using static UniNet.Unity.Net; 를 두면 아래처럼 한정자 없이 쓸 수 있다 (일반 Instantiate/Destroy처럼)
+var projectile = NetworkInstantiate(_projectilePrefab, pos, rot);
 UniNetManager.NetworkDestroy(projectile);   // 파괴 동기화
 // private [Replicated] 초기값(InitialOnly 기준선)은 configure 콜백으로 — 복제 직후·전파 직전 실행 (ADR-0017)
 var avatar = UniNetManager.NetworkInstantiate(_avatarPrefab, clone => clone.GetComponent<Player>().InitServerState("Alpha"));

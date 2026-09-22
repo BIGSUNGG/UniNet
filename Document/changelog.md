@@ -5,6 +5,11 @@
 
 ## [2026-09-22]
 
+### Added (Net 정적 파사드 — 무한정자 스폰/파괴 호출)
+
+- **`UniNet.Unity.Net` 정적 클래스** — `NetworkInstantiate`(3종 오버로드)·`NetworkDestroy`의 전달 전용 진입점. 파일 상단 `using static UniNet.Unity.Net;` 한 줄로 일반 `Instantiate`/`Destroy`처럼 한정자 없이 호출한다 (구현은 UniNetManager에 그대로 — 전달만). 사용례: ArenaBootstrap(라이브 에디터 루프백 검증)
+- **검증**: 에디터 리프레시 컴파일 에러 0 · **EditMode 60/60** · **PlayMode 15/15** (라이브 에디터 Test Runner)
+
 ### Changed (동적 스폰 API — Spawn 제거, NetworkInstantiate 통합)
 
 - **`UniNetManager.Spawn(instance)` 제거 → `NetworkInstantiate` 3종 오버로드로 통합** (ADR [[0017-동적-스폰-NetworkInstantiate-통합]] — ADR-0009의 Spawn 계약 대체)

@@ -84,6 +84,7 @@ projectile.GetComponent<Projectile>().Launch(speed);   // 비직렬화 초기화
 UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 로컬 파괴
 ```
 
+- **무한정자 호출** — 파일 상단에 `using static UniNet.Unity.Net;`를 두면 `NetworkInstantiate(...)`·`NetworkDestroy(...)`를 일반 Instantiate/Destroy처럼 한정자 없이 쓸 수 있다 (`Net` 정적 클래스 — UniNetManager 전달 전용. 사용례: ArenaBootstrap)
 - **복제는 직렬화 복사** — `Object.Instantiate`는 public·[SerializeField] 필드만 복사한다. private [Replicated] 초기화(InitialOnly 기준선 등)는 **configure 콜백**으로 세팅한다 — 콜백은 복제 직후·전파 직전에 클론으로 실행된다 (ADR-0017): `NetworkInstantiate(original, clone => clone.GetComponent<Player>().InitServerState("Alpha", 123))`. 델리게이트·서버 동작 플래그(MovementRule·NetworkCullDistance 등 비전파 상태)는 스폰 후 클론에 주입해도 무관하다 (기준선에 실리지 않음)
 
 - **클라 생성 우선순위**: `UniNetManager.RegisterPrefab<T>(prefab)` 타입 카탈록(한 타입=프리팹 1개, 선택) → 소스젠 기본 팩토리(빈 GameObject+AddComponent). 누락 서브는 스폰 메시지의 typeKeys로 자동 복원(ADR-0014)
