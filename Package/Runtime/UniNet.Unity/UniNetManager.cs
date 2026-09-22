@@ -110,11 +110,11 @@ namespace UniNet.Unity
             }
         }
 
-        /// <summary>서버 + 클라이언트를 한 프로세스에서 시작한다 (개발·테스트용 — 루프백 RUDP 왕복).</summary>
+        /// <summary>리슨 서버(ListenServer)로 시작한다 — 서버 + 클라이언트를 한 프로세스에서 구동 (개발·테스트용 — 루프백 RUDP 왕복).</summary>
         public static Task HostAsync(int port)
             => HostAsync(port, null, null);
 
-        /// <summary>연결 설정을 지정해 호스트로 시작한다 (서버/클라 각각 적용).</summary>
+        /// <summary>연결 설정을 지정해 리슨 서버(ListenServer)로 시작한다 (서버/클라 옵션 각각 적용).</summary>
         public static async Task HostAsync(int port, UniNetEndpointOptions serverOptions, UniNetEndpointOptions clientOptions)
         {
             await ServerAsync(port, serverOptions);
