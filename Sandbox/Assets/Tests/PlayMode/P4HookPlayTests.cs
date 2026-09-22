@@ -40,10 +40,12 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var go = new GameObject("RewindTarget");
-            var player = go.AddComponent<SpawnablePlayer>();
-            player.NetworkRewindHistory = true;   // P4-② 리와인드 대상 등록
-            UniNetManager.Spawn(go);
+            var template = new GameObject("RewindTarget");
+            template.AddComponent<SpawnablePlayer>();
+            var go = UniNetManager.NetworkInstantiate(template);
+            var player = go.GetComponent<SpawnablePlayer>();
+            UnityEngine.Object.Destroy(template);
+            player.NetworkRewindHistory = true;   // P4-② 리와인드 대상 등록 — 서버 동작 플래그(비직렬화)라 스폰 후 클론에 주입
 
             // P4-② 리와인드 — 샘플을 동기 기록해 드라이버 틱 타이밍과 무관하게 검증한다
             // (기록 경로 자체는 드라이버 RecordRewindHistory가 호출하는 것과 동일한 RecordRewindSample)

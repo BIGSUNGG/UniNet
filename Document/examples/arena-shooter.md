@@ -74,7 +74,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 조건부 — InitialOnly | `_displayName`·`_colorSeed`(이름·색) / `_seed`(총알 치명타 판정) — 스폰 시 1회만 | ArenaPlayer·ArenaBullet |
 | RepNotify | `OnHpChanged`(피격 플래시) `OnScoreChanged`(점수 팝업) `OnAmmoChanged` | ArenaPlayer |
 | 델타 전송 | 변경 필드만 전송 — 위치·HP·탄약·점수 전부 (라이브러리 자동) | — |
-| 동적 스폰 | 총알 발사·플레이어 접속 — `Instantiate → UniNetManager.Spawn` | ArenaPlayer·ArenaBootstrap |
+| 동적 스폰 | 플레이어 접속 — `UniNetManager.NetworkInstantiate`(복제·등록·전파 통합, configure 콜백) | ArenaPlayer·ArenaBootstrap |
 | 동적 파괴 | 총알 히트/수명 만료 — `UniNetManager.NetworkDestroy` | ArenaBullet |
 | 소유권(IsOwner) | 입력 처리 게이트·내 아바타 탐색(카메라·HUD) | ArenaPlayer·ArenaHud·ArenaCameraRig |
 | 네트워크 역할(IsServer/IsClient) | 시뮬레이션은 서버만, 클라는 복제 좌표 추종 | ArenaPlayer·ArenaBullet |

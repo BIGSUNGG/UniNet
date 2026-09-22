@@ -6,7 +6,7 @@
 
 ## 개요
 
-`NetworkBehaviour` 파생 타입에 `[ServerRpc]`·`[ClientRpc(Delivery)]`·`[MulticastRpc]` 속성으로 partial 선언하고 본문을 `{Name}_Implementation`에, 선택으로 `{Name}_Validate`에 쓰면 — UniNet 소스 제너레이터가 DRPC 허브 배선과 직렬화를 생성해 서버-클라 간 오브젝트 단위 RPC가 동작한다. `[Replicated(Notify = nameof(...))]` 필드는 서버에서 변경 시 델타가 클라에 동기화되고 RepNotify(이전값) 콜백이 호출된다. 동적 오브젝트는 `UniNetManager.Spawn`/`NetworkDestroy`로 생애주기를 동기화하고, `[Replicated(ReplicateCondition.OwnerOnly)]` 등 조건으로 수신자를 제한할 수 있다.
+`NetworkBehaviour` 파생 타입에 `[ServerRpc]`·`[ClientRpc(Delivery)]`·`[MulticastRpc]` 속성으로 partial 선언하고 본문을 `{Name}_Implementation`에, 선택으로 `{Name}_Validate`에 쓰면 — UniNet 소스 제너레이터가 DRPC 허브 배선과 직렬화를 생성해 서버-클라 간 오브젝트 단위 RPC가 동작한다. `[Replicated(Notify = nameof(...))]` 필드는 서버에서 변경 시 델타가 클라에 동기화되고 RepNotify(이전값) 콜백이 호출된다. 동적 오브젝트는 `UniNetManager.NetworkInstantiate`/`NetworkDestroy`로 생애주기를 동기화하고, `[Replicated(ReplicateCondition.OwnerOnly)]` 등 조건으로 수신자를 제한할 수 있다.
 
 ## 요구사항 / 목표
 
@@ -75,15 +75,16 @@ internal partial void RpcHeal(int amount);
 
 ## 동적 스폰/파괴 (명시적 API)
 
-서버에서 일반 `Instantiate` 후 `Spawn` 한 줄 — 전 클라에 스폰(netId·타입·변환·전체 상태)이 전파된다 (사용법: `Sandbox/Assets/Scripts/Weapon.cs`·`Projectile.cs`):
+서버에서 `NetworkInstantiate` 한 줄 — 원본(프리팹·템플릿)을 복제해 등록하고 전 클라에 스폰(netId·타입·변환·전체 상태)이 전파된다. **반환값이 등록된 인스턴스**다 (원본은 남으니 호출측에서 정리) (사용법: `Sandbox/Assets/Scripts/Arena/ArenaBootstrap.cs`):
 
 ```csharp
-var projectile = Instantiate(_projectilePrefab, pos, rot);
-projectile.Launch(speed);
-UniNetManager.Spawn(projectile.gameObject);      // netId 할당·소유권·전 클라 전파
+var projectile = UniNetManager.NetworkInstantiate(_projectilePrefab, pos, rot);
+projectile.GetComponent<Projectile>().Launch(speed);   // 비직렬화 초기화는 스폰 후 로컬에서
 // ... 수명 만료 시
 UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 로컬 파괴
 ```
+
+- **복제는 직렬화 복사** — `Object.Instantiate`는 public·[SerializeField] 필드만 복사한다. private [Replicated] 초기화(InitialOnly 기준선 등)는 **configure 콜백**으로 세팅한다 — 콜백은 복제 직후·전파 직전에 클론으로 실행된다 (ADR-0017): `NetworkInstantiate(original, clone => clone.GetComponent<Player>().InitServerState("Alpha", 123))`. 델리게이트·서버 동작 플래그(MovementRule·NetworkCullDistance 등 비전파 상태)는 스폰 후 클론에 주입해도 무관하다 (기준선에 실리지 않음)
 
 - **클라 생성 우선순위**: `UniNetManager.RegisterPrefab<T>(prefab)` 타입 카탈록(한 타입=프리팹 1개, 선택) → 소스젠 기본 팩토리(빈 GameObject+AddComponent). 누락 서브는 스폰 메시지의 typeKeys로 자동 복원(ADR-0014)
 - **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화
@@ -116,11 +117,11 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 public sealed partial class MovementBrain : NetworkBehaviour { [Replicated] public int Speed; ... }
 public sealed partial class HealthTank : NetworkBehaviour { [Replicated(ReplicateCondition.OwnerOnly)] public int Armor; ... }
 
-// 스폰 — 전 컴포넌트가 서브 테이블로 등록된다
-var go = new GameObject("robot");
-go.AddComponent<MovementBrain>();
-go.AddComponent<HealthTank>();
-UniNetManager.Spawn(go);   // 서브 구성은 스폰 메시지의 typeKeys로 클라에 자동 복원된다 (ADR-0014)
+// 스폰 — 템플릿을 복제·등록한다 (원본의 public 필드 값이 기준선에 실린다)
+var template = new GameObject("robot");
+template.AddComponent<MovementBrain>();
+template.AddComponent<HealthTank>();
+var go = UniNetManager.NetworkInstantiate(template);   // 서브 구성은 스폰 메시지의 typeKeys로 클라에 자동 복원된다 (ADR-0014)
 ```
 
 - **슬롯 불변식**: 슬롯 순서는 GetComponents 순서 — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다 (양단 같은 프리팩/씬이 전제). 클라는 스폰 메시지의 서브 구성과 생성 오브젝트를 슬롯·타입별 대조해 불일치 시 거부(진단)
@@ -164,7 +165,7 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - PlayMode 호스트 왕복 3종: `Sandbox/Assets/Tests/PlayMode/HostRoundtripTests.cs` — 루프백 RUDP 전 경로 + 동적 스폰/파괴·조건부 + 다중 컴포넌트 (`[UNINET-VERIFY]` 마커 3종)
 - PlayMode 수명주기 3종: `Sandbox/Assets/Tests/PlayMode/LifecycleStopTests.cs` — 리슨→Stop→동일 포트 재리슨·클라 정지/재접속·호스트 재시작 (Stop API 회귀 방지)
 - 2-프로세스 왕복: `Sandbox/Assets/Tests/Fixtures/TwoProcessRunner.cs` (`--uninet-role=server|client`) — 프로세스 간 RUDP — RPC·리플리케이션 + `[UNINET-2PROC] DYNAMIC-SPAWN-DESTROY PASS`(캐치업·브로드캐스트·조건 3종·파괴) + `[UNINET-2PROC] MULTI-COMPONENT PASS`(다중 서브 스폰·서브별 델타·슬롯·파괴) (로그: `Sandbox-2proc-*.log`)
-- 사용법 예제: `Sandbox/Assets/Scripts/` — Player(RPC 3종·메시지 파라미터)·Weapon(스폰 발사)·Projectile(조건 3종·NetworkDestroy)·GadgetCarrier(다중 컴포넌트 서브오브젝트)
+- 사용법 예제: `Sandbox/Assets/Scripts/Arena/` — ArenaBootstrap(관리 스폰 NetworkInstantiate+configure)·ArenaPlayer(RPC 3종·조건부 리플리케이션 전종·RepNotify)
 
 ## 변경 이력
 
@@ -173,3 +174,4 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 2026-09-16 — P2 완결 — 동적 스폰/파괴(Spawn/NetworkDestroy)·조건부(ReplicateCondition 3종)·후발 접속 캐치업 추가 (ADR-0009)
 - 2026-09-16 — 다중 NetworkBehaviour 지원 — 2층 식별자(netId+SubId)·다중 서브 스폰/델타·슬롯 대조 (ADR-0010 — MultiComponentTests·PlayMode·2-프로세스 검증)
 - 2026-09-17 — 수명주기 종료 API 추가 — ServerStopAsync/ServerStop/ClientStop/HostStopAsync/HostStop (포트 잔존 바인딩 실패 근본 해소 — LifecycleStopTests 3종·동일 포트 재리슨 검증) + UniNet.CodeGenerator 0.1.1 (정지 경로 잔여 송신 예외를 경고 수준으로)
+- 2026-09-22 — 동적 스폰 API 교체 — `Spawn(instance)` 제거, `NetworkInstantiate`(복제 겸함·3종 오버로드·configure 콜백)로 통합 (ADR-0017)

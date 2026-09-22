@@ -176,33 +176,55 @@ namespace UniNet.Unity
         }
 
         /// <summary>
-        /// 서버 동적 스폰 — Instantiate 후 호출하면 netId 할당·소유권 배정·전 클라 스폰 전파가 일어난다.
+        /// 서버 동적 스폰 — 원본(프리팹·템플릿)을 복제해 등록·전파한다. 반환값이 등록된 인스턴스다 (원본은 남으니 호출측에서 정리).
+        /// 복제는 직렬화 복사라 public·[SerializeField] 필드만 따라온다 — private [Replicated] 초기화는 configure 콜백(복제 직후·전파 직전 실행)에서 하라.
         /// 오브젝트의 NetworkBehaviour **전체**가 슬롯으로 등록된다 (다중 컴포넌트 지원 — 슬롯 = GetComponents 순서).
         /// 다중 컴포넌트 오브젝트는 RegisterPrefab으로 양단 같은 프리팹을 등록해야 한다 (기본 팩토리는 단일 컴포넌트만 생성). 서버 권위 — 서버/호스트에서만 유효.
         /// </summary>
-        public static void Spawn(GameObject instance)
+        public static GameObject NetworkInstantiate(GameObject original)
+            => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, null);
+
+        /// <summary>위치·회전을 지정해 복제·등록·전파한다. 반환값이 등록된 인스턴스다.</summary>
+        public static GameObject NetworkInstantiate(GameObject original, Vector3 position, Quaternion rotation)
+            => NetworkInstantiateCore(original, position, rotation, null);
+
+        /// <summary>
+        /// 구성 콜백을 지정해 복제·등록·전파한다 — 콜백은 복제 직후·등록 전파 직전에 클론으로 실행된다.
+        /// private [Replicated] 필드(InitialOnly 초기 상태 등 비직렬화 값)는 여기서 세팅해야 스폰 기준선에 실린다. 반환값이 등록된 인스턴스다.
+        /// </summary>
+        public static GameObject NetworkInstantiate(GameObject original, Action<GameObject> configure)
+            => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, configure);
+
+        private static GameObject NetworkInstantiateCore(GameObject original, Vector3 position, Quaternion rotation, Action<GameObject> configure)
         {
             var server = UniNetEnvironment.Server;
-            var comps = instance != null ? instance.GetComponents<NetworkBehaviour>() : null;
+            var comps = original != null ? original.GetComponents<NetworkBehaviour>() : null;
             if (server == null || comps == null || comps.Length == 0)
             {
-                Debug.LogWarning("[UniNet] Spawn 은 서버에서 NetworkBehaviour 컴포넌트가 있는 오브젝트에만 유효하다 (호출 무시 — 인스턴스는 호출측 소유)");
-                return;
-            }
-            if (comps.Length > byte.MaxValue)
-            {
-                Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 스폰 거부: {instance.name}");
-                return;
+                Debug.LogWarning("[UniNet] NetworkInstantiate 는 서버에서 NetworkBehaviour 컴포넌트가 있는 원본에만 유효하다 (호출 무시 — null 반환)");
+                return null;
             }
 
-            var netId = server.RegisterDynamicObject(comps);
-            for (byte i = 0; i < comps.Length; i++)
+            var instance = UnityEngine.Object.Instantiate(original, position, rotation);
+            configure?.Invoke(instance);
+            var instComps = instance.GetComponents<NetworkBehaviour>();
+            if (instComps.Length > byte.MaxValue)
             {
-                comps[i].AssignNetId(netId);
-                comps[i].AssignSubId(i);
-                comps[i].MarkServerRegistered();
+                Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 스폰 거부: {instance.name}");
+                if (Application.isPlaying) UnityEngine.Object.Destroy(instance);
+                else UnityEngine.Object.DestroyImmediate(instance);   // 에디트 모드(배치 검증) — Destroy 불가
+                return null;
+            }
+
+            var netId = server.RegisterDynamicObject(instComps);
+            for (byte i = 0; i < instComps.Length; i++)
+            {
+                instComps[i].AssignNetId(netId);
+                instComps[i].AssignSubId(i);
+                instComps[i].MarkServerRegistered();
             }
             server.BroadcastSpawn(netId);
+            return instance;
         }
 
         /// <summary>서버 네트워크 파괴 — 전 클라에 파괴를 전파하고 로컬도 파괴한다. Spawn 으로 스폰한 오브젝트에 사용 (오브젝트 전체·전 서브).</summary>

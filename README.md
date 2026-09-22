@@ -73,10 +73,11 @@ ServerRpc는 기본으로 **오브젝트 소유자 발신만 허용**된다 (ADR
 ### 동적 스폰/파괴 + 조건부 리플리케이션 (P2)
 
 ```csharp
-// 서버에서 일반 Instantiate 후 Spawn 한 줄 — 전 클라에 스폰 전파 (사용법: Scripts/Weapon.cs)
-var projectile = Instantiate(_projectilePrefab, pos, rot);
-UniNetManager.Spawn(projectile.gameObject);
-UniNetManager.NetworkDestroy(projectile.gameObject);   // 파괴 동기화
+// 서버에서 NetworkInstantiate 한 줄 — 원본(프리팹·템플릿)을 복제·등록·전 클라 스폰 전파. 반환값이 등록된 인스턴스 (사용법: Scripts/Arena/ArenaBootstrap.cs)
+var projectile = UniNetManager.NetworkInstantiate(_projectilePrefab, pos, rot);
+UniNetManager.NetworkDestroy(projectile);   // 파괴 동기화
+// private [Replicated] 초기값(InitialOnly 기준선)은 configure 콜백으로 — 복제 직후·전파 직전 실행 (ADR-0017)
+var avatar = UniNetManager.NetworkInstantiate(_avatarPrefab, clone => clone.GetComponent<Player>().InitServerState("Alpha"));
 
 // 클라 생성용 프리팹 카탈로그 (선택 — 커스텀 비주얼/사전 구성용. 미등록 시 빈 GameObject+AddComponent로 생성되며,
 // 서버의 서브 구성(NetworkTransform 등 추가 컴포넌트 포함)은 스폰 메시지의 typeKeys로 자동 복원된다)
@@ -109,10 +110,10 @@ public sealed partial class HealthTank : NetworkBehaviour
     [Replicated(ReplicateCondition.OwnerOnly)] public int Armor;
 }
 
-var go = new GameObject("robot");
-go.AddComponent<MovementBrain>();
-go.AddComponent<HealthTank>();
-UniNetManager.Spawn(go);   // 전 컴포넌트가 서브 테이블(SubId 슬롯)로 등록된다
+var template = new GameObject("robot");
+template.AddComponent<MovementBrain>();
+template.AddComponent<HealthTank>();
+var go = UniNetManager.NetworkInstantiate(template);   // 전 컴포넌트가 서브 테이블(SubId 슬롯)으로 등록된다 (템플릿 public 필드값이 기준선에 실린다)
 // 다중 컴포넌트도 동일 — 서브 구성은 스폰 메시지 typeKeys로 클라에 자동 복원 (ADR-0014)
 // RegisterPrefab은 커스텀 비주얼·사전 구성이 필요할 때만 사용
 ```

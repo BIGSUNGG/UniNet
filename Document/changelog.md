@@ -5,6 +5,17 @@
 
 ## [2026-09-22]
 
+### Changed (동적 스폰 API — Spawn 제거, NetworkInstantiate 통합)
+
+- **`UniNetManager.Spawn(instance)` 제거 → `NetworkInstantiate` 3종 오버로드로 통합** (ADR [[0017-동적-스폰-NetworkInstantiate-통합]] — ADR-0009의 Spawn 계약 대체)
+  - `NetworkInstantiate(GameObject original)` / `(original, position, rotation)` / `(original, Action<GameObject> configure)` — 원본(프리팹·템플릿) 복제 + netId·소유권 배정 + 전 클라 스폰 전파까지 한 호출, **반환값이 등록된 인스턴스** (원본은 호출측 소유로 남는다)
+  - **configure 콜백** — 복제 직후·전파 직전에 클론으로 실행. `Object.Instantiate`가 직렬화 필드(public·[SerializeField])만 복사하므로 private [Replicated] 초기화(InitialOnly 기준선)는 이 콜백에서 세팅한다 ([SerializeField] 강제·실수 시 조용한 상태 유실 방지)
+  - `NetworkDestroy`는 유지(파괴 겸 convenience — 등록 해제+전파+로컬 파괴, 클라 고스트 파괴)
+  - 가드 — 서버 미실행·NetworkBehaviour 부재 시 경고 후 null 반환. 255 상한 초과 시 인스턴스 폐기(플레이 Destroy/에디트 DestroyImmediate 분기) 후 null 반환
+  - **마이그레이션** — 기존 "생성 후 Spawn(instance)" 흐름은 "원본을 만들어 NetworkInstantiate(원본[, configure]) 전달, 반환값 사용, 원본은 호출측 정리"로. 비전파 상태(MovementRule·NetworkCullDistance·NetworkRewindHistory 등)는 스폰 후 클론에 주입해도 무관(기준선 아님). 등록 전용 흐름(풀링 등)은 표현 불가 — 필요시 재추가
+  - 콜사이트 전수 마이그레이션 15곳 — ArenaBootstrap·ArenaTwoProcessRunner·TwoProcessRunner·EditMode/PlayMode 테스트 (캐치업 대상 A는 서버 시작 후 스폰으로 순서 조정, MultiTemplate 등 카탈로그 원본은 RegisterPrefab 팩토리 참조로 파괴 금지)
+- **검증**: dotnet 빌드 녹색 · **EditMode 60/60** · **PlayMode 15/15** · Unity 6000.0.83f1 배치 EXIT=0
+
 ### Added (ServerRpc 소유자 자동 강제 — RequireOwnership 옵트아웃)
 
 - **ServerRpc 소유자 자동 강제 — netId 위조로 타 오브젝트 RPC 실행 불가화** (ADR [[0016-ServerRpc-소유자-자동-강제]] · P1 때부터의 알려진 한계 해소 — [[features/monobehaviour-rpc-replicate]] "알려진 한계" 갱신)

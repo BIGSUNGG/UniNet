@@ -147,17 +147,19 @@ namespace Arena
         private void SpawnPlayer()
         {
             var (x, z) = ArenaConfig.SpawnPoints[_spawnCounter % ArenaConfig.SpawnPoints.Length];
-            var go = new GameObject("ArenaPlayer");
-            go.transform.position = new Vector3(x, 0.5f, z);
+            var template = new GameObject("ArenaPlayer");
+            template.transform.position = new Vector3(x, 0.5f, z);
+            template.AddComponent<ArenaPlayer>();
 
-            var player = go.AddComponent<ArenaPlayer>();
-            player.InitServerState(
-                ArenaConfig.DisplayNames[_spawnCounter % ArenaConfig.DisplayNames.Length],
-                _spawnCounter * 173 + 57);   // 이름별 고유 색 시드 (InitialOnly — 스폰 전 설정)
+            string displayName = ArenaConfig.DisplayNames[_spawnCounter % ArenaConfig.DisplayNames.Length];
+            int colorSeed = _spawnCounter * 173 + 57;   // 이름별 고유 색 시드 (InitialOnly — 스폰 기준선에 실린다)
             _spawnCounter++;
 
-            // Instantiate/생성 → Spawn 한 줄: netId 할당·소유권 배정·전 클라 스폰 전파
-            UniNetManager.Spawn(go);
+            // 복제 → 구성(비직렬화 InitialOnly 상태) → 등록·전파 — NetworkInstantiate 한 줄
+            var go = UniNetManager.NetworkInstantiate(template,
+                clone => clone.GetComponent<ArenaPlayer>().InitServerState(displayName, colorSeed));
+            Destroy(template);   // 템플릿 정리 — 상태는 복제·구성 시점에 클론에 반영됐다
+            var player = go.GetComponent<ArenaPlayer>();
             Debug.Log($"[Arena] 플레이어 스폰 name={player.DisplayName} netId={player.NetId}");
         }
 

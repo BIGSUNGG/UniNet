@@ -93,13 +93,14 @@ namespace UniNet.Tests
                 }
             };
 
-            // 호스트 클라가 소유하는 아바타 동적 스폰 (ArenaRoundtripTests와 동일 패턴)
-            var go = new GameObject("LifePlayer");
-            go.transform.position = new Vector3(0f, 0.5f, 0f);
-            var alpha = go.AddComponent<ArenaPlayer>();
+            // 호스트 클라가 소유하는 아바타 동적 스폰 (ArenaRoundtripTests와 동일 패턴 — private InitialOnly는 configure 콜백으로 기준선에)
+            var template = new GameObject("LifePlayer");
+            template.transform.position = new Vector3(0f, 0.5f, 0f);
+            template.AddComponent<ArenaPlayer>();
+            var go = UniNetManager.NetworkInstantiate(template, clone => clone.GetComponent<ArenaPlayer>().InitServerState("Gone", 7));
+            var alpha = go.GetComponent<ArenaPlayer>();
             alpha.LocalInputEnabled = false;
-            alpha.InitServerState("Gone", 7);
-            UniNetManager.Spawn(go);
+            UnityEngine.Object.Destroy(template);
             ulong netId = alpha.NetId;
 
             yield return WaitUntil(() => alpha.IsOwner, 5, "호스트 클라 소유권");

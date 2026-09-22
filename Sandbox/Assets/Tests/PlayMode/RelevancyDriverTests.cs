@@ -22,10 +22,12 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var go = new GameObject("RelDestroyed");
-            var player = go.AddComponent<SpawnablePlayer>();
-            player.NetworkCullDistance = 10f;   // 컬 판정 경로 활성 — 파괴된 transform.position 접근이 문제였던 경로
-            UniNetManager.Spawn(go);
+            var template = new GameObject("RelDestroyed");
+            template.AddComponent<SpawnablePlayer>();
+            var go = UniNetManager.NetworkInstantiate(template);
+            var player = go.GetComponent<SpawnablePlayer>();
+            UnityEngine.Object.Destroy(template);
+            player.NetworkCullDistance = 10f;   // 컬 판정 경로 활성 — 파괴된 transform.position 접근이 문제였던 경로 (서버 플래그라 스폰 후 주입)
 
             var server = UniNetEnvironment.Server;
             server.SetViewerPosition(1L, 0f, 0f, 0f);   // 첫 연결(호스트 클라) 뷰어 위치 — 거리 계산에 transform 접근

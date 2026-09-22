@@ -34,12 +34,12 @@ namespace UniNet.Tests
         {
             var player = CreatePlayer();
 
-            // 캐치업 검증 대상 — 클라 접속 *전* 동적 스폰 (후발 접속이 스폰+전체 상태로 합류해야 한다)
-            var a = CreateSpawnable(seed: 1001, score: 11, secret: 21, pos: new Vector3(10f, 20f, 30f));
             var serverTask = UniNetManager.ServerAsync(Port);
             Wait(serverTask, 15, "서버 리슨");
             if (serverTask.IsFaulted) { Debug.LogError("[UNINET-2PROC] SERVER-ABORT"); return; }
-            UniNetManager.Spawn(a.gameObject);   // 접속 전 스폰 — 브로드캐스트 대상 없음, 캐치업 대기
+
+            // 캐치업 검증 대상 — 클라 접속 *전* 동적 스폰 (후발 접속이 스폰+전체 상태로 합류해야 한다)
+            var a = CreateSpawnable(seed: 1001, score: 11, secret: 21, pos: new Vector3(10f, 20f, 30f));
             Debug.Log("[UNINET-2PROC] server-ready (pre-spawned A netId=" + a.NetId + ")");
             var keys = string.Join(",", global::System.Linq.Enumerable.Select(UniNetDispatch.ServerHandlers().Keys, k => k.ToString()));
             Debug.Log("[UNINET-2PROC] server-table=[" + keys + "] factory=" + (UniNetEnvironment.HubFactory != null));
@@ -69,7 +69,6 @@ namespace UniNet.Tests
                 {
                     spawnedB = true;
                     _b = CreateSpawnable(seed: 2002, score: 22, secret: 32, pos: new Vector3(-5f, 0f, 0f));
-                    UniNetManager.Spawn(_b.gameObject);
                     _b.Score = 66;      // 무조건 — 전파
                     _b.SecretHp = 33;   // OwnerOnly — 소유자(유일 연결) 전파
                     _b.SpawnSeed = 42;  // InitialOnly — 미전파 (스폰값 2002 유지)
@@ -78,14 +77,13 @@ namespace UniNet.Tests
 
                     // 다중 컴포넌트 오브젝트 — MovementBrain + HealthTank가 한 게임오브젝트 (ADR-0010)
                     var template = new GameObject("MultiTemplate");
-                    template.AddComponent<MovementBrain>();
-                    template.AddComponent<HealthTank>();
+                    var tmb = template.AddComponent<MovementBrain>();
+                    var tht = template.AddComponent<HealthTank>();
                     UniNetManager.RegisterPrefab<MovementBrain>(template);   // 카탈로그 — 클라가 같은 구성으로 생성
-                    _multi = new GameObject("DynMulti");
-                    var mb = _multi.AddComponent<MovementBrain>();
-                    var ht = _multi.AddComponent<HealthTank>();
-                    mb.Speed = 10; ht.Armor = 20;
-                    UniNetManager.Spawn(_multi);
+                    tmb.Speed = 10; tht.Armor = 20;   // 스폰 기준선 — 템플릿 값이 직렬화 복사된다
+                    _multi = UniNetManager.NetworkInstantiate(template);   // 같은 구성을 복제 스폰 (템플릿은 카탈로그 원본 — 파괴 금지)
+                    var mb = _multi.GetComponent<MovementBrain>();
+                    var ht = _multi.GetComponent<HealthTank>();
                     mb.Speed = 99;    // 무조건 델타
                     ht.Armor = 88;    // OwnerOnly 델타
                     Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-MULTI netId=" + mb.NetId);
@@ -126,16 +124,18 @@ namespace UniNet.Tests
             return _phaseMark.AddSeconds(seconds);
         }
 
-        /// <summary>동적 스폰 검증용 픽스처 생성 — 스폰 전에 초기 상태를 세팅한다 (InitialOnly 값이 스폰에 실린다).</summary>
+        /// <summary>동적 스폰 검증용 픽스처 생성 — 템플릿을 복제·등록·전파한다 (public 필드 초기값이 직렬화 복사로 InitialOnly 기준선에 실린다).</summary>
         private static SpawnablePlayer CreateSpawnable(int seed, int score, int secret, Vector3 pos)
         {
-            var go = new GameObject("Dyn" + seed);
-            var s = go.AddComponent<SpawnablePlayer>();
-            go.transform.position = pos;
+            var template = new GameObject("Dyn" + seed);
+            var s = template.AddComponent<SpawnablePlayer>();
+            template.transform.position = pos;
             s.Score = score;
             s.SecretHp = secret;
             s.SpawnSeed = seed;
-            return s;
+            var go = UniNetManager.NetworkInstantiate(template);
+            UnityEngine.Object.Destroy(template);
+            return go.GetComponent<SpawnablePlayer>();
         }
 
         private static bool LoggedPing;

@@ -102,11 +102,13 @@ namespace UniNet.Tests
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
 
-            // 1) 동적 스폰 — 서버에서 생성 후 Spawn 호출 (위치·초기 상태는 스폰 메시지로 전파)
-            var go = new GameObject("spawned");
-            var spawned = go.AddComponent<SpawnablePlayer>();
-            go.transform.position = new Vector3(10f, 20f, 30f);
-            UniNetManager.Spawn(go);
+            // 1) 동적 스폰 — NetworkInstantiate가 복제·등록·전파까지 (위치·초기 상태는 템플릿 직렬화 복사 → 스폰 메시지로 전파)
+            var template = new GameObject("spawned");
+            template.AddComponent<SpawnablePlayer>();
+            template.transform.position = new Vector3(10f, 20f, 30f);
+            var go = UniNetManager.NetworkInstantiate(template);
+            var spawned = go.GetComponent<SpawnablePlayer>();
+            UnityEngine.Object.Destroy(template);   // 템플릿 정리 — 상태는 복제 시점에 클론에 복사됐다
             Assert.AreNotEqual(0ul, spawned.NetId, "동적 netId 할당");
             Assert.IsTrue(spawned.IsServer, "서버 등록");
 
@@ -131,7 +133,7 @@ namespace UniNet.Tests
             Assert.IsNull(UniNetEnvironment.Client.Get(netId), "클라 등록 해제");
             Assert.IsNull(UniNetEnvironment.Server.GetEntry(netId), "서버 등록 해제");
 
-            UnityEngine.Debug.Log("[UNINET-VERIFY] DynamicSpawnDestroy PASS — Spawn/HostReuse/Ownership/OwnerOnly/NetworkDestroy");
+            UnityEngine.Debug.Log("[UNINET-VERIFY] DynamicSpawnDestroy PASS — NetworkInstantiate/HostReuse/Ownership/OwnerOnly/NetworkDestroy");
         }
 
         [UnityTest]
@@ -142,13 +144,16 @@ namespace UniNet.Tests
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
 
-            // 1) 다중 컴포넌트 오브젝트 스폰 — MovementBrain + HealthTank가 한 게임오브젝트에
-            var go = new GameObject("multi-host");
-            var brain = go.AddComponent<MovementBrain>();
-            var tank = go.AddComponent<HealthTank>();
-            brain.Speed = 10;
-            tank.Armor = 20;
-            UniNetManager.Spawn(go);
+            // 1) 다중 컴포넌트 오브젝트 스폰 — MovementBrain + HealthTank가 한 게임오브젝트에 (기준선 10/20은 템플릿 직렬화 복사)
+            var template = new GameObject("multi-host");
+            var tBrain = template.AddComponent<MovementBrain>();
+            var tTank = template.AddComponent<HealthTank>();
+            tBrain.Speed = 10;
+            tTank.Armor = 20;
+            var go = UniNetManager.NetworkInstantiate(template);
+            var brain = go.GetComponent<MovementBrain>();
+            var tank = go.GetComponent<HealthTank>();
+            UnityEngine.Object.Destroy(template);
             yield return WaitUntil(() => UniNetEnvironment.Client.Get(brain.NetId) != null, 5);
 
             var clientComps = UniNetEnvironment.Client.Get(brain.NetId);
@@ -179,7 +184,7 @@ namespace UniNet.Tests
             yield return WaitUntil(() => UniNetEnvironment.Client.Get(netId) == null
                 && UniNetEnvironment.Server.GetEntry(netId) == null, 5);
 
-            UnityEngine.Debug.Log("[UNINET-VERIFY] MultiComponent PASS — Spawn(2 subs)/SubIdRouting/PerSubReplication/Destroy");
+            UnityEngine.Debug.Log("[UNINET-VERIFY] MultiComponent PASS — NetworkInstantiate(2 subs)/SubIdRouting/PerSubReplication/Destroy");
         }
 
         /// <summary>[netId][int amount] 페이로드 — 생성 인코더와 동일 형식.</summary>

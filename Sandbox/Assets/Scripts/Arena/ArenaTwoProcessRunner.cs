@@ -56,13 +56,11 @@ namespace Arena
             if (!WaitFor(() => LiveConnections() == 2, 150, "클라 2 접속")) return;
             Debug.Log("[ARENA-2PROC] HOST-TWO-CLIENTS");
 
-            // 스폰은 접속 2명 확정 후 — 라운드로빈 소유권이 A/B에 각각 배정된다
+            // 스폰은 접속 2명 확정 후 — 라운드로빈 소유권이 A/B에 각각 배정된다 (CreatePlayer가 복제·등록·전파까지 수행)
             var alpha = CreatePlayer("Alpha", 123, new Vector3(0f, 0.5f, 0f));
             var bravo = CreatePlayer("Bravo", 456, new Vector3(5f, 0.5f, 0f));
             alpha.LocalInputEnabled = false;   // 호스트 클라의 로컬 입력이 프로그램 입력을 덮어쓰지 않게 한다
             bravo.LocalInputEnabled = false;
-            UniNetManager.Spawn(alpha.gameObject);
-            UniNetManager.Spawn(bravo.gameObject);
 
             // 클라A 소유 확인 (라운드로빈 — 첫 스폰 = 첫 연결)
             if (!WaitFor(() => alpha.IsOwner, 10, "클라A의 Alpha 소유")) return;
@@ -160,11 +158,13 @@ namespace Arena
 
         private static ArenaPlayer CreatePlayer(string name, int seed, Vector3 pos)
         {
-            var go = new GameObject("Arena2Proc_" + name);
-            go.transform.position = pos;
-            var player = go.AddComponent<ArenaPlayer>();
-            player.InitServerState(name, seed);
-            return player;
+            // 템플릿 복제 스폰 — private [Replicated] 초기화(InitServerState)는 configure 콜백으로 스폰 기준선에 실린다
+            var template = new GameObject("Arena2Proc_" + name);
+            template.transform.position = pos;
+            template.AddComponent<ArenaPlayer>();
+            var go = UniNetManager.NetworkInstantiate(template, clone => clone.GetComponent<ArenaPlayer>().InitServerState(name, seed));
+            UnityEngine.Object.Destroy(template);
+            return go.GetComponent<ArenaPlayer>();
         }
 
         private static ArenaPlayer[] Players()

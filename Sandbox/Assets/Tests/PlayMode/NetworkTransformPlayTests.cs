@@ -22,11 +22,13 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var go = new GameObject("NTMove");
-            var nt = go.AddComponent<NetworkTransform>();
+            var template = new GameObject("NTMove");
+            template.AddComponent<NetworkTransform>();
+            var go = UniNetManager.NetworkInstantiate(template);
+            var nt = go.GetComponent<NetworkTransform>();
+            UnityEngine.Object.Destroy(template);
             nt.MovementRule = (ref float x, ref float y, ref float z, float ix, float iy, float iz, float dt) =>
-                x += ix * 4f * dt;   // 게임 이동 규칙 주입 (DIP)
-            UniNetManager.Spawn(go);
+                x += ix * 4f * dt;   // 게임 이동 규칙 주입 (DIP) — 델리게이트(비직렬화·비전파)라 스폰 후 클론에 주입
 
             // SubmitMove → 기반 컴포넌트 ServerRpc(루프백) → 서버 권위 입력 → MovementRule 스텝
             nt.SubmitMove(1f, 0f, 0f);
@@ -44,9 +46,11 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var go = new GameObject("NTPosition");
-            var nt = go.AddComponent<NetworkTransform>();
-            UniNetManager.Spawn(go);
+            var template = new GameObject("NTPosition");
+            template.AddComponent<NetworkTransform>();
+            var go = UniNetManager.NetworkInstantiate(template);
+            var nt = go.GetComponent<NetworkTransform>();
+            UnityEngine.Object.Destroy(template);
 
             nt.SetNetworkPosition(new Vector3(5f, 1f, 6f));
             yield return null;   // 서버 틱 1프레임 — 권위 좌표 유지 확인

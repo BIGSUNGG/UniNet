@@ -48,14 +48,17 @@ namespace UniNet.Tests
         public void 같은_타입_컴포넌트_중복도_슬롯으로_구분된다()
         {
             var go = new GameObject("dup");
-            var h1 = go.AddComponent<HealthTank>();
-            var h2 = go.AddComponent<HealthTank>();
+            go.AddComponent<HealthTank>();
+            go.AddComponent<HealthTank>();
+            GameObject instance = null;
             try
             {
-                // 실제 흐름 — UniNetManager.Spawn이 netId·SubId를 주입한다
+                // 실제 흐름 — NetworkInstantiate가 원본을 복제·등록하며 netId·SubId를 주입한다
                 var server = new NetworkServer();
                 UniNetEnvironment.SetServer(server);
-                UniNetManager.Spawn(go);
+                instance = UniNetManager.NetworkInstantiate(go);
+                var h1 = instance.GetComponent<HealthTank>();
+                var h2 = instance.GetComponents<HealthTank>()[1];
 
                 Assert.AreNotEqual(0ul, h1.NetId, "동적 netId 할당");
                 Assert.AreSame(h1, server.Get(h1.NetId, 0), "슬롯 0 = 첫 인스턴스");
@@ -66,6 +69,7 @@ namespace UniNet.Tests
             finally
             {
                 UniNetEnvironment.SetServer(null);
+                if (instance != null) UnityEngine.Object.DestroyImmediate(instance);
                 UnityEngine.Object.DestroyImmediate(go);
             }
         }
@@ -230,7 +234,7 @@ namespace UniNet.Tests
         [Test]
         public void 컴포넌트_256개_초과는_거부되고_서버_방어가_예외를_던진다()
         {
-            // (a) Unity 진입점 — Spawn 가드: 에러 로그 + 서버 미등록
+            // (a) Unity 진입점 — NetworkInstantiate 가드: 에러 로그 + null 반환·서버 미등록
             var go = new GameObject("too-many");
             for (int i = 0; i < 256; i++) go.AddComponent<HealthTank>();
             try
@@ -238,7 +242,7 @@ namespace UniNet.Tests
                 var server = new NetworkServer();
                 UniNetEnvironment.SetServer(server);
                 UnityEngine.TestTools.LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("최대 255"));
-                UniNetManager.Spawn(go);
+                Assert.IsNull(UniNetManager.NetworkInstantiate(go), "상한 초과 — null 반환");
                 Assert.AreEqual(0, server.SnapshotObjects().Count, "상한 초과 — 서버 미등록 (랩어라운드 루프 도달 불가)");
 
                 // (b) Core 최종 방어 — AttachSubs 예외 (직접 등록 경유)

@@ -47,14 +47,12 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            // 서버 — 플레이어 2 동적 스폰 (InitialOnly 값은 Spawn 전에 세팅)
+            // 서버 — 플레이어 2 동적 스폰 (CreatePlayer가 복제·구성·등록·전파까지 — InitialOnly 값은 configure 콜백으로 기준선에 실린다)
             // LocalInputEnabled=false — 호스트 클라의 로컬 키보드 입력 핸들러가 프로그램 입력을 덮어쓰지 않게 한다
             var alpha = CreatePlayer("Alpha", 123, new Vector3(0f, 0.5f, 0f));
             var bravo = CreatePlayer("Bravo", 456, new Vector3(5f, 0.5f, 0f));
             alpha.LocalInputEnabled = false;
             bravo.LocalInputEnabled = false;
-            UniNetManager.Spawn(alpha.gameObject);
-            UniNetManager.Spawn(bravo.gameObject);
 
             // 클라 등록 + 소유권 대기 — 유일 연결(호스트 클라)이 첫 스폰(Alpha)을 소유한다
             yield return WaitUntil(() => alpha.IsOwner, 5, "Alpha 소유권 (IsOwner)");
@@ -116,11 +114,13 @@ namespace UniNet.Tests
 
         private static ArenaPlayer CreatePlayer(string name, int seed, Vector3 pos)
         {
-            var go = new GameObject("TestPlayer_" + name);
-            go.transform.position = pos;
-            var player = go.AddComponent<ArenaPlayer>();
-            player.InitServerState(name, seed);
-            return player;
+            // 템플릿 복제 스폰 — private [Replicated] 초기화(InitServerState)는 configure 콜백으로 스폰 기준선에 실린다
+            var template = new GameObject("TestPlayer_" + name);
+            template.transform.position = pos;
+            template.AddComponent<ArenaPlayer>();
+            var go = UniNetManager.NetworkInstantiate(template, clone => clone.GetComponent<ArenaPlayer>().InitServerState(name, seed));
+            UnityEngine.Object.Destroy(template);
+            return go.GetComponent<ArenaPlayer>();
         }
 
         private static IEnumerator WaitUntil(Func<bool> condition, float timeout, string what)
