@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using DRPC;
 using UniNet.Core.Hosting;
@@ -33,6 +34,8 @@ namespace UniNet.Tests
         private static void RunServer()
         {
             var player = CreatePlayer();
+            var serTank = new GameObject("SerTank").AddComponent<QuantizedTank>();      // custom-serializer + FastArray verification targets (ADR-0020)
+            var faTank = new GameObject("FaTank").AddComponent<FastArrayTank>();
 
             var serverTask = UniNetManager.ServerAsync(Port);
             Wait(serverTask, 15, "서버 리슨");
@@ -68,6 +71,16 @@ namespace UniNet.Tests
                 if (!spawnedB && player.ServerPingCount > 0)
                 {
                     spawnedB = true;
+
+                    // Serialization verification targets (ADR-0020) — quantized position + collection element deltas
+                    serTank.Position = new Vector3(12.5f, -7.25f, 99.5f);   // exact-float values → dequantize round-trips exactly
+                    serTank.PolarAim = new PolarAim { Radius = 3.2f, Angle = 1.1f };
+                    faTank.Scores.AddRange(new[] { 1, 2, 3, 4 });
+                    faTank.Scores.Remove(2);       // [1,3,4]
+                    faTank.Scores.Insert(1, 9);    // [1,9,3,4]
+                    faTank.Scores.Add(5);          // [1,9,3,4,5] — append op
+                    Debug.Log("[UNINET-2PROC] SERVER-SER-CHANGED");
+
                     _b = CreateSpawnable(seed: 2002, score: 22, secret: 32, pos: new Vector3(-5f, 0f, 0f));
                     _b.Score = 66;      // unconditional — propagates
                     _b.SecretHp = 33;   // OwnerOnly — propagates to the owner (the only connection)
@@ -143,6 +156,8 @@ namespace UniNet.Tests
         private static void RunClient()
         {
             var player = CreatePlayer();
+            new GameObject("SerTank").AddComponent<QuantizedTank>();   // matching scene objects — both processes create the same hierarchy before connecting
+            new GameObject("FaTank").AddComponent<FastArrayTank>();
             var clientTask = UniNetManager.ClientAsync("127.0.0.1", Port);
             Wait(clientTask, 15, "클라 접속");
             if (clientTask.IsFaulted) { Debug.LogError("[UNINET-2PROC] CLIENT-ABORT"); return; }
@@ -199,6 +214,53 @@ namespace UniNet.Tests
 
             VerifyDynamicSpawn();
             VerifyMultiComponent();
+            VerifySerialization();
+        }
+
+        /// <summary>Verifies the ADR-0020 serialization features on the CLIENT — quantized position restore (0.01 buckets)
+        /// and FastArray element-delta replay over the real cross-process wire.</summary>
+        private static void VerifySerialization()
+        {
+            QuantizedTank qt = null;
+            FastArrayTank fa = null;
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < deadline && (qt == null || fa == null))
+            {
+                UniNetEnvironment.PumpMain();
+                foreach (var c in UnityEngine.Object.FindObjectsByType<QuantizedTank>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    if (c.gameObject.name == "SerTank") qt = c;
+                foreach (var c in UnityEngine.Object.FindObjectsByType<FastArrayTank>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    if (c.gameObject.name == "FaTank") fa = c;
+                Thread.Sleep(20);
+            }
+            if (qt == null || fa == null)
+            {
+                Debug.LogError("[UNINET-2PROC] SER-MISS — 직렬화 검증 오브젝트 미수신");
+                return;
+            }
+
+            // wait for the final values — quantized Vector3 (exact-float domain) + collection replay
+            deadline = DateTime.UtcNow.AddSeconds(15);
+            var expectPos = new Vector3(12.5f, -7.25f, 99.5f);
+            var expectAim = new PolarAim { Radius = 3.2f, Angle = 1.1f };
+            var expectScores = new[] { 1, 9, 3, 4, 5 };
+            bool AimOk(PolarAim a) => System.Math.Abs(a.Radius - 3.2f) < 0.051f && System.Math.Abs(a.Angle - 1.1f) < 0.051f;
+            while (DateTime.UtcNow < deadline
+                   && (qt.Position != expectPos || !AimOk(qt.PolarAim) || fa.Scores.Count != expectScores.Length || !fa.Scores.SequenceEqual(expectScores)))
+            {
+                UniNetEnvironment.PumpMain();
+                Thread.Sleep(20);
+            }
+
+            Debug.Log("[UNINET-2PROC] SER pos=" + qt.Position + " aim=(" + qt.PolarAim.Radius + "," + qt.PolarAim.Angle + ")"
+                      + " scores=[" + string.Join(",", fa.Scores) + "]"
+                      + " posNotify=" + qt.NotifyCalls + " scoreNotify=" + fa.ScoreNotifyCalls);
+            if (qt.Position != expectPos || !AimOk(qt.PolarAim) || !fa.Scores.SequenceEqual(expectScores))
+            {
+                Debug.LogError("[UNINET-2PROC] SERIALIZATION-FAIL");
+                return;
+            }
+            Debug.Log("[UNINET-2PROC] SERIALIZATION PASS — 양자화 위치(Vector3+구조체) + 배열 요소 델타(삭제·삽입·append)");
         }
 
         /// <summary>Verifies the multi-component object — MovementBrain+HealthTank on one object, each slot working independently.</summary>

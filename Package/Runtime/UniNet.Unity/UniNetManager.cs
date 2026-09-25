@@ -16,6 +16,13 @@ namespace UniNet.Unity
     /// </summary>
     public static class UniNetManager
     {
+        static UniNetManager()
+        {
+            // Engine fault logger — Core stays UnityEngine-free; replication-tick serializer faults (ADR-0020)
+            // surface as exceptions in the Console instead of silently vanishing into the no-op default.
+            UniNetEnvironment.LogFault = ex => Debug.LogException(ex);
+        }
+
         private static RpcListenHandle _listenHandle;
         private static volatile bool _clientConnected;   // shared between the network thread (Disconnected handler) and the main thread — volatile for visibility
 

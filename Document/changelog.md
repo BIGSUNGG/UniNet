@@ -3,7 +3,53 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-24]
+
+### Added (직렬화 사용 예시 — Sandbox)
+
+- **`Sandbox/Assets/Scripts/Usage/SerializationUsage.cs` 신규** — ADR-0020 양 기능 사용법 예제 2종: `QuantizedWeapon`(양자화 Vector3 조준점 + 선택 Equals 억제 + float→byte 충전량) · `InventoryRig`(List 요소 델타 — Loot/Drop/Swap/DropAll 뮤테이터가 각각 Insert/RemoveAt/Set/Clear 오페 되는 것을 서버 측 코드로 시연 + T[] 커스텀 요소 직렬화)
+- **`Sandbox/Assets/Editor/SerializationUsageDemo.cs` 신규** — 에디터 메뉴 `UniNet ▸ Usage ▸ 직렬화 사용 예시 (호스트 루프백)` — 에디트 모드에서 호스트 루프백을 띠우고 6초간 양 기능 동기화를 콘솔에 관찰 (에디트 모드 허브 등록은 리플렉션 일괄 등록 — CS0433 다중 어셈블리 충돌 회피)
+- **검증**: Unity 컴파일 에러 0 · 메뉴 실행 실측 — 양자화 델타(12.34 동기 + 같은 버킷 12.349 억제로 노티 무증가)·`[101,202,303]→[999,303]` 오프 리플레이·prev 얕은 복사·slots T[] 복원 콘솔 확인 · **EditMode 76/76 회귀 없음**
+
+### Added (FastArray 구현 — ADR-0020 기능 2/2, 목표 완결)
+
+- **`T[]`/`List<T>` [Replicated] 필드의 요소 단위 델타 동기화 구현** (ADR [[0020-직렬화-배열-델타-유니넷-단독-구현]] 기능 2 — 기능 문서 [[features/fastarray-delta|fastarray-delta]])
+  - **와이어** — 델터: `[tag=0][opCount:u16]{[op:u8][idx:u16][elem]}*` (옵: Set/Insert/RemoveAt/Clear) · 전체(스폰/캐치업): `[tag=1][count:u32][elem]*`. 요소 직렬화 규칙은 스칼라 필드와 동일(기본형·string·[Message]·Serializer 지정 — 컬렉션에서 Serializer는 요소 단위 적용). 참조형 요소는 null 플래그로 왕복
+  - **diff** — 공통 prefix/suffix 제외 후 중간 구간: 동일 길이면 Set 배치, 다르면 Remove+Insert (append는 순수 Insert) · Clear 단일 옵 · ReliableOrdered 전제 단순 리플레이(시퀀싱 불필요) · 요소 65,535 상한 초과 시 예외(틱 격리로 서브오브젝트만 스킵)
+  - **제너레이터 0.1.9 → 0.2.1** — Parser 컬렉션 감지·요소 검증(진단 UNINET014/015 신설) + Emitter 필드별 생성 헬퍼 5종(dirty/write/writeFull/apply/copy) · `FieldDisplay` 수정(`global::string[]` CS1001 방지). nupkg 재배포 + Sandbox 스왑
+  - **검증**: dotnet 빌드 녹색 · GenDump 진단 0 + UNINET014/015 음성 케이스 발화 확인 · 생성 코드 독립 컴파일 구문 검증 · Unity 컴파일 에러 0 · **EditMode 76/76** (기존 68 + 신규 8 — 서버/클라 인스턴스 분리 패턴) · **PlayMode 17/17** (기존 16 + 신규 1) · **2-프로세스 실기 PASS** (양자화 위치+요소 델타 동시 — `Sandbox-2proc-*.log` `[UNINET-2PROC] SERIALIZATION PASS`, 기존 검증 4종 회귀 없음)
+- **ADR-0020 승인됨 전환** — roadmap 잔여 2행 → 구현 ✅ 갱신, upstream-blockers MP 2건 폐기 표기, 연구 문서 갱신 노트 정합 — 목표 계약의 doc-sync 항목 전부 완료
+
+### Added (커스텀 NetSerialize 구현 — ADR-0020 기능 1/2)
+
+- **`[Replicated(Serializer = typeof(T))]` 사용자 정의 필드 직렬화 구현** (ADR [[0020-직렬화-배열-델타-유니넷-단독-구현]] 기능 1 — 기능 문서 [[features/custom-netserialize|custom-netserialize]])
+  - **속성** — `ReplicatedAttribute.Serializer` (Type, 선택). 정적 `Write(ref MessageBufferWriter, in T)` + `static T Read(ref MessageBufferReader)` 계약(선택 `Equals(in T, in T)` — 양자화 동일값 재전송 억제). 커스텀 직렬화기 지정 필드는 기본형·[Message] 외 타입(예: `Vector3`)도 허용 — Unity 타입 리플리케이션 해금
+  - **제너레이터 0.1.5 → 0.1.9** — 서명 검증(오버로드·베이스 체인 전수 스캔, 진단 UNINET013 신설) + 생성 코드 분기 3곳(델타 비교·쓰기, 전체 쓰기, 읽기). 필드별 고유 변수(`__s{index}`)로 커스텀 Equals 필드 N개 공존 지원. nupkg 재배포 (Sandbox `Assets/Packages` + 로컬 피드 `C:/Projects/DS/unity-nuget`)
+  - **서버 가용성 격리** — `UniNetEnvironment.LogFault` 훅 신설(Core는 UnityEngine 무참조 유지 — Unity 계층이 부트스트랩에서 연결). 리플리케이션 틱·WriteFull 경로(스폰/캐치업/가시성)에서 직렬화기 예외 시 해당 서브오브젝트만 건너뛴다(스냅샷 미갱신 → 다음 틱 재시도)
+  - **검증**: dotnet 빌드 녹색 · GenDump 분기·음성케이스(UNINET013) 확인 · Unity 컴파일 에러 0 · **EditMode 68/68** (기존 60 + 신규 8: 왕복·양자화 델타·버킷 생략·Equals 기본 경로·WriteFull·RepNotify prev·듀얼 Equals 필드·operator== 없는 구조체 CS0019 회귀) · **PlayMode 16/16** (기존 15 + 신규 1: 루프백 RUDP 양자화 왕복·버킷 억제) · reviewer 4라운드 총 16건 이슈 수정 반영 (반드시 5·권장 11)
+- **테스트 픽스처** — `Sandbox/Assets/Tests/Fixtures/QuantizedTank.cs` (커스텀 Equals 직렬화기 2종 공존 + 오버로드 허브(미끼 오버로드·상속 Read) — 검증기 오탐 회귀 방지)
+
+### Added (직렬화 2종 UniNet 단독 구현 — 설계 문서)
+
+- **커스텀 NetSerialize·FastArray의 MP 무수정 구현 전환 설계** (ADR [[0020-직렬화-배열-델타-유니넷-단독-구현]] 제안됨 — 승인 대기)
+  - **기존 판정 철회 근거**: [[upstream-blockers]]의 "MP 코덱 계층 수정 전제"는 현 구조와 불일치 — 제너레이터가 필드별 직렬화 배선을 직접 생성(Emitter 3개 생성 지점), MP/DRPC는 `WriteBytes` 순수 바이트 전송층, `MessageBufferWriter`/`Reader` 프리미티브는 public으로 사용자 직렬화기 접근 가능. 기존 판정은 MP 네이티브 코덱 등록 방식에만 성립하는 전제였음
+  - **[[features/custom-netserialize|features/custom-netserialize]] 신규** (설계중) — `[Replicated(Serializer = typeof(T))]` 정적 `Write(ref writer, in T)`/`Read(ref reader)` 쌍 계약·양자화·Unity 타입 해금·진단 UNINET013
+  - **[[features/fastarray-delta|features/fastarray-delta]] 신규** (설계중) — `T[]`/`List<T>` 요소 단위 옵 인코딩(Set/Insert/RemoveAt/Clear)·섀도 diff·ReliableOrdered 전제 리플레이·진단 UNINET014/015
+  - **미확정 사항 4건** 문서화 (선택 Equals 계약·RepNotify prev 방식·인덱스-옵 vs 안정 ID·RPC 파라미터 확장 순서) — 목표 계약 체결 시 권고안 전부 확정 (Equals 포함·얕은 복사·인덱스-옵·RPC v1 제외)
+  - 문서 변경 — 설계 확정 단계 기록 (구현은 위 Added 항목 참조)
+
 ## [2026-09-22]
+
+### Added (네트워크 프레임워크 비교 연구 문서)
+
+- **주요 네트워킹 프레임워크 비교 보고서 신설** — `Document/research/network-framework-comparison.md`
+  - **비교 대상 9계열**: UE Network Framework(패리티 목표)·Photon Fusion 2·Unity NGO 2.x·Netcode for Entities·FishNet·Mirror·Nakama/Colyseus/DarkRift·트랜스포트 계층(LiteNetLib 등)
+  - **기능 매트릭스 3표**: 리플리케이션·RPC 핵심 17항목 / 예측·래그컴펜세이션·시간 4항목 / 배포·운영·생태계 10항목 (공식 문서 기준, 2026-09)
+  - **UniNet에만 있는 것 5종** — UE급 P3 정책 세트(가시성·우선순위+기아 보정·휴면·주기·채널 예산)의 무료 셀프호스팅 탑재·단일 Unity 스택·보안 기본값(DTLS·소유자 강제)·계약 소스젠·공개 패리티 로드맵
+  - **없는 것 7종** — 내장 Full CSP&R(훅만 제공)·커스텀 직렬화/배열 델타(상류 대기)·릴레이/매치메이킹 인프라·씬 관리/재접속·플랫폼 실증·생태계·DOTS급 스케일
+  - **시사점**: FastArray 상류 해소 최우선 → 풀 CSP&R 컴포넌트화 검토 → 포지셔닝 문서화
+  - 코드 무변경 — 문서만 추가 (리뷰 게이트 대상 아님)
+- **00-INDEX에 research/ 영역 신설**
 
 ### Changed (코드 주석 전체 영어화 — 사용자 관점 규약 확립)
 

@@ -196,11 +196,76 @@ namespace UniNet.CodeGenerator
                 return;
             }
 
-            rep.IsMessage = IsMessageType(field.Type);
-            if (!rep.IsMessage && (Emitter.WriteCall(field.Type) == null || Emitter.ReadCall(field.Type) == null))
+            // custom serializer (see ADR-0020) — on a COLLECTION field it applies to the ELEMENT wire format;
+            // on a scalar field it takes over the field's format and unlocks non-primitive, non-[Message] types.
+            // The Write/Read contract is verified here so violations fail at compile time.
+            var serializer = GetSerializerType(attr);
+
+            // collection detection first (T[] / List<T>) — element-level delta encoding (FastArray, see ADR-0020)
+            ITypeSymbol? elementType = null;
+            bool isArray = false;
+            if (field.Type is IArrayTypeSymbol array)
             {
-                Report(Diagnostics.UnsupportedType, field.Locations[0], field.Type.ToDisplayString(), field.Name);
-                return;
+                elementType = array.ElementType;
+                isArray = true;
+            }
+            else if (field.Type is INamedTypeSymbol named
+                && named.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>")
+            {
+                elementType = named.TypeArguments.Length > 0 ? named.TypeArguments[0] : null;
+            }
+
+            if (elementType != null)
+            {
+                rep.IsCollection = true;
+                rep.IsArray = isArray;
+                rep.ElementType = elementType;
+                rep.ElemIsMessage = serializer == null && IsMessageType(elementType);
+
+                if (elementType is IArrayTypeSymbol || (elementType is INamedTypeSymbol el
+                        && el.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>"))
+                {
+                    Report(Diagnostics.NestedCollection, field.Locations[0], field.Name, elementType.ToDisplayString());
+                    return;
+                }
+
+                if (serializer != null)
+                {
+                    // element serializer — validates against the ELEMENT type
+                    rep.SerializerType = "global::" + serializer.ToDisplayString();
+                    var error = ValidateSerializerContract(serializer, elementType, out _);   // element diff stays on object.Equals — Equals is accepted but unused for elements (v1)
+                    if (error != null)
+                    {
+                        Report(Diagnostics.SerializerContract, field.Locations[0], field.Name, serializer.ToDisplayString(), error);
+                        return;
+                    }
+                }
+                else if (!IsMessageType(elementType) && (Emitter.WriteCall(elementType) == null || Emitter.ReadCall(elementType) == null))
+                {
+                    Report(Diagnostics.UnsupportedElementType, field.Locations[0], field.Name, elementType.ToDisplayString());
+                    return;
+                }
+            }
+            else if (serializer != null)
+            {
+                rep.SerializerType = "global::" + serializer.ToDisplayString();
+                rep.CanBeNull = field.Type.IsReferenceType
+                    || (field.Type is INamedTypeSymbol n && n.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T);
+                var error = ValidateSerializerContract(serializer, field.Type, out rep.HasCustomEquals);
+                if (error != null)
+                {
+                    Report(Diagnostics.SerializerContract, field.Locations[0], field.Name, serializer.ToDisplayString(), error);
+                    return;
+                }
+            }
+            else
+            {
+                rep.IsMessage = IsMessageType(field.Type);
+                if (!rep.IsMessage && (Emitter.WriteCall(field.Type) == null || Emitter.ReadCall(field.Type) == null))
+                {
+                    Report(Diagnostics.UnsupportedType, field.Locations[0], field.Type.ToDisplayString(), field.Name);
+                    return;
+                }
             }
 
             // Notify (optional) — void M(T prev)
@@ -309,6 +374,65 @@ namespace UniNet.CodeGenerator
         private static int ParseCondition(AttributeData attr)
             => attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is int cond ? cond : 0;
 
+        /// <summary>ReplicatedAttribute.Serializer named argument (custom static serializer, see ADR-0020).</summary>
+        private static INamedTypeSymbol? GetSerializerType(AttributeData attr)
+        {
+            foreach (var named in attr.NamedArguments)
+                if (named.Key == "Serializer" && named.Value.Value is INamedTypeSymbol t)
+                    return t;
+            return null;
+        }
+
+        /// <summary>
+        /// Validates the custom serializer contract — at least one static Write(ref MessageBufferWriter, [in] T) and
+        /// one static Read(ref MessageBufferReader) → T must exist across ALL overloads and base-type declarations
+        /// (shared serializer hubs overload Write per type, so a single arbitrary candidate must not decide the verdict).
+        /// A static bool Equals([in] T, [in] T) is optional and replaces the default object.Equals delta comparison.
+        /// Returns null on success or a human-readable contract violation.
+        /// </summary>
+        private static string? ValidateSerializerContract(INamedTypeSymbol serializer, ITypeSymbol fieldType, out bool hasOptionalEquals)
+        {
+            hasOptionalEquals = false;
+            const string writerType = "MessageProtocol.Serialize.MessageBufferWriter";
+            const string readerType = "MessageProtocol.Serialize.MessageBufferReader";
+            // fieldType arrives as a parameter
+
+            bool writeOk = false, readOk = false;
+            for (var t = (INamedTypeSymbol?)serializer; t != null; t = t.BaseType)
+            {
+                foreach (var member in t.GetMembers())
+                {
+                    if (member is not IMethodSymbol m || !m.IsStatic || m.MethodKind != MethodKind.Ordinary) continue;
+                    if (m.Name == "Write" && !writeOk)
+                        writeOk = m.ReturnType.SpecialType == SpecialType.System_Void
+                            && m.Parameters.Length == 2
+                            && m.Parameters[0].RefKind == RefKind.Ref
+                            && m.Parameters[0].Type.ToDisplayString() == writerType
+                            && (m.Parameters[1].RefKind == RefKind.In || m.Parameters[1].RefKind == RefKind.None)
+                            && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, fieldType);
+                    else if (m.Name == "Read" && !readOk)
+                        readOk = m.Parameters.Length == 1
+                            && m.Parameters[0].RefKind == RefKind.Ref
+                            && m.Parameters[0].Type.ToDisplayString() == readerType
+                            && SymbolEqualityComparer.Default.Equals(m.ReturnType, fieldType);
+                    else if (m.Name == "Equals")
+                        hasOptionalEquals |= m.Parameters.Length == 2
+                            && m.ReturnType.SpecialType == SpecialType.System_Boolean
+                            && (m.Parameters[0].RefKind == RefKind.In || m.Parameters[0].RefKind == RefKind.None)
+                            && (m.Parameters[1].RefKind == RefKind.In || m.Parameters[1].RefKind == RefKind.None)
+                            && SymbolEqualityComparer.Default.Equals(m.Parameters[0].Type, fieldType)
+                            && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, fieldType);
+                }
+                if (writeOk && readOk && hasOptionalEquals) break;   // everything found — stop walking the base chain
+            }
+
+            if (!writeOk)
+                return "static void Write(ref " + writerType + ", in " + fieldType.ToDisplayString() + ") 오버로드가 없습니다";
+            if (!readOk)
+                return "static " + fieldType.ToDisplayString() + " Read(ref " + readerType + ") 오버로드가 없습니다";
+            return null;
+        }
+
         private static bool SignatureMatches(IMethodSymbol a, IMethodSymbol b)
         {
             if (a.Parameters.Length != b.Parameters.Length) return false;
@@ -388,6 +512,27 @@ namespace UniNet.CodeGenerator
         public bool IsMessage;
         public int Condition = CondNone;
 
+        /// <summary>Custom static serializer (global-qualified display name) — takes over this field's wire format (see ADR-0020).</summary>
+        public string? SerializerType;
+
+        /// <summary>Whether the custom serializer exposes the optional static Equals used for delta comparison.</summary>
+        public bool HasCustomEquals;
+
+        /// <summary>Whether the field type can hold null (reference or nullable value type) — the generated null guard is emitted only for these (value types without operator== would fail CS0019).</summary>
+        public bool CanBeNull;
+
+        /// <summary>Collection field (T[] or List&lt;T&gt;) — element-level delta encoding (FastArray, see ADR-0020).</summary>
+        public bool IsCollection;
+
+        /// <summary>Whether the collection is T[] (true) or List&lt;T&gt; (false).</summary>
+        public bool IsArray;
+
+        /// <summary>Element type of a collection field.</summary>
+        public ITypeSymbol? ElementType;
+
+        /// <summary>Whether the ELEMENT is a [Message] type (element serialization path).</summary>
+        public bool ElemIsMessage;
+
         /// <summary>Whether the InitialOnly condition is set (excluded from delta tracking).</summary>
         public bool IsInitialOnly => (Condition & CondInitialOnly) != 0;
 
@@ -465,5 +610,14 @@ namespace UniNet.CodeGenerator
 
         public static readonly DiagnosticDescriptor ValidateNotOptedIn =
             Make(12, "_Validate가 옵트인되지 않음", "ServerRpc '{0}' 에 _Validate 메서드가 있지만 Validate 플래그가 없어 실행되지 않습니다 — [ServerRpc(Validate = true)]로 옵트인하세요", DiagnosticSeverity.Warning);
+
+        public static readonly DiagnosticDescriptor SerializerContract =
+            Make(13, "직렬화기 서명 불일치", "필드 '{0}' 의 Serializer '{1}' 계약 위반: {2} — static void Write(ref MessageBufferWriter, in T) + static T Read(ref MessageBufferReader) [선택: static bool Equals(in T, in T)] 형태로 작성하세요", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor UnsupportedElementType =
+            Make(14, "지원하지 않는 컬렉션 요소 타입", "필드 '{0}' 의 요소 타입 '{1}' 은(는) 지원되지 않습니다 — 기본형·string·[Message] 마킹 타입(NonId 제외) 또는 Serializer 지정 타입만 가능합니다", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor NestedCollection =
+            Make(15, "중첩 컬렉션 미지원", "필드 '{0}' 의 요소 타입 '{1}' 은(는) 컬렉션입니다 — 중첩 컬렉션(T[][]·List<List<T>> 등)은 지원되지 않습니다. 요소를 [Message] 타입으로 감싸거나 평면화하세요", DiagnosticSeverity.Error);
     }
 }

@@ -47,8 +47,8 @@ UniNet의 기능 목표(핵심 기능 3, [[overview]])을 언리얼 엔진 Netwo
 | Priority/스타베이션 방지 | 대역폭 할당 우선순위 | UniNet (NetworkPriority + 기아 보정 — UE GetNetPriority 공식) | P3 ✅ |
 | Dormancy | 유휴 오브젝트 리플리케이션 중단 | UniNet (NetworkDormant + FlushNetworkDormancy — 2상태 단순화) | P3 ✅ |
 | NetUpdateFrequency | 오브젝트별 전송 주기 | UniNet (NetworkUpdateFrequencyHz) | P3 ✅ |
-| 커스텀 NetSerialize | QuantizedVector 등 사용자 직렬화 | MP — **MessageProtocol 수정 필요, 잔여 과제** (UniNet 단독 구현 불가 — [[0011-P3-리플리케이션-고급-정책]]·상세 [[upstream-blockers]]) | 잔여 |
-| FastArray 직렬화 | 배열 델타 동기화 | UniNet + MP — **MessageProtocol 수정 필요, 잔여 과제** (동일 사유 — [[upstream-blockers]]) | 잔여 |
+| 커스텀 NetSerialize | QuantizedVector 등 사용자 직렬화 | UniNet (ReplicatedAttribute.Serializer — 정적 Write/Read+Equals 계약, 제너레이터 배선 — [[0020-직렬화-배열-델타-유니넷-단독-구현]]·[[features/custom-netserialize | custom-netserialize]]) | 구현 ✅ |
+| FastArray 직렬화 | 배열 델타 동기화 | UniNet (T[]/List&lt;T&gt; 인덱스-옵 요소 델타 — 제너레이터 배선, [[0020-직렬화-배열-델타-유니넷-단독-구현]]·[[features/fastarray-delta | fastarray-delta]]) | 구현 ✅ |
 | RepGraph 스타일 커스터마이징 | 그리드 공간 분할 가시성 | UniNet (SetVisibilityGrid — XZ 격자 양자화 판정) | P4 ✅ |
 
 ### 연결·보안 (P1~P3 분산)

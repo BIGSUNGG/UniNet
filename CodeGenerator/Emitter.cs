@@ -471,7 +471,15 @@ namespace UniNet.CodeGenerator
         {
             var parts = new List<string>();
             foreach (var f in m.ReplicatedFields)
-                parts.Add($"o.{f.Name}");
+            {
+                if (f.IsCollection)
+                {
+                    // shadow snapshot — a List copy so element-level diffing works (FastArray, ADR-0020); null field counts as empty
+                    parts.Add($"(o.{f.Name} == null ? new global::System.Collections.Generic.List<{KeywordOrGlobal(f.ElementType!)}>() : new global::System.Collections.Generic.List<{KeywordOrGlobal(f.ElementType!)}>(o.{f.Name}))");
+                }
+                else
+                    parts.Add($"o.{f.Name}");
+            }
             return string.Join(", ", parts);
         }
 
@@ -647,14 +655,34 @@ sb.AppendLine("        }");
                     sb.AppendLine("        {");
                     sb.AppendLine("            uint mask = 0;");
                     foreach (var f in m.ReplicatedFields)
-                        sb.AppendLine($"            if (!object.Equals(o.{f.Name}, seen != null && seen.Length > {f.Index} ? seen[{f.Index}] : null)) mask |= {1u << f.Index}u;");
+                    {
+                        if (f.IsCollection)
+                            sb.AppendLine($"            if (__UniNetCollDirty_{f.Name}(o.{f.Name}, seen != null && seen.Length > {f.Index} ? seen[{f.Index}] : null)) mask |= {1u << f.Index}u;");
+                        else if (f.SerializerType != null && f.HasCustomEquals)
+                        {
+                            // custom Equals replaces object.Equals — quantization-identical values skip the resend (see ADR-0020).
+                            // Per-field variable name (__s{index}) — two or more custom-Equals fields must not collide (CS0128).
+                            // Null on EITHER side is handled framework-side (never passed to the user Equals): null↔null suppresses
+                            // the resend, null↔value forces it — but the `o.field == null` half is emitted ONLY for nullable-capable
+                            // types: a value type without operator== would fail CS0019, and the check is always false there anyway.
+                            string nullGuard = f.CanBeNull ? $"__s{f.Index} == null || o.{f.Name} == null" : $"__s{f.Index} == null";
+                            sb.AppendLine($"            var __s{f.Index} = seen != null && seen.Length > {f.Index} ? seen[{f.Index}] : null;");
+                            sb.AppendLine($"            if ({nullGuard} ? !object.Equals(o.{f.Name}, __s{f.Index}) : !{f.SerializerType}.Equals(o.{f.Name}, ({KeywordOrGlobal(f.Type)})__s{f.Index})) mask |= {1u << f.Index}u;");
+                        }
+                        else
+                            sb.AppendLine($"            if (!object.Equals(o.{f.Name}, seen != null && seen.Length > {f.Index} ? seen[{f.Index}] : null)) mask |= {1u << f.Index}u;");
+                    }
                     sb.AppendLine("            mask &= includeMask;   // per-audience condition (OwnerOnly/SkipOwner) + InitialOnly excluded");
                     sb.AppendLine("            if (mask == 0) return null;");
                     sb.AppendLine($"            var w = {Writer}.Create();");
                     sb.AppendLine("            w.WriteUInt32(mask);");
                     foreach (var f in m.ReplicatedFields)
                     {
-                        if (f.IsMessage)
+                        if (f.IsCollection)
+                            sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) __UniNetCollWrite_{f.Name}(ref w, o.{f.Name}, seen != null && seen.Length > {f.Index} ? seen[{f.Index}] : null);   // FastArray element delta (ADR-0020)");
+                        else if (f.SerializerType != null)
+                            sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) {f.SerializerType}.Write(ref w, o.{f.Name});   // custom serializer — user wire format");
+                        else if (f.IsMessage)
                             sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter(o.{f.Name}, ref w);");
                         else
                             sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(o.{f.Name});");
@@ -669,7 +697,11 @@ sb.AppendLine("        }");
                     sb.AppendLine("            w.WriteUInt32(includeMask);");
                     foreach (var f in m.ReplicatedFields)
                     {
-                        if (f.IsMessage)
+                        if (f.IsCollection)
+                            sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) __UniNetCollWriteFull_{f.Name}(ref w, o.{f.Name});   // FastArray full state (ADR-0020)");
+                        else if (f.SerializerType != null)
+                            sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) {f.SerializerType}.Write(ref w, o.{f.Name});   // custom serializer — user wire format");
+                        else if (f.IsMessage)
                             sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter(o.{f.Name}, ref w);");
                         else
                             sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(o.{f.Name});");
@@ -682,19 +714,32 @@ sb.AppendLine("        }");
                     sb.AppendLine("            uint mask = reader.ReadUInt32();");
                     foreach (var f in m.ReplicatedFields)
                     {
-                        string t = KeywordOrGlobal(f.Type);
+                        string t = FieldDisplay(f);
                         sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0)");
                         sb.AppendLine("            {");
-                        sb.AppendLine($"                {t} prev = o.__uninetSeen != null && o.__uninetSeen.Length > {f.Index} && o.__uninetSeen[{f.Index}] != null ? ({t})o.__uninetSeen[{f.Index}] : o.{f.Name};");
-                        if (f.IsMessage)
+                        if (f.IsCollection)
                         {
-                            sb.AppendLine($"                var __v = ({t})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref reader);");
-                            sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // host keeps the server-authoritative original — avoids reference-swap churn");
+                            sb.AppendLine($"                {t} prev = __UniNetCollCopy_{f.Name}(o.__uninetSeen != null && o.__uninetSeen.Length > {f.Index} ? o.__uninetSeen[{f.Index}] : null, o.{f.Name});");
+                            sb.AppendLine($"                __UniNetCollApply_{f.Name}(o, ref reader);");
                         }
                         else
                         {
-                            sb.AppendLine($"                var __v = reader.{ReadCall(f.Type)}();");
-                            sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // host keeps the server-authoritative original");
+                            sb.AppendLine($"                {t} prev = o.__uninetSeen != null && o.__uninetSeen.Length > {f.Index} && o.__uninetSeen[{f.Index}] != null ? ({t})o.__uninetSeen[{f.Index}] : o.{f.Name};");
+                            if (f.SerializerType != null)
+                            {
+                                sb.AppendLine($"                var __v = {f.SerializerType}.Read(ref reader);");
+                                sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // host keeps the server-authoritative original");
+                            }
+                            else if (f.IsMessage)
+                            {
+                                sb.AppendLine($"                var __v = ({t})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref reader);");
+                                sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // host keeps the server-authoritative original — avoids reference-swap churn");
+                            }
+                            else
+                            {
+                                sb.AppendLine($"                var __v = reader.{ReadCall(f.Type)}();");
+                                sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // host keeps the server-authoritative original");
+                            }
                         }
                         if (f.NotifyMethod != null)
                             sb.AppendLine($"                o.{f.NotifyMethod}(prev);");
@@ -711,6 +756,10 @@ sb.AppendLine("        }");
                     sb.AppendLine($"            var r = new {Reader}(delta);");
                     sb.AppendLine("            __UniNetApplyIn(o, ref r);");
                     sb.AppendLine("        }");
+
+                    foreach (var f in m.ReplicatedFields)
+                        if (f.IsCollection)
+                            EmitCollectionHelpers(sb, m, f);
                 }
 
                 sb.AppendLine("    }");
@@ -719,7 +768,231 @@ sb.AppendLine("        }");
             }
         }
 
+        /// <summary>Display type of a replicated field — collections compose the element display (keyword primitives must not follow global::, CS1001).</summary>
+        static string FieldDisplay(FieldModel f)
+            => f.IsCollection
+                ? (f.IsArray
+                    ? KeywordOrGlobal(f.ElementType!) + "[]"
+                    : "global::System.Collections.Generic.List<" + KeywordOrGlobal(f.ElementType!) + ">")
+                : KeywordOrGlobal(f.Type);
+
         // ── parameter assembly helpers ────────────────────
+
+        // ── FastArray collection helpers (ADR-0020) ───────────
+
+        /// <summary>Emits the per-field static helpers for a collection field: dirty check, delta-op encoder, full-state encoder,
+        /// client-side replayer, and prev-copy for RepNotify. Wire (delta): [tag=0][opCount:u16]{[op:u8][idx:u16][elem]}*;
+        /// ops 0=Set 1=Insert 2=RemoveAt 3=Clear. Wire (full): [tag=1][count:u32][elem]*.</summary>
+        static void EmitCollectionHelpers(StringBuilder sb, TypeModel m, FieldModel f)
+        {
+            string T = KeywordOrGlobal(f.ElementType!);
+            string roList = $"global::System.Collections.Generic.IReadOnlyList<{T}>";
+            string listOf = $"global::System.Collections.Generic.List<{T}>";
+            bool elemNullable = f.ElementType!.IsReferenceType;   // value types never carry the null flag
+            string limit = $"\"[UniNet] FastArray 필드 '{f.Name}' 요소 수 상한(65535) 초과 — 요소를 줄이거나 분할하세요\"";
+
+            // element write statement for expression `e` (null flag only for reference elements)
+            void ElemWrite(string e)
+            {
+                if (elemNullable)
+                {
+                    sb.AppendLine($"                w.WriteBoolean({e} == null);");
+                    sb.AppendLine($"                if ({e} != null)");
+                    sb.AppendLine("                {");
+                }
+                if (f.SerializerType != null)
+                    sb.AppendLine($"                    {f.SerializerType}.Write(ref w, {e});");
+                else if (f.ElemIsMessage)
+                    sb.AppendLine($"                    global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter({e}, ref w);");
+                else
+                    sb.AppendLine($"                    w.{WriteCall(f.ElementType!)}({e});");
+                if (elemNullable)
+                    sb.AppendLine("                }");
+            }
+
+            string ElemRead()
+            {
+                string core = f.SerializerType != null
+                    ? $"{f.SerializerType}.Read(ref reader)"
+                    : f.ElemIsMessage
+                        ? $"({T})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref reader)"
+                        : $"reader.{ReadCall(f.ElementType!)}()";
+                return elemNullable ? $"(reader.ReadBoolean() ? ({T})null : {core})" : core;
+            }
+
+            // ── dirty check ──
+            sb.AppendLine($"        internal static bool __UniNetCollDirty_{f.Name}({roList} cur, object seen)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var old = seen as {listOf};");
+            sb.AppendLine("            int n = cur != null ? cur.Count : 0;");
+            sb.AppendLine("            if (old == null) return n > 0;   // no snapshot yet — empty is clean, anything else sends");
+            sb.AppendLine("            if (old.Count != n) return true;");
+            sb.AppendLine("            for (int i = 0; i < n; i++)");
+            sb.AppendLine("                if (!object.Equals(cur[i], old[i])) return true;   // [Message] elements: reference comparison — replace to change");
+            sb.AppendLine("            return false;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // ── delta encoder (tag 0) ──
+            sb.AppendLine($"        internal static void __UniNetCollWrite_{f.Name}(ref {Writer} w, {roList} cur, object seen)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var old = seen as {listOf};");
+            sb.AppendLine("            int curN = cur != null ? cur.Count : 0, oldN = old != null ? old.Count : 0;");
+            sb.AppendLine("            if (curN > 65535 || oldN > 65535)");
+            sb.AppendLine($"                throw new global::System.InvalidOperationException({limit});   // caught by the tick isolation (ADR-0020)");
+            sb.AppendLine("            w.WriteByte(0);   // delta tag");
+            sb.AppendLine("            int p = 0;   // common prefix");
+            sb.AppendLine("            while (p < curN && p < oldN && object.Equals(cur[p], old[p])) p++;");
+            sb.AppendLine("            int s = 0;   // common suffix (non-overlapping)");
+            sb.AppendLine("            while (s < curN - p && s < oldN - p && object.Equals(cur[curN - 1 - s], old[oldN - 1 - s])) s++;");
+            sb.AppendLine("            int curMid = curN - p - s, oldMid = oldN - p - s;");
+            sb.AppendLine("            int __CountSets()");
+            sb.AppendLine("            {");
+            sb.AppendLine("                int c = 0;");
+            sb.AppendLine("                for (int k = 0; k < curMid; k++)");
+            sb.AppendLine("                    if (!object.Equals(cur[p + k], old[p + k])) c++;");
+            sb.AppendLine("                return c;");
+            sb.AppendLine("            }");
+            sb.AppendLine("            int ops = curN == 0 && oldN > 0 ? 1   // Clear");
+            sb.AppendLine("                : oldMid == curMid ? __CountSets()   // same length — per-element Sets");
+            sb.AppendLine("                : oldMid + curMid;   // remove middle + insert middle (append-only stays plain Inserts)");
+            sb.AppendLine("            if (ops > 65535)");
+            sb.AppendLine($"                throw new global::System.InvalidOperationException({limit});");
+            sb.AppendLine("            w.WriteUInt16((ushort)ops);");
+            sb.AppendLine("            if (ops == 0) return;");
+            sb.AppendLine("            if (curN == 0) { w.WriteByte(3); return; }   // Clear");
+            sb.AppendLine("            if (oldMid == curMid)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                for (int k = 0; k < curMid; k++)");
+            sb.AppendLine("                    if (!object.Equals(cur[p + k], old[p + k]))");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        w.WriteByte(0);   // Set");
+            sb.AppendLine("                        w.WriteUInt16((ushort)(p + k));");
+            sb.AppendLine($"                        var e = cur[p + k];");
+            ElemWrite("e");
+            sb.AppendLine("                    }");
+            sb.AppendLine("            }");
+            sb.AppendLine("            else");
+            sb.AppendLine("            {");
+            sb.AppendLine("                for (int k = 0; k < oldMid; k++)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    w.WriteByte(2);   // RemoveAt");
+            sb.AppendLine("                    w.WriteUInt16((ushort)p);");
+            sb.AppendLine("                }");
+            sb.AppendLine("                for (int k = 0; k < curMid; k++)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    w.WriteByte(1);   // Insert");
+            sb.AppendLine("                    w.WriteUInt16((ushort)(p + k));");
+            sb.AppendLine($"                    var e = cur[p + k];");
+            ElemWrite("e");
+            sb.AppendLine("                }");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // ── full-state encoder (tag 1) — spawns / catch-up / InitialOnly baselines ──
+            sb.AppendLine($"        internal static void __UniNetCollWriteFull_{f.Name}(ref {Writer} w, {roList} cur)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            int n = cur != null ? cur.Count : 0;");
+            sb.AppendLine("            if (n > 65535)");
+            sb.AppendLine($"                throw new global::System.InvalidOperationException({limit});");
+            sb.AppendLine("            w.WriteByte(1);   // full tag");
+            sb.AppendLine("            w.WriteUInt32((uint)n);");
+            sb.AppendLine("            for (int i = 0; i < n; i++)");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var e = cur[i];");
+            ElemWrite("e");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // ── client-side replayer (reads tag + payload; applies only on clients — host keeps the original) ──
+            sb.AppendLine($"        internal static void __UniNetCollApply_{f.Name}({m.Name} o, ref {Reader} reader)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            byte tag = reader.ReadByte();");
+            sb.AppendLine("            if (tag == 1)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                uint n = reader.ReadUInt32();");
+            // capacity bound — each element is at least 1 byte on the wire, so a count beyond the remaining payload
+            // is garbage (forged/truncated packet): clamp the pre-allocation to the real payload size instead of
+            // trusting n (a huge n would OOM the client before the read loop ever fails)
+            sb.AppendLine("                var list = new " + listOf + "((int)global::System.Math.Min(n, (uint)reader.Remaining));");
+            sb.AppendLine("                for (uint i = 0; i < n; i++)");
+            sb.AppendLine($"                    list.Add({ElemRead()});");
+            if (f.IsArray)
+                sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = list.ToArray();   // host keeps the server-authoritative original");
+            else
+                sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = list;   // host keeps the server-authoritative original");
+            sb.AppendLine("                return;");
+            sb.AppendLine("            }");
+            sb.AppendLine("            ushort ops = reader.ReadUInt16();");
+            sb.AppendLine("            bool apply = !o.IsServer;");
+            if (f.IsArray)
+            {
+                sb.AppendLine($"            var buf = apply ? new {listOf}(o.{f.Name} ?? new {T}[0]) : null;   // T[] replays through a list buffer");
+            }
+            else
+            {
+                sb.AppendLine($"            if (apply && o.{f.Name} == null) o.{f.Name} = new {listOf}();");
+            }
+            sb.AppendLine("            for (int k = 0; k < ops; k++)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                byte op = reader.ReadByte();");
+            sb.AppendLine("                if (op == 3)");
+            sb.AppendLine("                {");
+            if (f.IsArray)
+                sb.AppendLine("                    if (apply) buf!.Clear();");
+            else
+                sb.AppendLine($"                    if (apply) o.{f.Name}!.Clear();");
+            sb.AppendLine("                    continue;");
+            sb.AppendLine("                }");
+            sb.AppendLine("                ushort idx = reader.ReadUInt16();");
+            sb.AppendLine("                if (op == 0)");
+            sb.AppendLine("                {");
+            sb.AppendLine($"                    var e = {ElemRead()};");
+            if (f.IsArray)
+                sb.AppendLine("                    if (apply) buf![(int)idx] = e;");
+            else
+                sb.AppendLine($"                    if (apply) o.{f.Name}![(int)idx] = e;");
+            sb.AppendLine("                }");
+            sb.AppendLine("                else if (op == 1)");
+            sb.AppendLine("                {");
+            sb.AppendLine($"                    var e = {ElemRead()};");
+            if (f.IsArray)
+                sb.AppendLine("                    if (apply) buf!.Insert((int)idx, e);");
+            else
+                sb.AppendLine($"                    if (apply) o.{f.Name}!.Insert((int)idx, e);");
+            sb.AppendLine("                }");
+            sb.AppendLine("                else if (op == 2)");
+            sb.AppendLine("                {");
+            if (f.IsArray)
+                sb.AppendLine("                    if (apply) buf!.RemoveAt((int)idx);");
+            else
+                sb.AppendLine($"                    if (apply) o.{f.Name}!.RemoveAt((int)idx);");
+            sb.AppendLine("                }");
+            sb.AppendLine("            }");
+            if (f.IsArray)
+                sb.AppendLine($"            if (apply) o.{f.Name} = buf!.ToArray();");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // ── prev copy for RepNotify (shallow copy of the last-applied state) ──
+            sb.AppendLine($"        internal static {FieldDisplay(f)} __UniNetCollCopy_{f.Name}(object seen, {FieldDisplay(f)} cur)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var old = seen as {listOf};");
+            if (f.IsArray)
+            {
+                sb.AppendLine($"            if (old != null) return old.ToArray();");
+                sb.AppendLine($"            return cur == null ? new {T}[0] : ({T}[])cur.Clone();");
+            }
+            else
+            {
+                sb.AppendLine($"            if (old != null) return new {listOf}(old);");
+                sb.AppendLine($"            return cur == null ? new {listOf}() : new {listOf}(cur);");
+            }
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
 
         static string ParamsSignature(RpcModel rpc)
         {

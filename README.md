@@ -90,6 +90,8 @@ public sealed partial class Projectile : NetworkBehaviour
     [Replicated(ReplicateCondition.OwnerOnly, Notify = nameof(OnDamageChanged))]
     private int _damage;                                                        // 소유 클라만
     [Replicated(ReplicateCondition.InitialOnly)] private int _seed;            // 스폰 시 1회만
+    [Replicated(Serializer = typeof(PositionQuantized))] private Vector3 _pos; // 커스텀 직렬화 — 양자화 등 사용자 와이어 포맷·기본형/[Message] 외 타입(Vector3 등)도 허용 (ADR-0020)
+    [Replicated] private List<int> _scores = new();                        // 배열/리스트는 요소 단위 델타 — 변경·추가·삭제된 요소만 전송 (ADR-0020 FastArray)
 
     private void Update()
     {

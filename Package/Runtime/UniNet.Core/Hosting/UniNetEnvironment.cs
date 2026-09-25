@@ -25,6 +25,14 @@ namespace UniNet.Core.Hosting
         /// <summary>Client hub send slot — the generated client hub registers itself here on connect (assembly-agnostic).</summary>
         public static IUniNetClientSender ClientSender { get; private set; }
 
+        /// <summary>
+        /// Engine-level fault logger — the Unity layer wires UnityEngine.Debug.LogException here at startup so Core
+        /// stays engine-agnostic. Core's replication tick routes user-serializer exceptions (custom Write/Read/Equals,
+        /// see ADR-0020) through this hook: a faulty serializer skips its sub-object instead of killing the tick.
+        /// Defaults to a no-op so engine-less hosts keep compiling.
+        /// </summary>
+        public static Action<Exception> LogFault { get; set; } = static _ => { };
+
         /// <summary>Called by generated code to register its hub factory.</summary>
         public static void RegisterHubFactory(UniNetHubFactory factory)
         {

@@ -2,10 +2,14 @@
 
 UniNet은 기반 스택(DRPC·MessageProtocol·Communication)을 **패키지 참조 고정**으로 재사용하며 상류 저장소를 수정하지 않는 것이 원칙이다 ([[0003-패키지-참조-고정]]). 따라서 상류 수정이 필요한 과제는 이 문서에 기록만 하고, 실제 해결은 해당 저장소 세션에서 진행한다.
 
-- **최초 작성**: 2026-09-21
-- **마지막 갱신**: 2026-09-21
+> **2026-09-24 — 하기 MP 2건의 단독 구현 전환 제안**: 코드 검증 결과 제너레이터 필드 배선 구조상 MP 수정 없이 UniNet 단독 구현 가능으로 확인됨 (ADR [[0020-직렬화-배열-델타-유니넷-단독-구현]] 제안 — 승인 시 이 문서의 2건은 해결 경로 확정으로 폐기). 상세 설계: [[features/custom-netserialize]]·[[features/fastarray-delta]]
 
-## MessageProtocol 수정 필요 (2건 — roadmap 잔여 항목)
+- **최초 작성**: 2026-09-21
+- **마지막 갱신**: 2026-09-24 (직렬화 2건의 UniNet 단독 구현 전환 노트 추가)
+
+## MessageProtocol 수정 필요 (2건 — 2026-09-24 폐기: UniNet 단독 구현으로 전환 완료)
+
+> **폐기 완료**: 하기 2건은 ADR [[0020-직렬화-배열-델타-유니넷-단독-구현]](승인됨)에 따라 MP 수정 없이 UniNet 단독으로 구현 완료됐다 — 커스텀 NetSerialize([[features/custom-netserialize|custom-netserialize]])·FastArray([[features/fastarray-delta|fastarray-delta]]) 모두 구현·검증 완료(2-프로세스 실기 PASS). 아래 서술은 역사 기록으로 보존한다.
 
 ### 1. 커스텀 NetSerialize (UE NetSerialize / QuantizedVector 상응)
 

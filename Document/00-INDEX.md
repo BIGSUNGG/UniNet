@@ -24,14 +24,20 @@
 - [[features/connection-lifecycle|connection-lifecycle]] — 연결 수명주기 이벤트: 서버 접속/해제 이벤트·클라 해제 콜백·상태 조회 (구현됨)
 - [[features/replication-p3-policy|replication-p3-policy]] — 리플리케이션 고급 정책: 가시성·우선순위·휴면·전송 주기·채널 예산 (P3, 구현됨)
 - [[features/replication-p4-hooks|replication-p4-hooks]] — P4 훅: UniNetTime·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성 (구현됨)
+- [[features/custom-netserialize|custom-netserialize]] — 커스텀 필드 직렬화: [Replicated(Serializer)] 정적 Write/Read 계약·양자화 (구현됨 — 제너레이터 0.1.9, ADR-0020)
+- [[features/fastarray-delta|fastarray-delta]] — 배열/리스트 요소 델타 동기화: 옵 인코딩·섀도 diff (구현됨 — 제너레이터 0.2.1, ADR-0020)
 
 ### examples/ — 예시 게임 문서
 
 - [[examples/arena-shooter|arena-shooter]] — Sandbox 아레나 슈팅 예시 게임 (구현 기능 전부 활용·MPPM 실행 가이드·기능 매트릭스·2-프로세스 검증, 구현됨)
 
+### research/ — 비교·조사 문서
+
+- [[research/network-framework-comparison|network-framework-comparison]] — UniNet vs UE NF·Photon Fusion 2·NGO·N4E·FishNet·Mirror 기능 비교 + 유무·장단점 정리 (2026-09 조사)
+
 ### upstream-blockers — 상류 의존 과제
 
-- [[upstream-blockers]] — DRPC/MessageProtocol/Communication 저장소 수정이 필요한 잔여 과제 (커스텀 NetSerialize·FastArray — UniNet 단독 불가, 문서화만)
+- [[upstream-blockers]] — DRPC/MessageProtocol/Communication 저장소 수정이 필요한 잔여 과제 (2026-09-24: 직렬화 2종의 UniNet 단독 구현 전환으로 폐기 완료 — ADR-0020 참조. 잔여 의존 과제 없음)
 
 ### decisions/ — 아키텍처 결정 기록 (ADR)
 
@@ -54,6 +60,7 @@
 - [[0017-동적-스폰-NetworkInstantiate-통합]] — Spawn(등록 전용) 제거·NetworkInstantiate(복제 겸함) 단독 API·configure 콜백(비직렬화 InitialOnly 초기화)
 - [[0018-ServerRpc-Validate-옵트인]] — `_Validate` 자동 감지 제거·`[ServerRpc(Validate = true)]` 옵트인·불일치 진단(UNINET011 에러·UNINET012 경고)·마이그레이션 노트
 - [[0019-코드-주석-영어화-사용자-관점-규약]] — 모든 코드 주석 영어 + 라이브러리 사용자 관점 XML doc·why 중심 인라인 규약 (문자열 리터럴은 대상 아님)
+- [[0020-직렬화-배열-델타-유니넷-단독-구현]] — 직렬화 2종(커스텀 NetSerialize·FastArray)의 UniNet 단독 구현 전환 — "MP 수정 전제" 기존 판정 철회 (승인됨 — 2026-09-24 구현 완료)
 
 ### _templates/ — 문서 템플릿
 
@@ -62,6 +69,10 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-09-24 — **FastArray 구현 — 목표 완결** (ADR-0020 기능 2/2 — T[]/List<T> 인덱스-옵 요소 델타·진단 UNINET014/015(라운드 6 권장 3건 수정 — OOM 가드·fault 백오프·INDEX 정합). EditMode 76/76·PlayMode 17/17·**2-프로세스 실기 PASS**(양 기능 동시 검증). ADR-0020 승인됨 전환·roadmap 잔여 0·upstream-blockers MP 2건 폐기)
+- 2026-09-24 — **커스텀 NetSerialize 구현** (ADR-0020 기능 1/2 — `[Replicated(Serializer)]` 정적 Write/Read+Equals 계약·Vector3 등 타입 해금·서버 틱 예외 격리(LogFault)·제너레이터 0.1.9·진단 UNINET013. EditMode 68/68·PlayMode 16/16·reviewer 4라운드 16건 이슈 수정)
+- 2026-09-24 — **직렬화 2종 UniNet 단독 구현 전환 — 설계 문서** (ADR-0020 제안: "MP 수정 불가" 기존 판정 철회 — 제너레이터 필드 배선 구조 검증. features/custom-netserialize + features/fastarray-delta 설계 문서 신규)
+- 2026-09-22 — **네트워크 프레임워크 비교 연구 문서 신설** (research/network-framework-comparison — UE NF·Fusion 2·NGO·N4E·FishNet·Mirror 기능 매트릭스 + UniNet 유무·장단점)
 - 2026-09-22 — **코드 주석 전체 영어화 + 사용자 관점 재작성** (ADR-0019: 주석 언어·관점 규약 확립 — 78개 파일, 코드 무변경 입증, reviewer CLEAN)
 - 2026-09-22 — **ServerRpc 검증 훅 옵트인화** (ADR-0018: `_Validate` 자동 감지 제거·`[ServerRpc(Validate = true)]` 옵트인 — UNINET011 에러·UNINET012 경고 신설. 제너레이터 0.1.5. in-repo `_Validate` 5곳 마이그레이션. EditMode 60/60·PlayMode 15/15)
 - 2026-09-22 — **ServerRpc 소유자 자동 강제** (ADR-0016: 비소유 발신 거부 + RequireOwnership 옵트아웃 — netId 위조로 타 오브젝트 RPC 실행 불가화. 제너레이터 0.1.3. EditMode 60/60·PlayMode 15/15)

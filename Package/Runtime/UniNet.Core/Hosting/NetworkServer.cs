@@ -360,8 +360,8 @@ namespace UniNet.Core.Hosting
                     {
                         var handler = entry.Subs[subId].Replication;
                         if (handler == null || !handler.HasFields) continue;
-                        byte[] state = handler.WriteFull(entry.Subs[subId].Instance, isOwner);
-                        if (state != null && state.Length > 0)   // null when every field is filtered out by conditions — skip catch-up
+                        byte[] state = TryWriteFull(handler, entry.Subs[subId].Instance, isOwner);
+                        if (state != null && state.Length > 0)   // null when every field is filtered out by conditions — skip catch-up (also null on a serializer fault — that sub-object is skipped)
                             conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
                     }
                 }
@@ -420,7 +420,21 @@ namespace UniNet.Core.Hosting
                     if (handler == null || !handler.HasFields) continue;
                     if (timed && hz > 0f && time < sub.NextReplicateTime) continue;   // rate not due yet — snapshot kept, changes go on the due tick
 
-                    var (toOwner, toOthers) = handler.CompareAndWriteDelta(sub);
+                    byte[] toOwner, toOthers;
+                    try
+                    {
+                        (toOwner, toOthers) = handler.CompareAndWriteDelta(sub);
+                    }
+                    catch (Exception ex)
+                    {
+                        // A faulty user serializer (custom Write/Read/Equals, see ADR-0020) must not kill the whole
+                        // replication tick — skip this sub-object; the snapshot was not updated, so it retries next tick.
+                        // The rate deadline still advances: a deterministic fault (e.g. an over-limit collection kept as-is)
+                        // would otherwise re-throw at the full send rate and flood the console with stack traces.
+                        UniNetEnvironment.LogFault(ex);
+                        if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;   // fault backoff — one period
+                        continue;
+                    }
                     if (IsEmpty(toOwner) && IsEmpty(toOthers)) continue;
                     if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;
 
@@ -666,7 +680,7 @@ namespace UniNet.Core.Hosting
             {
                 var handler = entry.Subs[subId].Replication;
                 if (handler == null || !handler.HasFields) continue;
-                byte[] state = handler.WriteFull(entry.Subs[subId].Instance, isOwner);
+                byte[] state = TryWriteFull(handler, entry.Subs[subId].Instance, isOwner);
                 if (state != null && state.Length > 0)
                     conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
             }
@@ -744,6 +758,24 @@ namespace UniNet.Core.Hosting
             }
         }
 
+        /// <summary>
+        /// WriteFull with per-sub-object fault isolation — a throwing user serializer (custom Write, see ADR-0020)
+        /// skips that sub-object's state instead of aborting the spawn/catch-up/visibility pass. Returns null on fault
+        /// (the wire treats it as a zero-length state).
+        /// </summary>
+        private static byte[] TryWriteFull(UniNetReplicationHandler handler, object instance, bool isOwner)
+        {
+            try
+            {
+                return handler.WriteFull(instance, isOwner);
+            }
+            catch (Exception ex)
+            {
+                UniNetEnvironment.LogFault(ex);
+                return null;
+            }
+        }
+
         /// <summary>Assembles the spawn message for a receiver — [7 transform values][sub count][per-sub typeKey + full state] (sub slots implied by order).</summary>
         private static void SendSpawnState(IUniNetSystemChannel channel, ulong netId, ServerObjectEntry entry,
             float px, float py, float pz, float qx, float qy, float qz, float qw, bool isOwner)
@@ -754,7 +786,7 @@ namespace UniNet.Core.Hosting
             {
                 typeKeys[i] = entry.Subs[i].TypeKey;
                 states[i] = entry.Subs[i].Replication != null && entry.Subs[i].Replication.HasFields
-                    ? entry.Subs[i].Replication.WriteFull(entry.Subs[i].Instance, isOwner)
+                    ? TryWriteFull(entry.Subs[i].Replication, entry.Subs[i].Instance, isOwner)
                     : Array.Empty<byte>();
             }
             channel.SendSpawn(netId, px, py, pz, qx, qy, qz, qw, (byte)entry.Subs.Length, typeKeys, states);

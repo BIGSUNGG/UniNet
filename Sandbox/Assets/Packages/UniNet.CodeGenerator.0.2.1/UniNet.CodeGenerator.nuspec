@@ -2,11 +2,11 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
   <metadata>
     <id>UniNet.CodeGenerator</id>
-    <version>0.1.5</version>
+    <version>0.2.1</version>
     <authors>DS</authors>
     <developmentDependency>true</developmentDependency>
     <description>Roslyn source generator for UniNet — scans NetworkBehaviour subclasses for [ServerRpc]/[ClientRpc]/[MulticastRpc]/[Replicated] members and emits DRPC hub wiring (typed stubs, incoming dispatch, replication delta handlers) against the DRPC runtime. Targets Roslyn 4.3 (Unity 6.0 LTS).</description>
-    <repository type="git" commit="c355d1b5f9019f7f84ef3f1651e39b06c16d9369" />
+    <repository type="git" commit="d7c9120327fc2e3416c9f7e3468c07d1a51bb730" />
     <dependencies>
       <group targetFramework=".NETStandard2.0" />
     </dependencies>
