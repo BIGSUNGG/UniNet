@@ -10,7 +10,8 @@ PKG_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="${1:-$(cd "$PKG_ROOT/.." && pwd)}"
 
 WORK="$(mktemp -d -t uninet-verify-XXXX)"
-SIM="$WORK/upm-repo-sim"      # GitHub 역할 (커밋된 저장소 상태)
+WIN_WORK="$(cygpath -m "$WORK")"          # Unity(managed)가 이해하는 Windows 경로
+SIM="$WORK/upm-repo-sim.git"      # GitHub 역할 (커밋된 저장소 상태) — .git 접미사로 git URL로 인식시킨다
 FRESH="$WORK/FreshProject"    # 소비자 역할 (빈 프로젝트)
 trap 'echo "작업 디렉터리 유지: $WORK"' EXIT
 
@@ -20,11 +21,10 @@ git clone -q "$REPO" "$SIM"
 echo "== 빈 프로젝트 구성"
 mkdir -p "$FRESH/Packages" "$FRESH/Assets"
 cp -r "$REPO/Sandbox/ProjectSettings" "$FRESH/ProjectSettings"
-SIM_FWD="${SIM//\\//}"
 cat > "$FRESH/Packages/manifest.json" <<EOF
 {
   "dependencies": {
-    "com.ds.uninet": "file://${SIM_FWD}?path=/Package"
+    "com.ds.uninet": "file://${WIN_WORK}/upm-repo-sim.git?path=/Package"
   }
 }
 EOF
@@ -33,7 +33,7 @@ cp "$PKG_ROOT/Samples~/Basics/BasicsSample.cs" "$FRESH/Assets/"
 
 echo "== Unity 배치 임포트 (수 분 소요)"
 LOG="$WORK/unity.log"
-"$UNITY" -batchmode -quit -nographics -projectPath "$FRESH" -logFile "$LOG"
+"$UNITY" -batchmode -quit -nographics -projectPath "$WIN_WORK/FreshProject" -logFile "$LOG"
 EXIT=$?
 
 echo "== 결과 판정"
