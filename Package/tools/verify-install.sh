@@ -10,9 +10,9 @@ PKG_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="${1:-$(cd "$PKG_ROOT/.." && pwd)}"
 
 WORK="$(mktemp -d -t uninet-verify-XXXX)"
-WIN_WORK="$(cygpath -m "$WORK")"          # Unity(managed)가 이해하는 Windows 경로
-SIM="$WORK/upm-repo-sim.git"      # GitHub 역할 (커밋된 저장소 상태) — .git 접미사로 git URL로 인식시킨다
-FRESH="$WORK/FreshProject"    # 소비자 역할 (빈 프로젝트)
+WIN_WORK="$(cygpath -m "$WORK")" # Unity(managed)가 이해하는 Windows 경로
+SIM="$WORK/upm-repo-sim.git"     # GitHub 역할 (커밋된 저장소 상태) — .git 접미사로 git URL로 인식시킨다
+FRESH="$WORK/FreshProject"       # 소비자 역할 (빈 프로젝트)
 trap 'echo "작업 디렉터리 유지: $WORK"' EXIT
 
 echo "== 저장소 클론 시뮬레이션: $REPO"
@@ -21,7 +21,7 @@ git clone -q "$REPO" "$SIM"
 echo "== 빈 프로젝트 구성"
 mkdir -p "$FRESH/Packages" "$FRESH/Assets"
 cp -r "$REPO/Sandbox/ProjectSettings" "$FRESH/ProjectSettings"
-cat > "$FRESH/Packages/manifest.json" <<EOF
+cat >"$FRESH/Packages/manifest.json" <<EOF
 {
   "dependencies": {
     "com.ds.uninet": "file://${WIN_WORK}/upm-repo-sim.git?path=/Package"
@@ -38,20 +38,28 @@ EXIT=$?
 
 echo "== 결과 판정"
 FAIL=0
-if [ $EXIT -ne 0 ]; then echo "FAIL: Unity exit $EXIT"; FAIL=1; fi
+if [ $EXIT -ne 0 ]; then
+	echo "FAIL: Unity exit $EXIT"
+	FAIL=1
+fi
 if grep -qE "error CS[0-9]+" "$LOG"; then
-  echo "FAIL: 컴파일 에러"; grep -E "error CS[0-9]+" "$LOG" | head -5; FAIL=1
+	echo "FAIL: 컴파일 에러"
+	grep -E "error CS[0-9]+" "$LOG" | head -5
+	FAIL=1
 fi
 if grep -q "Cannot resolve\|invalid dependencies\|failed to resolve" "$LOG"; then
-  echo "FAIL: 패키지 해석 실패"; grep -iE "cannot resolve|invalid dependencies|failed to resolve" "$LOG" | head -3; FAIL=1
+	echo "FAIL: 패키지 해석 실패"
+	grep -iE "cannot resolve|invalid dependencies|failed to resolve" "$LOG" | head -3
+	FAIL=1
 fi
 if ! grep -q "com.ds.uninet" "$LOG"; then
-  echo "FAIL: com.ds.uninet 흔적 없음 (설치 안 됨?)"; FAIL=1
+	echo "FAIL: com.ds.uninet 흔적 없음 (설치 안 됨?)"
+	FAIL=1
 fi
 
 if [ $FAIL -eq 0 ]; then
-  echo "PASS: 신규 프로젝트 임포트·컴파일 성공 (샘플 포함) — 로그: $LOG"
+	echo "PASS: 신규 프로젝트 임포트·컴파일 성공 (샘플 포함) — 로그: $LOG"
 else
-  echo "상세 로그: $LOG"
-  exit 1
+	echo "상세 로그: $LOG"
+	exit 1
 fi
