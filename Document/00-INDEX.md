@@ -61,6 +61,11 @@
 - [[0018-ServerRpc-Validate-옵트인]] — `_Validate` 자동 감지 제거·`[ServerRpc(Validate = true)]` 옵트인·불일치 진단(UNINET011 에러·UNINET012 경고)·마이그레이션 노트
 - [[0019-코드-주석-영어화-사용자-관점-규약]] — 모든 코드 주석 영어 + 라이브러리 사용자 관점 XML doc·why 중심 인라인 규약 (문자열 리터럴은 대상 아님)
 - [[0020-직렬화-배열-델타-유니넷-단독-구현]] — 직렬화 2종(커스텀 NetSerialize·FastArray)의 UniNet 단독 구현 전환 — "MP 수정 전제" 기존 판정 철회 (승인됨 — 2026-09-24 구현 완료)
+- [[0021-DLL-캡슐-UPM-전환]] — 기반 스택 DLL·소스젠 패키지 동봉(개발=배포 형태 통일, NuGetForUnity 철거) + Git URL 배포 확정
+
+### deployment — 배포
+
+- [[deployment]] — UPM Git URL 배포 절차(태그→푸시)·소비자 설치·기반 스택 갱신 스크립트·신규 프로젝트 검증
 
 ### _templates/ — 문서 템플릿
 
@@ -68,6 +73,8 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-09-28 — **UPM Git URL 배포 준비 완료** (ADR-0021 — 기반 스택 DLL·소스젠 3종 패키지 동봉, NuGetForUnity 철거·개발=배포 통일. UPM 표준 구조(Samples~/Documentation~/CHANGELOG). update-dlls.sh·verify-install.sh. EditMode 76/76·PlayMode 17/17·신규 프로젝트 임포트 PASS)
 
 - 2026-09-24 — **FastArray 구현 — 목표 완결** (ADR-0020 기능 2/2 — T[]/List<T> 인덱스-옵 요소 델타·진단 UNINET014/015(라운드 6 권장 3건 수정 — OOM 가드·fault 백오프·INDEX 정합). EditMode 76/76·PlayMode 17/17·**2-프로세스 실기 PASS**(양 기능 동시 검증). ADR-0020 승인됨 전환·roadmap 잔여 0·upstream-blockers MP 2건 폐기)
 - 2026-09-24 — **커스텀 NetSerialize 구현** (ADR-0020 기능 1/2 — `[Replicated(Serializer)]` 정적 Write/Read+Equals 계약·Vector3 등 타입 해금·서버 틱 예외 격리(LogFault)·제너레이터 0.1.9·진단 UNINET013. EditMode 68/68·PlayMode 16/16·reviewer 4라운드 16건 이슈 수정)

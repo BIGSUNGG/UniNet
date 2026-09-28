@@ -3,6 +3,17 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-28]
+
+### Changed (UPM Git URL 배포 준비 — ADR-0021)
+
+- **기반 스택 DLL 캡슐 UPM 전환** (ADR [[0021-DLL-캡슐-UPM-전환]] — 배포 채널 Git URL 확정)
+  - **DLL 동봉** — `Package/Runtime/Dependencies/` lib DLL 12종 (DRPC 3.5.0 · MessageProtocol 3.2.0 · Communication 2.7.0 · LiteNetLib 2.1.4 · BouncyCastle 2.7.0), `Package/Runtime/UniNet.Unity/Analyzers/` 소스젠 3종 (DRPC·MessageProtocol·UniNet.CodeGenerator 0.2.1) RoslynAnalyzer 라벨·전 플랫폼 비활성. 소비자 git URL 한 줄 설치 — 추가 설정·피드 불필요
+  - **NuGetForUnity 철거** — Sandbox manifest·packages.config·Assets/NuGet.config·Assets/Packages·Packages/NuGet·`.locked` 아티팩트 제거. 개발 형태 = 배포 형태 통일 (루트 `Sandbox/NuGet.config`는 제너레이터 빌드용 유지)
+  - **UPM 표준 구조** — `Samples~/Basics`(최소 동작 샘플), `Documentation~/index.md`(퀵스타트), `LICENSE.md`, `CHANGELOG.md`, package.json samples 등록. README 설치 섹션·개발 환경 갱신
+  - **도구** — `Package/tools/update-dlls.sh`(기반 스택 버전 갱신: nupkg 추출+제너레이터 빌드), `Package/tools/verify-install.sh`(신규 프로젝트 임포트·컴파일·샘플 검증). 절차 문서 [[deployment]] 신규
+  - **검증**: Unity 컴파일 에러 0 · **EditMode 76/76** · **PlayMode 17/17** · 신규 프로젝트 임포트 PASS
+
 ## [2026-09-24]
 
 ### Added (직렬화 사용 예시 — Sandbox)

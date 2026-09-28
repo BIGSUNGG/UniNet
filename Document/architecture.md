@@ -42,11 +42,10 @@
 ## 외부 의존성
 
 - Unity **6000.0.83f1** (6.0 LTS, 샌드박스 고정)
-- DRPC 3.5.0·MessageProtocol 3.2.0·Communication(RUDP) 2.7.0 — **패키지 참조 고정** (ADR-0003), 로컬 소스 `unity-nuget/` + NuGetForUnity 4.5.0(OpenUPM)으로 Unity에 공급
+- DRPC 3.5.0·MessageProtocol 3.2.0·Communication(RUDP) 2.7.0 — **패키지 참조 고정** (ADR-0003), **netstandard2.1 DLL·소스젠 3종을 패키지에 동봉**해 Unity에 공급 (ADR-0021 — DLL 캡슐 UPM, Git URL 배포)
 - 그 외 라이브러리는 필요 시 추가 (ADR로 기록)
 
 ## 미정 사항
 
 - 어셈블리 구조(asmdef 분할) — [[plan]] Phase 0 스파이크 후 확정 (현행 스캐폴드: `Package/Runtime`에 UniNet.Core·UniNet.Unity 2종)
-- UPM-NuGet 연결 방식 — 1차 확정 NuGetForUnity 4.5.0, 스파이크 1(소스젠 동작) 통과 시 최종 확정 ([[plan]] Phase 0)
 - 클라이언트-서버 간 공유 계약 코드 배치 방식

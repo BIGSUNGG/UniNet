@@ -6,5 +6,12 @@
   "description": "상용 유니티 게임 서버용 네트워크 프레임워크 — MonoBehaviour RPC & 변수 리플리케이션",
   "author": {
     "name": "DS"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "Basics",
+      "description": "RPC + 변수 Replicate 최소 동작 예제",
+      "path": "Samples~/Basics"
+    }
+  ]
 }

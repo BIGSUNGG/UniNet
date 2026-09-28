@@ -13,7 +13,7 @@
 | RPC 계약 방식 | **확정** — 자동 생성 (ADR-0004) | UniNet 자체 소스젠 |
 | 공개 API 스타일 | **확정** — Mirror/Netcode류 속성 (`[ServerRpc]`·`[ClientRpc]`·`[MulticastRpc]`·`[Replicated(Notify)]`·`IsOwner`·`UniNetManager`) | 2026-09-14. 사용법 우선 확정 (ADR-0007) — RepNotify(이전값 1개 콜백)·MulticastRpc 확장 포함, `Sandbox/Assets/Scripts/` 사용법 + Package API 스텁, batch 컴파일 녹색 |
 | 어셈블리 구조 확정 | **확정(1차)** — `UniNet.Core`(순수 C#·Hosting 런타임) / `UniNet.Unity`(바인딩) / 독립 `CodeGenerator/`(dotnet·Roslyn 4.3) / 테스트 3종(Fixtures·EditMode·PlayMode) | ADR-0008. 스파이크 대상이던 소스젠 2종은 3.5.0 라인에서 Roslyn 4.3 메인라인 전환 확인(경고 소멸) |
-| UPM-NuGet 연결 방식 | **1차 확정** — NuGetForUnity 4.5.0 (OpenUPM 고정) | 소스젠 2종 동작을 스파이크 1에서 검증 후 최종 확정 |
+| UPM-NuGet 연결 방식 | **최종 확정 — DLL 캡슐 UPM** (ADR-0021) | NuGetForUnity 철거 · 기반 스택 DLL 패키지 동봉 · Git URL 배포 |
 
 **스파이크 (기술 리스크 조기 제거, 순서대로):**
 

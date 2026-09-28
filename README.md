@@ -13,6 +13,19 @@ RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Frame
 | `Sandbox/` | Unity 6000.0.83f1(6.0 LTS) 샌드박스 프로젝트 — 스파이크·데모·테스트 (폐기 가능) |
 | `Document/` | Obsidian Vault — 정의·구조·플랜·결정 기록 (SSoT) |
 
+## 설치 (소비자 — Git URL)
+
+배포판은 `Package/` 폴더를 가리키는 Git URL 패키지다. 프로젝트 `Packages/manifest.json`에 한 줄 추가:
+
+```json
+"com.ds.uninet": "https://github.com/OWNER/UniNet.git?path=/Package#v0.1.0"
+```
+
+- `OWNER/UniNet` → 실제 저장소로 교체. `#v0.1.0`은 버전 태그(생략 시 기본 브랜치 HEAD 추적)
+- 사설 저장소: Unity가 git clone에 로컬 git 자격증명(credential helper / SSH)을 사용한다 — 에디터 실행 계정에서 `git clone`이 되면 UPM도 된다
+- 기반 스택(DRPC·MessageProtocol·Communication) DLL과 소스 생성기 3종이 패키지 안에 전부 동봉되어 있다 — 별도 NuGet 피드·설정 불필요 (ADR-0021)
+- 요구 사양: Unity `6000.0` 이상. 세부: [Document/deployment.md](Document/deployment.md)
+
 ## 사용법 (구현됨 — P1 전체 + P2 전체 + P3 + P4 훅)
 
 RPC 메서드는 `partial` 선언 + 본문은 `{Name}_Implementation`에, 검증 훅이 필요하면 `[ServerRpc(Validate = true)]`로 옵트인하고 `{Name}_Validate`에 작성한다 (ADR-0007 변경 이력·ADR-0008·ADR-0018).
@@ -261,7 +274,8 @@ bool alive = UniNetManager.IsClientConnected;   // 접속 상태 조회
 ## 개발 환경
 
 - 샌드박스가 패키지를 로컬 참조한다: `Sandbox/Packages/manifest.json` → `"com.ds.uninet": "file:../../Package"`
-- 기반 스택(DRPC·MessageProtocol·Communication)은 NuGetForUnity 4.5.0 + 로컬 소스 `../unity-nuget/`로 로드
+- 기반 스택 DLL·소스 생성기는 패키지 안에 동봉된다 (`Package/Runtime/Dependencies`, `Package/Runtime/UniNet.Unity/Analyzers`) — 배포 형태 = 개발 형태 (ADR-0021, NuGetForUnity 철거)
+- 기반 스택 버전 갱신: `Package/tools/update-dlls.sh` (nupkg 추출·복사 + UniNet.CodeGenerator 빌드)
 - sln/csproj는 Unity가 asmdef 기준 자동 생성 (직접 작성하지 않는다)
 - 배치 검증: `-batchmode -quit -nographics -disable-assembly-updater`
 
