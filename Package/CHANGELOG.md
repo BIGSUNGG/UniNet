@@ -2,6 +2,13 @@
 
 상세 변경 기록: 저장소 루트 `Document/changelog.md` (Obsidian Vault).
 
+## 0.1.1
+
+- `NetworkInstantiate(original, ownerConnId)` — 명시적 소유자 동적 스폰 (접속 순간 그 접속 소유 토큰 발급). `RegisterDynamicObject(components, ownerConnId)` 선택 인자 동반
+- `ReassignOwnership` — 살아 있는 소유자는 유지, 고아(소유자 0·단절)만 라운드로빈 재배정. 재접속·재시작 시 소유권 도용 방지
+- `UniNetEnvironment.ServerChanged` — 서버 인스턴스 설정 순간(접속 수락 전, 메인 스레드) 이벤트. 폴링 경쟁 없는 라이프사이클 후크
+- 스테일 동적 스폰 잔재 방지 — `IsDynamicSpawn` 마커, 씬 등록 스킵, `ClientStop`/`ServerStop` 시 `SweepDynamicSpawns()` (낡은 netId 재활용 충돌·이중 조인·오소유 읽기 방지)
+
 ## 0.1.0
 
 - 초기 패키지 구성 — UniNet.Core / UniNet.Unity 어셈블리

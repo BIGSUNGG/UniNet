@@ -16,6 +16,11 @@ namespace UniNet.Core.Hosting
         /// <summary>This process's server runtime (set when the server/host starts).</summary>
         public static NetworkServer Server { get; private set; }
 
+        /// <summary>Raised the moment a server instance is set — on the main thread, BEFORE the server can accept
+        /// any connection. Lets scene components (NetSession) hook lifecycle events without a polling race
+        /// (a polling hook can lose a fast loopback ClientConnected that pumps before the first Update).</summary>
+        public static event Action<NetworkServer> ServerChanged;
+
         /// <summary>This process's client runtime (set when the client/host starts).</summary>
         public static NetworkClient Client { get; private set; }
 
@@ -39,8 +44,12 @@ namespace UniNet.Core.Hosting
             HubFactory = factory ?? throw new ArgumentNullException(nameof(factory));
         }
 
-        /// <summary>Sets the server runtime (UniNetManager only).</summary>
-        public static void SetServer(NetworkServer server) => Server = server;
+        /// <summary>Sets the server runtime (UniNetManager only). Raises ServerChanged synchronously.</summary>
+        public static void SetServer(NetworkServer server)
+        {
+            Server = server;
+            ServerChanged?.Invoke(server);
+        }
 
         /// <summary>Sets the client runtime (UniNetManager only).</summary>
         public static void SetClient(NetworkClient client) => Client = client;

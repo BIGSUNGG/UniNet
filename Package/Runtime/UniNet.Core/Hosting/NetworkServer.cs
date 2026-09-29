@@ -129,10 +129,11 @@ namespace UniNet.Core.Hosting
 
         /// <summary>
         /// Registers a dynamic object and returns its server-assigned netId. Accepts all components in slot
-        /// order. The owning connection is assigned immediately by round-robin. Afterwards call
+        /// order. The owning connection is assigned immediately: ownerConnId when given (explicit ownership —
+        /// NetSession spawns each joiner's token for that joiner), otherwise round-robin. Afterwards call
         /// BroadcastSpawn(netId) to propagate it to all clients (main thread).
         /// </summary>
-        public ulong RegisterDynamicObject(IReadOnlyList<object> components)
+        public ulong RegisterDynamicObject(IReadOnlyList<object> components, long ownerConnId = 0)
         {
             lock (_gate)
             {
@@ -142,7 +143,9 @@ namespace UniNet.Core.Hosting
 
                 var entry = new ServerObjectEntry(components[0]) { IsDynamic = true };
                 AttachSubs(entry, components);
-                if (_connections.Count > 0)
+                if (ownerConnId != 0)
+                    entry.OwnerConnId = ownerConnId;
+                else if (_connections.Count > 0)
                 {
                     entry.OwnerConnId = _connections[_rrCursor % _connections.Count].ConnId;
                     _rrCursor++;
@@ -317,9 +320,10 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// Minimal ownership policy — assigns objects (ascending netId) to connections in order, one lap per
-        /// pass, and notifies every client.
-        /// ponytail: round-robin minimal policy; replace with an explicit ownership-transfer API if production demands it.
+        /// Minimal ownership policy — objects whose owner is still a live connection KEEP it (explicit
+        /// ownership survives joins/leaves/rejoins); only orphaned objects (owner 0 or a gone connection)
+        /// are (re)assigned round-robin by ascending netId. Notifies clients on every change.
+        /// ponytail: round-robin for orphans; replace with an explicit ownership-transfer API if production demands it.
         /// </summary>
         private void ReassignOwnership()
         {
@@ -327,15 +331,22 @@ namespace UniNet.Core.Hosting
             var connections = SnapshotConnections();
             if (connections.Count == 0 || objects.Count == 0) return;
 
+            var live = new HashSet<long>();
+            foreach (var conn in connections) live.Add(conn.ConnId);
+
             var sorted = new List<(ulong NetId, ServerObjectEntry Entry)>(objects);
             sorted.Sort((a, b) => a.NetId.CompareTo(b.NetId));
 
-            for (int i = 0; i < sorted.Count; i++)
+            int rr = 0;
+            foreach (var (netId, entry) in sorted)
             {
-                long owner = connections[i % connections.Count].ConnId;
-                sorted[i].Entry.OwnerConnId = owner;
+                if (entry.OwnerConnId != 0 && live.Contains(entry.OwnerConnId)) continue;   // 살아 있는 소유자는 그대로
+
+                long owner = connections[rr++ % connections.Count].ConnId;
+                if (owner == entry.OwnerConnId) continue;
+                entry.OwnerConnId = owner;
                 foreach (var conn in connections)
-                    conn.Channel.SendOwnerUpdate(sorted[i].NetId, owner);
+                    conn.Channel.SendOwnerUpdate(netId, owner);
             }
         }
 

@@ -7,11 +7,11 @@ MonoBehaviour 기준 RPC + 변수 자동 Replicate. 서버 권위, Unity 6000.0+
 프로젝트 `Packages/manifest.json`의 `dependencies`에 한 줄 추가:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.1.0"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.1.1"
 ```
 
 - `BIGSUNGG/UniNet` → 실제 저장소 주소로 교체
-- `#v0.1.0` → 버전 태그. 생략 시 기본 브랜치 HEAD 추적
+- `#v0.1.1` → 버전 태그. 생략 시 기본 브랜치 HEAD 추적
 - 사설 저장소: Unity가 git clone에 로컬 git 자격증명(credential helper / SSH)을 사용한다. 에디터 실행 계정에서 `git clone`이 되면 UPM도 된다.
 
 의존성은 패키지 안에 전부 동봉되어 있다 — 별도 NuGet 피드·추가 설정 불필요.

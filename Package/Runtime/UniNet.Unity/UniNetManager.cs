@@ -129,13 +129,16 @@ namespace UniNet.Unity
             await ClientAsync("127.0.0.1", port, clientOptions);
         }
 
-        /// <summary>Stops the client — closes the hub connection (Disconnect + Dispose) and clears environment state. Idempotent: no-op when not connected. Synchronous — safe in pre-shutdown paths.</summary>
+        /// <summary>Stops the client — closes the hub connection (Disconnect + Dispose) and clears environment state. Idempotent: no-op when not connected. Synchronous — safe in pre-shutdown paths.
+        /// Dynamically spawned mirrors are destroyed here — a stale dynamic object keeps its cached netId and
+        /// aliases onto the NEXT session's recycled ids (double joins, wrong-owner reads).</summary>
         public static void ClientStop()
         {
             var sender = UniNetEnvironment.ClientSender;
             _clientConnected = false;   // explicit stop — state clears immediately regardless of whether the session-end event fires
             UniNetEnvironment.SetClientSender(null);
             UniNetEnvironment.SetClient(null);
+            SweepDynamicSpawns();
             if (sender is global::DRPC.Shared.Network.HubBase hub)
             {
                 hub.Disconnect();
@@ -160,6 +163,7 @@ namespace UniNet.Unity
             _listenHandle = null;
             UniNetEnvironment.SetServer(null);
             handle?.Dispose();
+            SweepDynamicSpawns();   // 서버 쪽 동적 스폰 원본도 마찬가지 — 낡은 netId 재사용 충돌 방지
         }
 
         /// <summary>Stops the host (server + client) — ClientStop + ServerStopAsync. Use HostStop on synchronous paths.</summary>
@@ -190,20 +194,35 @@ namespace UniNet.Unity
         /// Multi-component objects need the same prefab registered on both ends via RegisterPrefab (the default factory creates single-component objects only). Server authority — valid on server/host only.
         /// </summary>
         public static GameObject NetworkInstantiate(GameObject original)
-            => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, null);
+            => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, null, 0);
 
         /// <summary>Clones, registers, and replicates with an explicit position and rotation. Returns the registered instance.</summary>
         public static GameObject NetworkInstantiate(GameObject original, Vector3 position, Quaternion rotation)
-            => NetworkInstantiateCore(original, position, rotation, null);
+            => NetworkInstantiateCore(original, position, rotation, null, 0);
+
+        /// <summary>Destroys every dynamically spawned network object — session teardown. Stale dynamic objects
+        /// survive scene loads (DontDestroyOnLoad) and alias onto the next session's recycled netIds.</summary>
+        static void SweepDynamicSpawns()
+        {
+            foreach (var nb in UnityEngine.Object.FindObjectsByType<NetworkBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (!nb.IsDynamicSpawn) continue;
+                if (Application.isPlaying) UnityEngine.Object.Destroy(nb.gameObject);
+                else UnityEngine.Object.DestroyImmediate(nb.gameObject);   // edit mode (batch validation) — Destroy is not allowed there
+            }
+        }
 
         /// <summary>
-        /// Clones, registers, and replicates with a configure callback — the callback runs on the clone right after instantiation, before the registered spawn is broadcast.
-        /// Private [Replicated] fields (non-serialized values such as InitialOnly initial state) must be set here to land in the spawn baseline. Returns the registered instance.
+        /// Server-side dynamic spawn with an explicit owning connection — the object belongs to that
+        /// connection from the first message (ownership survives other clients joining/leaving/rejoining).
         /// </summary>
-        public static GameObject NetworkInstantiate(GameObject original, Action<GameObject> configure)
-            => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, configure);
+        public static GameObject NetworkInstantiate(GameObject original, long ownerConnId)
+            => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, null, ownerConnId);
 
-        private static GameObject NetworkInstantiateCore(GameObject original, Vector3 position, Quaternion rotation, Action<GameObject> configure)
+        public static GameObject NetworkInstantiate(GameObject original, Action<GameObject> configure)
+            => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, configure, 0);
+
+        private static GameObject NetworkInstantiateCore(GameObject original, Vector3 position, Quaternion rotation, Action<GameObject> configure, long ownerConnId)
         {
             var server = UniNetEnvironment.Server;
             var comps = original != null ? original.GetComponents<NetworkBehaviour>() : null;
@@ -224,7 +243,7 @@ namespace UniNet.Unity
                 return null;
             }
 
-            var netId = server.RegisterDynamicObject(instComps);
+            var netId = server.RegisterDynamicObject(instComps, ownerConnId);
             for (byte i = 0; i < instComps.Length; i++)
             {
                 instComps[i].AssignNetId(netId);

@@ -14,6 +14,7 @@ namespace UniNet.Unity
     {
         private ulong _netId;
         private bool _netIdComputed;
+        private bool _netIdIsDynamic;   // 서버가 부여한 동적 스폰 아이디 — 낡은 판의 잔재 재등록 방지용
         private byte _subId;
         private bool _registeredServer;
         private bool _registeredClient;
@@ -116,10 +117,16 @@ namespace UniNet.Unity
         {
             _netId = netId;
             _netIdComputed = true;
+            _netIdIsDynamic = true;
         }
 
         /// <summary>Injects the sub-slot within the object at registration time.</summary>
         internal void AssignSubId(byte subId) => _subId = subId;
+
+        /// <summary>Whether this object was dynamically spawned (server-assigned netId) — leftover sweeps and
+        /// scene-registration skips key off this. Stale dynamic objects alias onto a new session's recycled
+        /// netIds, so both must ignore them.</summary>
+        internal bool IsDynamicSpawn => _netIdIsDynamic;
 
         /// <summary>Marks server registration complete (activates IsServer).</summary>
         internal void MarkServerRegistered() => _registeredServer = true;
@@ -182,14 +189,20 @@ namespace UniNet.Unity
             }
         }
 
-        /// <summary>Groups the scene's NetworkBehaviours by GameObject (GetComponents order = slot order).</summary>
+        /// <summary>Groups the scene's NetworkBehaviours by GameObject (GetComponents order = slot order).
+        /// Objects carrying a dynamic netId are leftovers of a previous server session — registering them as
+        /// scene objects would collide with the new session's dynamic id space and let stale tokens pass gates.</summary>
         private static List<NetworkBehaviour[]> CollectSceneObjects()
         {
             var result = new List<NetworkBehaviour[]>();
             var seen = new HashSet<GameObject>();
             foreach (var nb in FindObjectsByType<NetworkBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 if (seen.Add(nb.gameObject))
-                    result.Add(nb.gameObject.GetComponents<NetworkBehaviour>());
+                {
+                    var comps = nb.gameObject.GetComponents<NetworkBehaviour>();
+                    if (comps[0]._netIdIsDynamic) continue;   // 낡은 판의 동적 스폰 잔재 — 씬 물체가 아니다
+                    result.Add(comps);
+                }
             return result;
         }
 

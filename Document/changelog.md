@@ -3,6 +3,19 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-29]
+
+### Added (v0.1.1 — 명시적 소유권 스폰)
+
+- **명시적 소유자 동적 스폰** — `NetworkInstantiate(original, ownerConnId)` · `NetworkServer.RegisterDynamicObject(components, ownerConnId=0)`. 소비자(ck-darkness)의 토큰 소유권 게이트(스푸핑 방지 불변식) 지원 — 접속 순간 그 접속 소유 스폰, 재접속·재시작에도 소유권 유지
+- **`UniNetEnvironment.ServerChanged`** — 서버 인스턴스 설정 시점(접속 수락 전) 메인 스레드 이벤트. `NetSession` 같은 씬 컴포넌트의 폴링 없는 라이프사이클 후크
+
+### Fixed (v0.1.1 — 소유권·세션 잔재)
+
+- **`ReassignOwnership` 고아 정책** — 살아 있는 소유자는 그대로 유지, 고아(소유자 0·단절 접속)만 라운드로빈 재배정. 기존 전체 재배정은 재접속 시 살아 있는 토큰 소유권을 훔쳤다
+- **스테일 동적 스폰 잔재** — `NetworkBehaviour.IsDynamicSpawn` 마커로 씬 등록 스킵(낡은 판 잔재가 새 세션 동적 netId와 충돌), `ClientStop`/`ServerStop`에서 `SweepDynamicSpawns()` 파괴 (이중 조인·오소유 읽기 방지)
+- 코드는 ck-darkness 프로젝트에서 실전 검증된 임베디드 패키지 작업분을 역이식해 패키지 배포 채널로 통합
+
 ## [2026-09-28]
 
 ### Changed (UPM Git URL 배포 준비 — ADR-0021)
