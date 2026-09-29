@@ -18,7 +18,7 @@
 - **`.github/workflows/upm.yml`** — CI( push/PR→main 정적 검증: package.json·DLL 15종+메타·RoslynAnalyzer 라벨·UPM 표준 구조·NuGetForUnity 부재·플레이스홀더 부재) + CD(`v*` 태그 시 버전 정합 검사 통과면 GitHub Release 자동 생성 — CHANGELOG 해당 섹션이 릴리스 노트). Unity 라이선스 불필요(정적 검증만, 사용자 확정), Unity 테스트는 로컬 배치 게이트 유지
 - **배포 저장소 확정·공개** — [BIGSUNGG/UniNet](https://github.com/BIGSUNGG/UniNet) (ADR-0021 배경 갱신: 사설→공개). 저장소 주소 플레이스홀더 전부 치환 (README·Document·Documentation~)
 - **`Package/CHANGELOG.md` `## 0.1.0` 섹션** — 태그 정합 검사용 버전 섹션 추가
-- **검증**: validate-package.sh 태그 모드 PASS + 음성(불일치 태그 감지) · CI/CD v0.1.0 실행·Release 생성 실측
+- **검증**: validate-package.sh 태그 모드 PASS + 음성(불일치 태그 감지) · CI/CD v0.1.0 실행·Release 생성 실측 · **실제 소비자 URL(GitHub https + #v0.1.0) 신규 프로젝트 설치·컴파일 PASS** · 첫 CI 적발 이슈: .gitignore `*~` 규칙이 `Samples~`/`Documentation~` 추적 제외 → 예외 규칙 추가 수정
   - **검증**: Unity 컴파일 에러 0 · **EditMode 76/76** · **PlayMode 17/17** · 신규 프로젝트 임포트 PASS
 
 ## [2026-09-24]

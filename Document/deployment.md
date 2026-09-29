@@ -44,4 +44,4 @@ Package/tools/update-dlls.sh          # C:/Projects/DS/unity-nuget의 nupkg에�
 
 ## 잔여 리스크
 
-- GitHub https 경로의 태그 설치는 CI가 아닌 실제 소비자 프로젝트에서 1회 확인할 것 (로컬은 file://로 실측 완료).
+- 없음 (2026-09-29 해소) — GitHub https + `#v0.1.0` 태그 설치를 실제 소비자 URL로 배치 검증: 신규 프로젝트 클론·컴파일 에러 0·샘플 포함 PASS
