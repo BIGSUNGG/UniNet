@@ -486,3 +486,9 @@ Sandbox-*.log
 .idea/
 .tmp-p*/
 .gendump-fixture.cs
+
+# === UPM 패키지 ~폴더 (Unity 비임포트 관례) — 상단 *~ 무시에서 제외 ===
+!Package/Samples~/
+!Package/Samples~/**
+!Package/Documentation~/
+!Package/Documentation~/**
