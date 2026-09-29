@@ -10,7 +10,7 @@
 - UPM 배포 준비에서 소비자가 기반 스택(DRPC·MessageProtocol·Communication)을 어떻게 받을지가 블로커였다.
 - 기존: NuGetForUnity + DS 로컬 NuGet 소스(`C:/Projects/DS/unity-nuget`) — 소비자 머신 경로에 의존해 배포 상태에서 재현 불가.
 - 후보: 사설 NuGet 피드 / netstandard2.1 DLL 패키지 동봉 / com.ds.* UPM 재포장.
-- 배포 채널: 사설 GitHub **Git URL** (`…/UniNet.git?path=/Package`) 확정.
+- 배포 채널: GitHub **Git URL** (`…/UniNet.git?path=/Package`) 확정. (2026-09-28: 저장소 공개 전환 — [BIGSUNGG/UniNet](https://github.com/BIGSUNGG/UniNet), 소비자 인증 불필요)
 
 ## 결정 (Decision)
 

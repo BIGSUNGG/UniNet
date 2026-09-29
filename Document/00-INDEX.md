@@ -75,6 +75,7 @@
 ## 최근 변경 (자세한 것은 [[changelog]])
 
 - 2026-09-28 — **UPM Git URL 배포 준비 완료** (ADR-0021 — 기반 스택 DLL·소스젠 3종 패키지 동봉, NuGetForUnity 철거·개발=배포 통일. UPM 표준 구조(Samples~/Documentation~/CHANGELOG). update-dlls.sh·verify-install.sh. EditMode 76/76·PlayMode 17/17·신규 프로젝트 임포트 PASS)
+- 2026-09-28 — **GitHub Actions CI/CD + v0.1.0 배포** (정적 검증 CI + 태그 시 Release 자동 생성 CD · 저장소 [BIGSUNGG/UniNet](https://github.com/BIGSUNGG/UniNet) 공개 확정 · 플레이스홀더 치환 · validate-package.sh)
 
 - 2026-09-24 — **FastArray 구현 — 목표 완결** (ADR-0020 기능 2/2 — T[]/List<T> 인덱스-옵 요소 델타·진단 UNINET014/015(라운드 6 권장 3건 수정 — OOM 가드·fault 백오프·INDEX 정합). EditMode 76/76·PlayMode 17/17·**2-프로세스 실기 PASS**(양 기능 동시 검증). ADR-0020 승인됨 전환·roadmap 잔여 0·upstream-blockers MP 2건 폐기)
 - 2026-09-24 — **커스텀 NetSerialize 구현** (ADR-0020 기능 1/2 — `[Replicated(Serializer)]` 정적 Write/Read+Equals 계약·Vector3 등 타입 해금·서버 틱 예외 격리(LogFault)·제너레이터 0.1.9·진단 UNINET013. EditMode 68/68·PlayMode 16/16·reviewer 4라운드 16건 이슈 수정)

@@ -1,5 +1,7 @@
 # UniNet
 
+[![upm-package](https://github.com/BIGSUNGG/UniNet/actions/workflows/upm.yml/badge.svg)](https://github.com/BIGSUNGG/UniNet/actions/workflows/upm.yml)
+
 상용 유니티 게임 서버용 네트워크 프레임워크 라이브러리. Unity `MonoBehaviour`를 기준으로
 RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Framework의 기능 수준을 목표로 한다.
 
@@ -18,11 +20,11 @@ RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Frame
 배포판은 `Package/` 폴더를 가리키는 Git URL 패키지다. 프로젝트 `Packages/manifest.json`에 한 줄 추가:
 
 ```json
-"com.ds.uninet": "https://github.com/OWNER/UniNet.git?path=/Package#v0.1.0"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.1.0"
 ```
 
-- `OWNER/UniNet` → 실제 저장소로 교체. `#v0.1.0`은 버전 태그(생략 시 기본 브랜치 HEAD 추적)
-- 사설 저장소: Unity가 git clone에 로컬 git 자격증명(credential helper / SSH)을 사용한다 — 에디터 실행 계정에서 `git clone`이 되면 UPM도 된다
+- `#v0.1.0`은 버전 태그(생략 시 기본 브랜치 HEAD 추적). 릴리스: [Releases](https://github.com/BIGSUNGG/UniNet/releases)
+- 공개 저장소 — 소비자 인증 불필요 (사설 전환 시: 에디터 실행 계정에서 `git clone`이 되면 UPM 설치도 된다)
 - 기반 스택(DRPC·MessageProtocol·Communication) DLL과 소스 생성기 3종이 패키지 안에 전부 동봉되어 있다 — 별도 NuGet 피드·설정 불필요 (ADR-0021)
 - 요구 사양: Unity `6000.0` 이상. 세부: [Document/deployment.md](Document/deployment.md)
 

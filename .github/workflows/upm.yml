@@ -1,0 +1,50 @@
+name: upm-package
+
+# CI: push/PR 시 패키지 정적 검증 · CD: v* 태그 시 검증 + GitHub Release 생성
+# 태그 자체가 UPM Git URL 배포다 — 소비자는 #vX.Y.Z로 설치 (Document/deployment.md)
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 패키지 정적 검증
+        run: |
+          ARGS=""
+          [ "${GITHUB_REF_TYPE:-}" = "tag" ] && ARGS="--tag ${GITHUB_REF_NAME}"
+          bash Package/tools/validate-package.sh $ARGS
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 릴리스 노트 추출 (CHANGELOG 해당 버전 섹션)
+        run: |
+          TAG="${GITHUB_REF_NAME}"; VER="${TAG#v}"
+          awk -v ver="$VER" '
+            $0 == "## " ver { in_sec=1; next }
+            in_sec && /^## / { in_sec=0 }
+            in_sec { print }
+          ' Package/CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "## UniNet $VER" > notes.md; }
+      - name: GitHub Release 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          --title "UniNet $GITHUB_REF_NAME" --notes-file notes.md

@@ -11,7 +11,14 @@
   - **DLL 동봉** — `Package/Runtime/Dependencies/` lib DLL 12종 (DRPC 3.5.0 · MessageProtocol 3.2.0 · Communication 2.7.0 · LiteNetLib 2.1.4 · BouncyCastle 2.7.0), `Package/Runtime/UniNet.Unity/Analyzers/` 소스젠 3종 (DRPC·MessageProtocol·UniNet.CodeGenerator 0.2.1) RoslynAnalyzer 라벨·전 플랫폼 비활성. 소비자 git URL 한 줄 설치 — 추가 설정·피드 불필요
   - **NuGetForUnity 철거** — Sandbox manifest·packages.config·Assets/NuGet.config·Assets/Packages·Packages/NuGet·`.locked` 아티팩트 제거. 개발 형태 = 배포 형태 통일 (루트 `Sandbox/NuGet.config`는 제너레이터 빌드용 유지)
   - **UPM 표준 구조** — `Samples~/Basics`(최소 동작 샘플), `Documentation~/index.md`(퀵스타트), `LICENSE.md`, `CHANGELOG.md`, package.json samples 등록. README 설치 섹션·개발 환경 갱신
-  - **도구** — `Package/tools/update-dlls.sh`(기반 스택 버전 갱신: nupkg 추출+제너레이터 빌드), `Package/tools/verify-install.sh`(신규 프로젝트 임포트·컴파일·샘플 검증). 절차 문서 [[deployment]] 신규
+  - **도구** — `Package/tools/update-dlls.sh`(기반 스택 버전 갱신: nupkg 추출+제너레이터 빌드), `Package/tools/verify-install.sh`(신규 프로젝트 임포트·컴파일·샘플 검증), `Package/tools/validate-package.sh`(패키지 정적 검증 — CI 공용). 절차 문서 [[deployment]] 신규
+
+### Added (GitHub Actions CI/CD + v0.1.0 배포)
+
+- **`.github/workflows/upm.yml`** — CI( push/PR→main 정적 검증: package.json·DLL 15종+메타·RoslynAnalyzer 라벨·UPM 표준 구조·NuGetForUnity 부재·플레이스홀더 부재) + CD(`v*` 태그 시 버전 정합 검사 통과면 GitHub Release 자동 생성 — CHANGELOG 해당 섹션이 릴리스 노트). Unity 라이선스 불필요(정적 검증만, 사용자 확정), Unity 테스트는 로컬 배치 게이트 유지
+- **배포 저장소 확정·공개** — [BIGSUNGG/UniNet](https://github.com/BIGSUNGG/UniNet) (ADR-0021 배경 갱신: 사설→공개). 저장소 주소 플레이스홀더 전부 치환 (README·Document·Documentation~)
+- **`Package/CHANGELOG.md` `## 0.1.0` 섹션** — 태그 정합 검사용 버전 섹션 추가
+- **검증**: validate-package.sh 태그 모드 PASS + 음성(불일치 태그 감지) · CI/CD v0.1.0 실행·Release 생성 실측
   - **검증**: Unity 컴파일 에러 0 · **EditMode 76/76** · **PlayMode 17/17** · 신규 프로젝트 임포트 PASS
 
 ## [2026-09-24]
