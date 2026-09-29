@@ -2,72 +2,135 @@
 
 [![upm-package](https://github.com/BIGSUNGG/UniNet/actions/workflows/upm.yml/badge.svg)](https://github.com/BIGSUNGG/UniNet/actions/workflows/upm.yml)
 
-상용 유니티 게임 서버용 네트워크 프레임워크 라이브러리. Unity `MonoBehaviour`를 기준으로
-RPC 호출과 변수 리플리케이션을 제공하고, 언리얼 Network Framework의 기능 수준을 목표로 한다.
+A server-authoritative networking framework for Unity, targeting the feature level of Unreal Engine's Network Framework. Declare RPCs and replicated state directly on `MonoBehaviour` — a Roslyn source generator wires the dispatch, serialization, and replication plumbing.
 
-> 원칙 — **"사용은 간단하게, 기능은 강력하게"**
+> Principle — **"Simple to use, powerful under the hood."**
 
-## 저장소 구조
+- **RPC** — `[ServerRpc]` / `[ClientRpc]` / `[MulticastRpc]` on `NetworkBehaviour`, object-scoped, with per-call delivery modes.
+- **State replication** — `[Replicated]` fields synchronize automatically; only changed fields (or changed collection elements) are sent.
+- **Built for Unity server builds** — one API on both sides; the server is authoritative whether you run dedicated or listen-server.
+- **Zero external setup** — transport (RUDP + DTLS), serialization, and RPC plumbing are bundled as DLLs plus three source generators inside the package. One Git URL installs everything.
 
-| 경로 | 내용 |
-| --- | --- |
-| `Package/` | UniNet UPM 패키지 (`com.ds.uninet`) — 라이브러리 본체 |
-| `Sandbox/` | Unity 6000.0.83f1(6.0 LTS) 샌드박스 프로젝트 — 스파이크·데모·테스트 (폐기 가능) |
-| `Document/` | Obsidian Vault — 정의·구조·플랜·결정 기록 (SSoT) |
+Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Communication) (transport), [DS_MessageProtocol](https://github.com/BIGSUNGG/DS_MessageProtocol) (serialization), [DS_RPC](https://github.com/BIGSUNGG/DS_RPC) (RPC plumbing).
 
-## 설치 (소비자 — Git URL)
+## Requirements
 
-배포판은 `Package/` 폴더를 가리키는 Git URL 패키지다. 프로젝트 `Packages/manifest.json`에 한 줄 추가:
+- Unity `6000.0` or newer (Unity 6 LTS). Server = Unity server build (dedicated or listen). Runtime targets `netstandard2.1`.
+- Package Manager Git URL install; the repository is public, so consumers need no authentication.
+
+## Features
+
+### RPC
+
+- Three object-scoped RPC kinds: `[ServerRpc]` (client → server), `[ClientRpc]` (server → specific clients), `[MulticastRpc]` (server → everyone; called on a client it executes locally without propagating).
+- Per-declaration delivery mode on Client/Multicast RPCs — `Delivery.ReliableOrdered` (default) or `Delivery.Unreliable` for loss-tolerant data such as movement or FX. (The bundled RUDP transport provides five delivery modes underneath.)
+- **Owner-only ServerRpc by default** — the server dispatch rejects calls from non-owners (spoofed `netId` payloads cannot invoke other objects' RPCs) with a rate-limited warning log; opt out with `[ServerRpc(RequireOwnership = false)]` for cross-client reporting.
+- **Opt-in validation hooks** — `[ServerRpc(Validate = true)]` awaits a `{Name}_Validate` (`Task<bool>`) before the implementation; returning `false` skips execution.
+- `[Message]` message parameters and fields with official polymorphism support — declare a base type, send a subclass, cast on the server.
+- Offline and host paths execute locally; malformed declarations fail at compile time with `UNINET0xx` diagnostics.
+
+### Variable replication
+
+- `[Replicated]` fields sync server → clients; each server tick diffs the snapshot and sends only the changed fields.
+- `RepNotify` — `Notify = nameof(Callback)` fires on clients with the previous value whenever the field changes over the network.
+- **Conditional replication** — `ReplicateCondition.OwnerOnly` / `SkipOwner` / `InitialOnly` restrict who receives a field (initial full state at spawn for `InitialOnly`, nothing after).
+- Late-join catch-up — connecting clients receive the full state of every scene and dynamic object automatically.
+- Host keeps the authoritative original (client-side re-application rules never fight the server copy).
+
+### Dynamic objects & ownership
+
+- `NetworkInstantiate` / `NetworkDestroy` — spawn and destroy dynamic networked objects in one call; position/rotation and full initial state propagate to every client. Optional `configure` callback seeds private `[Replicated]` fields on the clone before it propagates.
+- **Explicit-owner spawn** — `NetworkInstantiate(original, ownerConnId)` spawns an object owned by a specific connection the moment it connects.
+- Ownership reassignment keeps live owners intact and reassigns only orphans (`ReassignOwnership`) — reconnections and restarts cannot steal ownership.
+- Optional `RegisterPrefab<T>` catalog for custom visuals/pre-configured prefabs; without it, clients build objects as an empty `GameObject` + components, and the server-side component composition is restored automatically from the spawn message.
+- Ghost prevention — a registered object destroyed with a plain `Destroy` is detected and the destroy is propagated.
+- **Multiple `NetworkBehaviour`s per object** — two-level identity (`netId` + `SubId` slot); each component gets its own RPCs and replicated fields (up to 255 per object). Same-type duplicates are allowed.
+- **Network roles** — `IsServer` / `IsClient` / `IsOwner` on every behaviour model authority and ownership (UE's Authority / AutonomousProxy / SimulatedProxy as three booleans). Client and server share one API and branch on the role.
+
+### Serialization control
+
+- **Custom field serializers** — `[Replicated(Serializer = typeof(T))]` delegates a field's wire format to a static `Write`/`Read` pair (e.g. quantized positions in 6 bytes). An optional `Equals` suppresses resends when the quantized value didn't change. This also unlocks non-primitive types such as `Vector3` for replication.
+- **Collection element deltas** — `T[]` / `List<T>` fields synchronize per element: `Set` / `Insert` / `RemoveAt` / `Clear` operations only, instead of resending the whole collection (up to 65,535 elements). Elements may be primitives, `string`, `[Message]` types, or custom-serialized types.
+
+### Bandwidth control (UE NetDriver parity)
+
+- **Relevancy / visibility** — `NetworkCullDistance` per object, an `IsNetworkRelevant(connId)` override hook, and server-side `SetViewerPosition` per connection. Objects leaving relevancy stop sending deltas (the client keeps its last state); re-entering restores the baseline.
+- **Priority & starvation compensation** — `NetworkPriority` orders sends under bandwidth pressure using the UE `GetNetPriority` formula (priority × wait time), so starved objects eventually go through.
+- **Dormancy** — `NetworkDormant = true` skips delta comparison entirely for idle objects; `FlushNetworkDormancy()` releases it and flushes accumulated changes in one shot.
+- **Update frequency** — `NetworkUpdateFrequencyHz` caps how often an object's changes are sent (e.g. projectiles at 30 Hz); misses coalesce to the latest value.
+- **Budgets** — global `ReplicationBudgetPerTickBytes` plus per-type `SetReplicationChannelBudget(type, bytes)` so a flood of bullets cannot starve other object types. Oversized single deltas force through.
+
+### Prediction & timing
+
+- **`UniNetTime`** — server-authoritative monotonic clock, auto-synced to clients every second (EMA offset, anti-regression clamp). Query `UniNetTime.Now` anywhere.
+- **`NetworkTransform`** — a built-in component covering position replication, owner-side client prediction, and remote interpolation. You inject only the movement rule (`MovementRule` lambda, shared verbatim by server and prediction), submit inputs with `SubmitMove`, and gate simulation with `SimulationEnabled`.
+- **`SnapshotBuffer<T>`** — client interpolation buffer; render remote objects at `Now − InterpolationDelay` (default 0.12 s) so network jitter never reaches the screen.
+- **Lag compensation** — opt in with `NetworkRewindHistory = true`; the server records position history, and hit-scan logic queries `GetHistoryPosition(serverTime)` against the shooter's (clamped) aim time.
+- **Grid visibility** — `SetVisibilityGrid(cellSize, radius)` replaces distance checks with spatial cell membership for large worlds (RepGraph-style).
+
+### Connection lifecycle & shutdown
+
+- Server events `ClientConnected` / `ClientDisconnected` (by `connId`), fired on the main thread; disconnect fires **before** ownership reassignment so you can destroy the leaving connection's avatars precisely. Reassignment is guaranteed even if a subscriber throws.
+- Client side: `UniNetManager.ClientDisconnected` event for session loss (server shutdown, network drop) and `IsClientConnected` state query. `UniNetEnvironment.ServerChanged` fires the moment the server instance is set, before any connection is accepted.
+- Subscriber exceptions are isolated — one handler's bug never kills the others or the pump.
+- Start/stop one-liners: `UniNetManager.HostAsync / ServerAsync / ClientAsync` and `ServerStopAsync / ClientStop / HostStop` — stop is idempotent and clears the listener so the same port re-listens cleanly.
+
+### Security & transport
+
+- RUDP transport (reliable/unordered/sequenced delivery) over UDP.
+- Optional **DTLS 1.2** encryption with certificate pinning.
+- Connection key, handshake timeouts, connection caps, optional CRC32c packet integrity — all configured through `UniNetEndpointOptions`; game code never touches the underlying stack types.
+
+Everything above is implemented and verified (EditMode/PlayMode tests + two-process RUDP round-trips). The Unreal-feature mapping matrix lives in [`Document/roadmap.md`](Document/roadmap.md).
+
+## Quick Start
+
+### 1. Install
+
+Add one line to your project's `Packages/manifest.json`:
 
 ```json
 "com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.1.1"
 ```
 
-- `#v0.1.1`은 버전 태그(생략 시 기본 브랜치 HEAD 추적). 릴리스: [Releases](https://github.com/BIGSUNGG/UniNet/releases)
-- 공개 저장소 — 소비자 인증 불필요 (사설 전환 시: 에디터 실행 계정에서 `git clone`이 되면 UPM 설치도 된다)
-- 기반 스택(DRPC·MessageProtocol·Communication) DLL과 소스 생성기 3종이 패키지 안에 전부 동봉되어 있다 — 별도 NuGet 피드·설정 불필요 (ADR-0021)
-- 요구 사양: Unity `6000.0` 이상. 세부: [Document/deployment.md](Document/deployment.md)
+`#v0.1.1` pins a version tag (omit it to track the default branch). Releases: [Releases](https://github.com/BIGSUNGG/UniNet/releases) · details: [Document/deployment.md](Document/deployment.md)
 
-## 사용법 (구현됨 — P1 전체 + P2 전체 + P3 + P4 훅)
+### 2. Declare a networked object
 
-RPC 메서드는 `partial` 선언 + 본문은 `{Name}_Implementation`에, 검증 훅이 필요하면 `[ServerRpc(Validate = true)]`로 옵트인하고 `{Name}_Validate`에 작성한다 (ADR-0007 변경 이력·ADR-0008·ADR-0018).
+RPC methods are `partial` declarations — the body goes in `{Name}_Implementation`; validation hooks opt in with `[ServerRpc(Validate = true)]` and go in `{Name}_Validate`.
 
 ```csharp
+using System.Threading.Tasks;
+using UniNet.Unity;
+using UnityEngine;
+
 public sealed partial class Player : NetworkBehaviour
 {
-    [Replicated(Notify = nameof(OnHpChanged))]  // 서버 권위 변수 + RepNotify 콜백
+    [Replicated(Notify = nameof(OnHpChanged))]  // server-authoritative field + RepNotify callback
     private int _hp = 100;
 
-    // 클라에서 _hp가 네트워크로 변경될 때마다 실행 (이전값 1개 인자)
-    private void OnHpChanged(int prevHp) { /* UI 갱신 */ }
+    // Runs on clients whenever _hp changes over the network (receives the previous value)
+    private void OnHpChanged(int prevHp) { /* update UI */ }
 
-    [ServerRpc(Validate = true)]           // 클라 → 서버 (서버 권위) — 소유자 발신만 허용 (기본 강제, ADR-0016) + 검증 훅 옵트인 (ADR-0018)
+    [ServerRpc(Validate = true)]           // client → server; owner-only by default + opt-in validation
     private partial void RpcRequestHit(int damage);
 
-    private Task<bool> RpcRequestHit_Validate(int damage)   // 검증 후크 (옵트인 시에만 실행 — false면 구현 미실행)
+    private Task<bool> RpcRequestHit_Validate(int damage)   // runs before the implementation; false skips it
         => Task.FromResult(damage > 0);
 
-    private void RpcRequestHit_Implementation(int damage)    // 서버에서만 실행
+    private void RpcRequestHit_Implementation(int damage)   // runs on the server only
     {
         _hp -= damage;
         if (_hp <= 0) RpcPlayDeathFx();
     }
 
-    [ClientRpc(Delivery.Unreliable)]       // 서버 → 클라(들), 전달 모드 지정
+    [ClientRpc(Delivery.Unreliable)]       // server → client(s), delivery mode per declaration
     private partial void RpcPlayHitFx(int damage);
     private void RpcPlayHitFx_Implementation(int damage) { /* FX */ }
 
-    [MulticastRpc]                          // 서버 → 서버+전 클라 (클라 호출 시 로컬 전용)
+    [MulticastRpc]                          // server → server + all clients (client calls stay local)
     private partial void RpcPlayDeathFx();
-    private void RpcPlayDeathFx_Implementation() { /* 사망 FX */ }
-
-    [ServerRpc]                             // MP [Message] 타입 파라미터 + 다형성 공식 지원
-    private partial void RpcApplyDamage(DamageMsg damage);
-    private void RpcApplyDamage_Implementation(DamageMsg damage)
-    {
-        if (damage is CriticalHitMsg crit)  // 자식 인스턴스 → 자식 캐스팅·필드 온전
-            _hp -= (int)(damage.Amount * (crit.Multiplier - 1f));
-    }
+    private void RpcPlayDeathFx_Implementation() { /* death FX */ }
 
     private void Update()
     {
@@ -76,53 +139,75 @@ public sealed partial class Player : NetworkBehaviour
             RpcRequestHit(10);
     }
 }
-
-// 연결 시작 (보안·타임아웃·DTLS는 UniNetEndpointOptions로 지정)
-await UniNetManager.HostAsync(7777);          // 서버+클라 한 프로세스 (개발용)
-// await UniNetManager.ServerAsync(7777);     // 전용 서버
-// await UniNetManager.ClientAsync("127.0.0.1", 7777);  // 클라이언트
 ```
 
-ServerRpc는 기본으로 **오브젝트 소유자 발신만 허용**된다 (ADR-0016 — 비소유 발신은 서버 디스패치에서 거부 + 경고 로그, 로컬 권위·호스트 경로는 무영향). 전 클라가 보고하는 정상 크로스-클라 RPC는 `[ServerRpc(RequireOwnership = false)]`로 옵트아웃한다.
-
-### 동적 스폰/파괴 + 조건부 리플리케이션 (P2)
+### 3. Start the network and run
 
 ```csharp
-// 서버에서 NetworkInstantiate 한 줄 — 원본(프리팹·템플릿)을 복제·등록·전 클라 스폰 전파. 반환값이 등록된 인스턴스 (사용법: Scripts/Arena/ArenaBootstrap.cs)
-// 파일 상단에 using static UniNet.Unity.Net; 를 두면 아래처럼 한정자 없이 쓸 수 있다 (일반 Instantiate/Destroy처럼)
-var projectile = NetworkInstantiate(_projectilePrefab, pos, rot);
-UniNetManager.NetworkDestroy(projectile);   // 파괴 동기화
-// private [Replicated] 초기값(InitialOnly 기준선)은 configure 콜백으로 — 복제 직후·전파 직전 실행 (ADR-0017)
-var avatar = UniNetManager.NetworkInstantiate(_avatarPrefab, clone => clone.GetComponent<Player>().InitServerState("Alpha"));
+// Security, timeouts, and DTLS are configured via UniNetEndpointOptions.
+await UniNetManager.HostAsync(7777);                    // server + client in one process (development)
+// await UniNetManager.ServerAsync(7777);               // dedicated server
+// await UniNetManager.ClientAsync("127.0.0.1", 7777);  // client
+```
 
-// 클라 생성용 프리팹 카탈로그 (선택 — 커스텀 비주얼/사전 구성용. 미등록 시 빈 GameObject+AddComponent로 생성되며,
-// 서버의 서브 구성(NetworkTransform 등 추가 컴포넌트 포함)은 스폰 메시지의 typeKeys로 자동 복원된다)
-UniNetManager.RegisterPrefab<Projectile>(projectilePrefab);
+- **Host mode** — press Play with the host bootstrap and everything works in one editor.
+- **Two processes** — run a server build and a client build (or use Unity's Multiplayer Play Mode for one editor with virtual players). The Arena demo verifies this path (`Sandbox-2proc-*.log` round-trips); the Basics README explains the dedicated-server split.
+- Minimal runnable sample: import **UniNet ▸ Samples ▸ Basics** in the Package Manager.
+
+Full API usage walkthrough: [Package/Documentation~/index.md](Package/Documentation~/index.md)
+
+## Usage
+
+### Conditional replication
+
+```csharp
+using static UniNet.Unity.Net;   // unqualified NetworkInstantiate / NetworkDestroy
 
 public sealed partial class Projectile : NetworkBehaviour
 {
-    [Replicated] private float _x;                                              // 전 클라 항상
+    [Replicated] private float _x;                                               // everyone, always
     [Replicated(ReplicateCondition.OwnerOnly, Notify = nameof(OnDamageChanged))]
-    private int _damage;                                                        // 소유 클라만
-    [Replicated(ReplicateCondition.InitialOnly)] private int _seed;            // 스폰 시 1회만
-    [Replicated(Serializer = typeof(PositionQuantized))] private Vector3 _pos; // 커스텀 직렬화 — 양자화 등 사용자 와이어 포맷·기본형/[Message] 외 타입(Vector3 등)도 허용 (ADR-0020)
-    [Replicated] private List<int> _scores = new();                        // 배열/리스트는 요소 단위 델타 — 변경·추가·삭제된 요소만 전송 (ADR-0020 FastArray)
+    private int _damage;                                                         // owning client only
+    [Replicated(ReplicateCondition.InitialOnly)] private int _seed;             // once, at spawn
+    [Replicated(Serializer = typeof(PositionQuantized))] private Vector3 _pos;  // custom serializer (quantized); unlocks Vector3
+    [Replicated] private List<int> _scores = new();                             // element-level deltas (FastArray)
 
     private void Update()
     {
-        if (!IsServer) return;            // 서버 권위 시뮬레이션
+        if (!IsServer) return;                   // server-authoritative simulation
         _x += 8f * Time.deltaTime;
         if (_age >= _lifetime) UniNetManager.NetworkDestroy(gameObject);
     }
 }
-// 후발 접속 클라에는 기존 동적 오브젝트가 자동 합류된다 (캐치업)
 ```
 
-### 다중 NetworkBehaviour — 한 오브젝트에 여러 네트워크 컴포넌트 (2층 식별자)
+Late joiners are automatically caught up with every existing dynamic object.
+
+### Dynamic spawn / destroy
 
 ```csharp
-// 이동·체력 서브오브젝트를 한 오브젝트에 — 각자 RPC·[Replicated] 선언 가능 (ADR-0010)
-public sealed partial class MovementBrain : NetworkBehaviour { [Replicated] public int Speed; ... }
+// On the server: one call clones, registers, and propagates the spawn to all clients.
+// The return value is the registered instance (the original stays put).
+var projectile = NetworkInstantiate(_projectilePrefab, pos, rot);
+UniNetManager.NetworkDestroy(projectile);        // destroy sync
+
+// Private [Replicated] initial values (the InitialOnly baseline) go through the configure callback,
+// executed on the clone right after duplication, right before propagation:
+var avatar = UniNetManager.NetworkInstantiate(_avatarPrefab,
+    clone => clone.GetComponent<Player>().InitServerState("Alpha"));
+
+// Optional client-side prefab catalog for custom visuals. Unregistered types spawn as
+// GameObject + AddComponent, and the server's component composition is restored automatically.
+UniNetManager.RegisterPrefab<Projectile>(projectilePrefab);
+
+// Spawn for a specific connection, the moment it connects:
+var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
+```
+
+### Multiple network behaviours on one object
+
+```csharp
+public sealed partial class MovementBrain : NetworkBehaviour { [Replicated] public int Speed; /* ... */ }
 public sealed partial class HealthTank : NetworkBehaviour
 {
     [Replicated(ReplicateCondition.OwnerOnly)] public int Armor;
@@ -131,154 +216,151 @@ public sealed partial class HealthTank : NetworkBehaviour
 var template = new GameObject("robot");
 template.AddComponent<MovementBrain>();
 template.AddComponent<HealthTank>();
-var go = UniNetManager.NetworkInstantiate(template);   // 전 컴포넌트가 서브 테이블(SubId 슬롯)으로 등록된다 (템플릿 public 필드값이 기준선에 실린다)
-// 다중 컴포넌트도 동일 — 서브 구성은 스폰 메시지 typeKeys로 클라에 자동 복원 (ADR-0014)
-// RegisterPrefab은 커스텀 비주얼·사전 구성이 필요할 때만 사용
+var go = UniNetManager.NetworkInstantiate(template);   // every component registers in its own SubId slot
 ```
 
-### 리플리케이션 고급 정책 (P3 — 가시성·우선순위·휴면·주기·채널 예산)
+Do not add or remove `NetworkBehaviour`s at runtime — slot order must match on both ends (dynamic-spawn composition mismatches are rejected at spawn; scene objects rely on this contract).
+
+### Bandwidth policies
 
 ```csharp
 public sealed partial class Bullet : NetworkBehaviour
 {
     public void Init()
     {
-        // 서버 틱이 읽는 정책 — 설정만 하면 동작한다 (UE NetUpdateFrequency/NetCullDistance 상응)
-        NetworkUpdateFrequencyHz = 30f;   // P3-④ 궤적 전송을 30Hz로 제한 (미도달 변경분은 최신값으로 합쳐짐)
-        NetworkCullDistance = 24f;        // P3-① 이 반경 밖 연결에는 전송하지 않음 (접근 시 스폰 자동 전달)
+        NetworkUpdateFrequencyHz = 30f;   // cap trajectory sends at 30 Hz (misses coalesce to latest)
+        NetworkCullDistance = 24f;        // no sends to connections beyond this radius
     }
 
-    public override bool IsNetworkRelevant(long viewerConnId)      // P3-① 사용자 정의 관련성 훅 (선택)
+    public override bool IsNetworkRelevant(long viewerConnId)   // optional per-viewer hook
         => viewerConnId == _allowedConnId;
 }
 
 public sealed partial class Player : NetworkBehaviour
 {
-    private void Die()
-    {
-        NetworkDormant = true;            // P3-③ 휴면 — 델타 비교·전송 중단 (유휴 오브젝트 비용 제거)
-    }
-
+    private void Die()      => NetworkDormant = true;    // stop diffing entirely while idle/dead
     private void Respawn()
     {
         _hp = MaxHp;
-        FlushNetworkDormancy();           // P3-③ 해제 — 휴면 중 누적 변경분이 한 번에 전송된다
-        NetworkPriority = 2f;             // P3-② 대역폭 부족 시 높은 우선순위부터 전송
+        FlushNetworkDormancy();        // release dormancy; accumulated changes flush at once
+        NetworkPriority = 2f;          // higher priority wins when bandwidth is short
     }
 }
 
-// 서버(부트스트랩) — 컬 판정 기준점·대역폭 예산 제공
-server.SetViewerPosition(connId, x, y, z);                 // P3-① 뷰어 위치 (미설정 연결은 컬 무효)
-server.SetReplicationChannelBudget(typeof(Bullet), 512);   // P3-⑤ 유형별 틱 예산 — 총알 홍수가 타 유형을 굶기지 않음
-server.ReplicationBudgetPerTickBytes = 8192;               // P3-② 전역 틱 예산 (0 = 무제한 기본, 초과분은 기아 보정 후 다음 틱)
+// Server bootstrap — cull origin per connection and bandwidth budgets per type:
+server.SetViewerPosition(connId, x, y, z);
+server.SetReplicationChannelBudget(typeof(Bullet), 512);   // bullets can't starve other types
+server.ReplicationBudgetPerTickBytes = 8192;               // global per-tick budget (0 = unlimited)
 ```
 
-### NetworkTransform 컴포넌트 (P4 — 이동 예측·보간 내장)
+### NetworkTransform — built-in movement prediction & interpolation
 
 ```csharp
-// 위치 복제·소유 클라 예측·리모트 인터폴레이션을 컴포넌트 하나로 — 게임은 이동 규칙만 주입
 public sealed partial class Character : NetworkBehaviour
 {
     private NetworkTransform _nt;
 
     private void Awake()
     {
-        _nt = GetComponent<NetworkTransform>();                    // [RequireComponent]로 자동 결합
+        _nt = GetComponent<NetworkTransform>();           // add a NetworkTransform alongside this behaviour
         _nt.MovementRule = (ref float x, ref float y, ref float z,
                             float ix, float iy, float iz, float dt) =>
         {
-            x += ix * 5f * dt;                                     // 게임 이동 규칙 (서버·예측 공유)
+            x += ix * 5f * dt;                            // your movement rule — shared by server & prediction
         };
     }
 
     private void HandleInput()
     {
-        _nt.SubmitMove(inputX, inputY, 0);   // 소유 클라: 예측 즉시 반영 + 서버 전송
-        _nt.SimulationEnabled = IsAlive();   // 게이트 — 서버·예측 동시 정지/재개
+        _nt.SubmitMove(inputX, inputY, 0);                // owner client: apply immediately (predict) + send
+        _nt.SimulationEnabled = IsAlive();                // gate — pauses/resumes server & prediction together
     }
 }
-// 리모트 클라: NetworkTransform이 위치를 수신하고 InterpolationDelay(기본 0.12s) 뒤 시점으로 렌더
+// Remote clients: NetworkTransform receives positions and renders at Now − InterpolationDelay (0.12 s default).
 ```
 
-### P4 훅 — 시간 동기화·예측·래그 컴펜세이션·그리드 가시성
+### Lag compensation (rewind)
 
 ```csharp
 public sealed partial class Player : NetworkBehaviour
 {
-    private void Awake()
-    {
-        NetworkRewindHistory = true;   // P4-② 서버가 위치 히스토리를 기록 (리와인드 대상)
-    }
+    private void Awake() => NetworkRewindHistory = true;  // server records position history
 
-    // 발사 — 발신자가 조준한 서버 시각을 보내면 서버가 대상을 리와인드해 판정한다
+    // The shooter sends the server time it aimed at; the server rewinds targets for the hit test.
     private partial void RpcFire(float dirX, float dirY, double hitTime);
     private void RpcFire_Implementation(float dirX, float dirY, double hitTime)
     {
-        double t = Math.Clamp(hitTime, UniNetTime.Now - 1.0, UniNetTime.Now);   // 신뢰 경계 클램프
+        double t = Math.Clamp(hitTime, UniNetTime.Now - 1.0, UniNetTime.Now);   // trust-boundary clamp
         foreach (var target in FindTargets())
         {
-            target.GetHistoryPosition(t, out float hx, out _, out float hz);   // P4-② 과거 위치 질의
+            target.GetHistoryPosition(t, out float hx, out _, out float hz);    // query past position
             if (HitTest(dirX, dirY, hx, hz)) { target.ApplyDamage(); break; }
         }
     }
 }
 
-// 서버(부트스트랩) — 시간 동기화는 드라이버가 자동 전파 (UniNetTime.Now로 어디서든 서버 시각 조회)
-server.SetVisibilityGrid(10f, 30f);   // P4-③ 그리드 공간 분할 가시성 (선택)
-
-// 클라 — 예측·인터폴레이션
-NetworkUpdateFrequencyHz = 30f;       // (P3) 전송 주기 제어
-// 소유 오브젝트: 입력 즉시 적용(예측) + 서버 상태 수신 시 조정
-// 리모트 오브젝트: SnapshotBuffer<T>로 Now - InterpolationDelay 시점 렌더 (적용 시점 제어)
+// Server bootstrap — optional grid visibility for large worlds:
+server.SetVisibilityGrid(10f, 30f);
 ```
 
-전체 사용법: `Sandbox/Assets/Scripts/` · 검증: EditMode/PlayMode 유닛 테스트 + 2-프로세스 RUDP 왕복 (`Sandbox/Assets/Tests/`)
-
-## 수명주기 종료 (Stop API)
-
-서버·클라·호스트는 종료 시 명시적으로 정지해야 동일 포트 재리슨이 바인딩 실패 없이 성공한다:
+### Connection lifecycle events
 
 ```csharp
-await UniNetManager.ServerStopAsync();   // 리스너 정지 + 환경 정리 (동기 ServerStop / ClientStop / HostStopAsync / HostStop도 제공)
-```
-
-게임은 `OnApplicationQuit` 등 종료 경로에서 동기 버전(`ServerStop`·`ClientStop`·`HostStop`)을 호출한다. 멱등 — 리슨 중이 아니면 무작동.
-
-## 연결 수명주기 이벤트 (접속·퇴장)
-
-```csharp
-// 서버(권위) — 접속/퇴장을 게임이 처리한다 (Arena 예제 참고)
+// Server (authority) — handle joins and leaves yourself (see the Arena example):
 server.ClientConnected += connId =>
 {
-    // 환영·캐치업 이후 발화 — 여기서 즉시 아바타를 스폰할 수 있다
+    // Fires after welcome, ownership assignment, and catch-up — safe to spawn an avatar right here.
     SpawnAvatar(connId);
 };
 server.ClientDisconnected += connId =>
 {
-    // 소유권 재배정 이전 발화 — 퇴장 연결 소유 오브젝트를 소유자로 식별해 파괴 (안 하면 좀비로 잔존)
-    DestroyOwnedAvatar(connId);   // → UniNetManager.NetworkDestroy로 전 클라에 despawn 전파
+    // Fires BEFORE ownership reassignment — identify objects owned by the leaving connection:
+    DestroyOwnedAvatar(connId);   // → UniNetManager.NetworkDestroy propagates the despawn to all clients
 };
 
-// 클라이언트 — 세션 종료 인지 (서버 종료·네트워크 단절 등)
+// Client — notice session loss (server shutdown, network drop):
 UniNetManager.ClientDisconnected += () => ShowReconnectPrompt();
-bool alive = UniNetManager.IsClientConnected;   // 접속 상태 조회
+bool alive = UniNetManager.IsClientConnected;
 ```
 
-모든 이벤트는 메인 스레드에서 발화한다. 구독자 예외는 격리된다 — 한 구독자의 버그가 다른 구독자·펌프를 죽이지 않는다. 상세: [Document/features/connection-lifecycle.md](Document/features/connection-lifecycle.md)
+All events fire on the main thread. Subscriber exceptions are isolated.
 
-## 예시 게임 (Sandbox)
+### Shutdown
 
-**아레나 슈팅** — 구현된 기능 전부(P1 RPC 3종·검증 후크·오브젝트 RPC / P2 조건부 리플리케이션·RepNotify·동적 스폰/파괴 / P3 가시성·우선순위·휴면·주기·채널 예산 / P4 클라 예측 이동·히트스캔 래그컴펜세이션·TimeSync·그리드 가시성)를 활용하는 탑다운 2~4인 슈팅 데모. 에셋 없이 Unity 기본 도형만 사용하며, MPPM(Multiplayer Play Mode)으로 메인 에디터=서버 + 가상 플레이어 2=클라이언트를 한 에디터에서 실행한다.
+Stop explicitly so the same port re-listens without binding failures:
 
-- 씬: `Sandbox/Assets/Scenes/Arena.unity` · 코드: `Sandbox/Assets/Scripts/Arena/`
-- 실행·기능 매트릭스·자동 검증: [Document/examples/arena-shooter.md](Document/examples/arena-shooter.md)
+```csharp
+await UniNetManager.ServerStopAsync();   // also ServerStop / ClientStop / HostStopAsync / HostStop (sync)
+```
 
-## 개발 환경
+Idempotent — no-op when not listening. Stop also sweeps dynamically spawned objects, so a fresh session in the same process never collides with stale netIds. Call the sync versions from `OnApplicationQuit`.
 
-- 샌드박스가 패키지를 로컬 참조한다: `Sandbox/Packages/manifest.json` → `"com.ds.uninet": "file:../../Package"`
-- 기반 스택 DLL·소스 생성기는 패키지 안에 동봉된다 (`Package/Runtime/Dependencies`, `Package/Runtime/UniNet.Unity/Analyzers`) — 배포 형태 = 개발 형태 (ADR-0021, NuGetForUnity 철거)
-- 기반 스택 버전 갱신: `Package/tools/update-dlls.sh` (nupkg 추출·복사 + UniNet.CodeGenerator 빌드)
-- sln/csproj는 Unity가 asmdef 기준 자동 생성 (직접 작성하지 않는다)
-- 배치 검증: `-batchmode -quit -nographics -disable-assembly-updater`
+## Sample & example game
 
-문서: [Document/00-INDEX.md](Document/00-INDEX.md) · 환경 결정: [Document/decisions/0005-개발-환경-샌드박스-upm.md](Document/decisions/0005-개발-환경-샌드박스-upm.md)
+- **Basics** — minimal RPC + variable replication sample, installable from the Package Manager (`UniNet ▸ Samples ▸ Basics`). Source: [`Package/Samples~/Basics`](Package/Samples~/Basics).
+- **Arena shooter** — a top-down 2–4 player demo exercising nearly every implemented feature (all three RPC kinds, validation hooks, conditional replication, dynamic spawn, bandwidth policies, client prediction, hitscan lag compensation, time sync, grid visibility; custom serializers and collection deltas have their own demo, `Sandbox/Assets/Scripts/Usage/SerializationUsage.cs`). Uses only Unity primitives — no assets. Runs with Multiplayer Play Mode (main editor = server, virtual players = clients). Scene: `Sandbox/Assets/Scenes/Arena.unity` · code: `Sandbox/Assets/Scripts/Arena/` · matrix: [Document/examples/arena-shooter.md](Document/examples/arena-shooter.md)
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `Package/` | The UniNet UPM package (`com.ds.uninet`) — the library itself, with bundled dependencies, sample, and user docs |
+| `Sandbox/` | Unity 6000.0.83f1 sandbox project — spikes, demos, tests (disposable) |
+| `CodeGenerator/` | `UniNet.CodeGenerator` — the Roslyn source generator source |
+| `Document/` | Documentation vault — definitions, architecture, decisions (SSoT) |
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [Package/Documentation~/index.md](Package/Documentation~/index.md) | User manual — install & quickstart (shipped with the package) |
+| [Document/roadmap.md](Document/roadmap.md) | Unreal Network Framework parity matrix — every feature, mapped |
+| [Document/features/](Document/features/) | Per-feature documents — RPC & replication, connection lifecycle, custom serialization, collection deltas, bandwidth policies, prediction & timing hooks |
+| [Document/architecture.md](Document/architecture.md) | Architecture overview |
+| [Document/deployment.md](Document/deployment.md) | Distribution channel & release procedure |
+| [Document/decisions/](Document/decisions/) | ADRs — why the framework is shaped this way |
+| [Document/00-INDEX.md](Document/00-INDEX.md) | Documentation index |
+
+## Release
+
+A `v*` tag is the deployment: CI validates package integrity and auto-creates the GitHub Release (the `Package/CHANGELOG.md` section becomes the release note). Consumer install always pins a tag — [Releases](https://github.com/BIGSUNGG/UniNet/releases).

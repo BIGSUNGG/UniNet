@@ -5,6 +5,11 @@
 
 ## [2026-09-29]
 
+### Changed (README·Description 영어 재작성)
+
+- **README.md 전면 영어 재작성** — `Features`·`Quick Start` 필수 목차 신설 + Requirements·Usage·Sample·Repository layout·Documentation·Release 구성(DS_Communication·DS_MessageProtocol·DS_RPC README 문체 기준). 구현 기능 전수 명시 — features 6건·roadmap 구현 완료 항목(P1~P4)·v0.1.1 소유권 API(명시적 소유자 스폰·ReassignOwnership·ServerChanged)까지 대응, 임베디드 누락 0건. 배포 소비자 관점 재구성, 상대 링크 전건 유효성 검증
+- **Package/package.json 사용자 가시 텍스트 영어화** — `description`(서버 권위 프레임워크 소개+기능 요약)·`samples[].description` 재작성. displayName·버전 등 나머지 필드 무변경, 유효 JSON 유지
+
 ### Added (v0.1.1 — 명시적 소유권 스폰)
 
 - **명시적 소유자 동적 스폰** — `NetworkInstantiate(original, ownerConnId)` · `NetworkServer.RegisterDynamicObject(components, ownerConnId=0)`. 소비자(ck-darkness)의 토큰 소유권 게이트(스푸핑 방지 불변식) 지원 — 접속 순간 그 접속 소유 스폰, 재접속·재시작에도 소유권 유지
