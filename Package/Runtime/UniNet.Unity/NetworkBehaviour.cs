@@ -12,6 +12,11 @@ namespace UniNet.Unity
     /// </summary>
     public abstract partial class NetworkBehaviour : MonoBehaviour, IUniNetSpawnTransform, IUniNetReplicationPolicy
     {
+        // Stamped by SceneNetIdPostprocessor at scene save time — FNV-1a 64 hash of the object's GlobalObjectId
+        // (scene GUID + local file id). Identity survives renames, sibling reorders, added/removed objects,
+        // DontDestroyOnLoad moves and differing build versions; the hierarchy-path hash below is only a fallback
+        // for objects whose scene has never been saved with the postprocessor (See ADR-0023).
+        [SerializeField] private ulong _sceneNetId;
         private ulong _netId;
         private bool _netIdComputed;
         private bool _netIdIsDynamic;   // 서버가 부여한 동적 스폰 아이디 — 낡은 판의 잔재 재등록 방지용
@@ -19,14 +24,14 @@ namespace UniNet.Unity
         private bool _registeredServer;
         private bool _registeredClient;
 
-        /// <summary>Networked object ID — one per GameObject. Scene objects use the FNV-1a 64-bit hash of the scene name + hierarchy path (including sibling indices); dynamic spawns use a server-assigned value.</summary>
+        /// <summary>Networked object ID — one per GameObject. Scene objects prefer the edit-time-stamped serialized ID (GlobalObjectId hash — stable across structure and build differences); unsaved/never-stamped objects fall back to the FNV-1a 64-bit hierarchy-path hash; dynamic spawns use a server-assigned value (AssignNetId preempts both).</summary>
         public ulong NetId
         {
             get
             {
                 if (!_netIdComputed)
                 {
-                    _netId = Fnv1a.Hash64(BuildHierarchyPath());
+                    _netId = _sceneNetId != 0 ? _sceneNetId : Fnv1a.Hash64(BuildHierarchyPath());
                     _netIdComputed = true;
                 }
                 return _netId;

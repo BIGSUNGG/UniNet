@@ -39,6 +39,8 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 
 ### Dynamic objects & ownership
 
+- **Stable scene-object identity** — scene `NetworkBehaviour`s get their `netId` stamped into the scene asset at save time (hash of the object's `GlobalObjectId`), so both ends agree even when hierarchies differ at runtime (renames, sibling reorders, added/removed objects, `DontDestroyOnLoad`) or across different build versions. Scenes must be saved once in the editor to stamp; never-stamped objects fall back to the legacy hierarchy-path hash.
+
 - `NetworkInstantiate` / `NetworkDestroy` — spawn and destroy dynamic networked objects in one call; position/rotation and full initial state propagate to every client. Optional `configure` callback seeds private `[Replicated]` fields on the clone before it propagates.
 - **Explicit-owner spawn** — `NetworkInstantiate(original, ownerConnId)` spawns an object owned by a specific connection the moment it connects.
 - Ownership reassignment keeps live owners intact and reassigns only orphans (`ReassignOwnership`) — reconnections and restarts cannot steal ownership.

@@ -116,7 +116,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>Registers a scene object — once per object, with all components in slot order. Both sides compute the netId with the same rule (scene path hash).</summary>
+        /// <summary>Registers a scene object — once per object, with all components in slot order. Both ends read the same edit-time-stamped serialized id (GlobalObjectId hash — ADR-0023); unstamped objects fall back to the hierarchy-path hash.</summary>
         public void RegisterSceneObject(ulong netId, IReadOnlyList<object> components)
         {
             lock (_gate)

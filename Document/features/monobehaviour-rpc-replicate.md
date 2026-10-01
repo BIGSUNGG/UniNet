@@ -19,8 +19,8 @@
 - `CodeGenerator/` (UniNet.CodeGenerator) — Roslyn 4.3 소스 제너레이터. 허브·partial 구현·델타 핸들·진단 방출. **DRPC/MP 제너레이터와 체이닝하지 않고 각 런타임 공개 API로 직접 배선**
 - `Package/Runtime/UniNet.Core/Hosting/` — NetworkServer·NetworkClient·UniNetEnvironment(메인 펌프)·UniNetDispatch(전역 디스패치)·UniNetReplicationHandler·UniNetEndpointOptions·Fnv1a
 - `Package/Runtime/UniNet.Unity/` — NetworkBehaviour(netId·IsOwner)·UniNetManager(Host/Server/ClientAsync)·UniNetDriver
-- netId: 씬 경로 FNV-1a 64 해시 (양단 무합의 일치). 소유권: 라운드로빈(라이브러리 내부)
-- 관련 ADR: [[0004-계약-자동-생성]]·[[0007-사용법-우선-api-확정]](변경 이력 — partial 재구조화)·[[0008-구현-아키텍처]]
+- netId: 씬 오브젝트는 **에디트 타임 각인 직렬화 아이디**(GlobalObjectId FNV-1a 64 해시 — 이름·순서·계층 변경·빌드 버전 차이에도 불변, ADR-0023). 미각인 오브젝트는 기존 씬 경로 FNV-1a 64 해시 폴백. 동적 스폰은 서버 증번. 소유권: 라운드로빈+KEEP(라이브러리 내부)
+- 관련 ADR: [[0004-계약-자동-생성]]·[[0007-사용법-우선-api-확정]](변경 이력 — partial 재구조화)·[[0008-구현-아키텍처]]·[[0023-씬-netId-직렬화-안정-아이디]]
 
 ## 동작 상세
 
@@ -196,3 +196,4 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 2026-09-17 — 수명주기 종료 API 추가 — ServerStopAsync/ServerStop/ClientStop/HostStopAsync/HostStop (포트 잔존 바인딩 실패 근본 해소 — LifecycleStopTests 3종·동일 포트 재리슨 검증) + UniNet.CodeGenerator 0.1.1 (정지 경로 잔여 송신 예외를 경고 수준으로)
 - 2026-09-22 — 동적 스폰 API 교체 — `Spawn(instance)` 제거, `NetworkInstantiate`(복제 겸함·3종 오버로드·configure 콜백)로 통합 (ADR-0017)
 - 2026-09-22 — ServerRpc 검증 훅 옵트인화 — `_Validate` 자동 감지 제거, `[ServerRpc(Validate = true)]`로 연결 (진단 UNINET011 에러·UNINET012 경고 신설 — ADR-0018)
+- 2026-10-01 — 씬 netId 안정화 — 에디터 씬 저장 시 GlobalObjectId 해시를 직렬화 각인. 이름·순서·계층 변경·DontDestroyOnLoad·빌드 버전 차이에서도 양단 일치 (ADR-0023 — SceneNetIdTests 4종·전체 회귀)

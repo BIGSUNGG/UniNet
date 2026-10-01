@@ -61,8 +61,9 @@ namespace UniNet.Tests
             Assert.AreEqual(2, server.GetEntry(200).OwnerConnId, "둘째 오브젝트는 둘째 연결 소유");
             Assert.AreEqual(1, ch1.WelcomeConnId);
             Assert.AreEqual(2, ch2.WelcomeConnId);
-            // 2 reassignments × 2 objects × 2 connections = 8 notifications
-            Assert.AreEqual(8, ch1.OwnerUpdates.Count + ch2.OwnerUpdates.Count);
+            // KEEP policy — surviving owners are not reassigned. First batch: 2 orphans × 2 connections = 4 notifications;
+            // second batch: both owners alive → 0.
+            Assert.AreEqual(4, ch1.OwnerUpdates.Count + ch2.OwnerUpdates.Count);
         }
 
         [Test]

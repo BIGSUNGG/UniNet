@@ -63,6 +63,7 @@
 - [[0020-직렬화-배열-델타-유니넷-단독-구현]] — 직렬화 2종(커스텀 NetSerialize·FastArray)의 UniNet 단독 구현 전환 — "MP 수정 전제" 기존 판정 철회 (승인됨 — 2026-09-24 구현 완료)
 - [[0021-DLL-캡슐-UPM-전환]] — 기반 스택 DLL·소스젠 패키지 동봉(개발=배포 형태 통일, NuGetForUnity 철거) + Git URL 배포 확정
 - [[0022-사용자-가시-변경-skills-동기화-규칙]] — 사용자 가시 변경 시 `skills/uninet/SKILL.md` 같은 세션 반영 의무화 (적용 지점 AGENTS.md 한 곳)
+- [[0023-씬-netId-직렬화-안정-아이디]] — 씬 오브젝트 netId를 에디트 타임 GlobalObjectId 해시 직렬화 각인으로 교체 — 이름·순서·계층 변경·DontDestroyOnLoad·빌드 버전 차이에서 양단 일치 (경로 해시는 폴백)
 
 ### deployment — 배포
 
@@ -74,6 +75,8 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-01 — **씬 netId 직렬화 안정 아이디** (ADR-0023 — 에디터 씬 저장 시 GlobalObjectId 해시 각인·신규 에디터 어셈블리 UniNet.Unity.Editor. EditMode 80/80·PlayMode 17/17·2-프로세스 왕복 PASS — 2Proc 프로젝트의 NuGet 캐시 잔존 제너레이터 DLL 이중 로드 고장도 복구)
 
 - 2026-09-30 — **Skills 동기화 규칙 신설** (ADR-0022 — AGENTS.md 핵심 원칙 1에 사용자 가시 변경 시 `skills/uninet/SKILL.md` 반영 bullet 추가) + **에이전트용 사용자 매뉴얼 스킬 신설** (`skills/uninet/SKILL.md` — 소비자 관점 영어 매뉴얼, UNINET001~015 진단 전수표·런타임 로그 원문·고급 튜닝 수록)
 - 2026-09-28 — **UPM Git URL 배포 준비 완료** (ADR-0021 — 기반 스택 DLL·소스젠 3종 패키지 동봉, NuGetForUnity 철거·개발=배포 통일. UPM 표준 구조(Samples~/Documentation~/CHANGELOG). update-dlls.sh·verify-install.sh. EditMode 76/76·PlayMode 17/17·신규 프로젝트 임포트 PASS)

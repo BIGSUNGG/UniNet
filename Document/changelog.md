@@ -3,6 +3,22 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-10-01]
+
+### Changed (씬 netId 정체성)
+
+- **씬 오브젝트 netId 직렬화 안정 아이디로 교체** (ADR [[0023-씬-netId-직렬화-안정-아이디]]) — 에디터 씬 저장 시 NetworkBehaviour에 GameObject GlobalObjectId(씬 GUID+localId)의 FNV-1a 64 해시를 직렬화 각인. 기존 경로 해시는 미각인 오브젝트 폴백으로 강등. 이름 변경·형제 재배치·오브젝트 추가/삭제·DontDestroyOnLoad 이동·신구 빌드 버전 혼재에서도 양단 netId 일치. 와이어 포맷 불변(무합의 유지). 신규 에디터 어셈블리 `UniNet.Unity.Editor`(SceneNetIdPostprocessor) + `NetworkBehaviour._sceneNetId` 직렬화 필드
+- **소유권 라운드로빈 테스트 기대값 갱신** — `소유권_라운드로빈_정책이_연결순서대로_배정된다`가 KEEP 소유권 정책 도입 때 미갱신된 기대값(8)을 현재 계약(4 — 재배정 2건×2연결, 생존 소유자 미재배정)으로 수정. 사전 존재 실패(base선 검증 — 본 변경 무관)
+
+### Added (테스트)
+
+- `SceneNetIdTests` 4종 — 직렬화 아이디 우선·폴백 해시·동적 선점·첫-읽기 고정 계약 (EditMode 80/80·PlayMode 17/17)
+
+### 발견 (사전 존재 이슈 — 해소)
+
+- **2-프로세스 검증 프로젝트 고장 → 복구·왕복 재검증 PASS** — `Builds/2ProcServer`·`2ProcClient`의 소스젠 출력 중복(CS0101×144) 근본 원인: ADR-0021 이전 NuGetForUnity 캐시의 제너레이터 DLL 3종(UniNet.CodeGenerator 0.2.1·DRPC.CodeGenerator 3.5.0·MessageProtocol.CodeGenerator 3.2.0)이 잔존해 패키지 동봉분과 **이중 로드** → 출력 2벌 생성. 중복 analyzer 3종 삭제로 복구, 왕복 재확보 (양단 score=89 일치·클라 PASS 3종). 재발 방지: 제너레이터는 패키지 동봉분 단일 공급원만 로드
+- **소유권 라운드로빈 테스트 기대값 갱신** (위 Changed에서 처리)과 PlayMode `SubmitMove...` 파괴 타이밍 flaky — 단독/전체 재실행 통과, 재현 불규칙 (안정화 후속 과제 — ADR-0023)
+
 ## [2026-09-30]
 
 ### Changed (하네스 — Skills 동기화 규칙)

@@ -2,6 +2,10 @@
 
 상세 변경 기록: 저장소 루트 `Document/changelog.md` (Obsidian Vault).
 
+## 0.1.2
+
+- **씬 오브젝트 netId 안정화** — 씬 저장 시 `NetworkBehaviour`에 GameObject GlobalObjectId 해시를 직렬화 각인 (신규 에디터 어셈블리 `UniNet.Unity.Editor`). 이름 변경·형제 재배치·오브젝트 추가/삭제·DontDestroyOnLoad·빌드 버전 차이에서도 서버-클라 netId 일치. 미각인 오브젝트는 기존 계층 경로 해시로 동작 — 씬을 한 번 저장하면 각인된다 (ADR-0023)
+
 ## 0.1.1
 
 - `NetworkInstantiate(original, ownerConnId)` — 명시적 소유자 동적 스폰 (접속 순간 그 접속 소유 토큰 발급). `RegisterDynamicObject(components, ownerConnId)` 선택 인자 동반

@@ -1,0 +1,19 @@
+{
+    "name": "UniNet.Unity.Editor",
+    "rootNamespace": "UniNet.Unity.Editor",
+    "references": [
+        "UniNet.Core",
+        "UniNet.Unity"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

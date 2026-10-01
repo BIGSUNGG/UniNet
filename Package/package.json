@@ -1,7 +1,7 @@
 {
   "name": "com.ds.uninet",
   "displayName": "UniNet",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "unity": "6000.0",
   "description": "Server-authoritative networking framework for Unity — MonoBehaviour RPC, automatic variable replication, and Unreal-Engine-grade features: relevancy, priority, dormancy, prediction and lag-compensation hooks.",
   "author": {

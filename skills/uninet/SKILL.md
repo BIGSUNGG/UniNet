@@ -32,7 +32,7 @@ Add one line to your project's `Packages/manifest.json`:
 | Concept | Meaning |
 | --- | --- |
 | `NetworkBehaviour` | Base class for networked components. Declare `partial` — the generator fills in the plumbing. |
-| `netId` + `SubId` | Two-level identity: one `netId` per GameObject (scene-path hash), one `SubId` slot per `NetworkBehaviour` component. |
+| `netId` + `SubId` | Two-level identity: one `netId` per GameObject, one `SubId` slot per `NetworkBehaviour` component. Scene objects: the id is **stamped into the scene asset at save time** (hash of the `GlobalObjectId`) — stable across renames, sibling reorders, hierarchy changes, `DontDestroyOnLoad`, and differing build versions. Never-stamped objects fall back to the legacy hierarchy-path hash. Dynamic spawns: server-assigned. |
 | `IsServer` / `IsClient` / `IsOwner` | Role booleans on every behaviour (≈ UE Authority / AutonomousProxy / SimulatedProxy). Branch simulation and input on them. |
 | Server tick | The server diffs `[Replicated]` snapshots every tick and sends only changed fields to each client. |
 | Main-thread contract | All RPC execution, replication application, and lifecycle events fire on the Unity main thread. You never touch network threads. |
@@ -208,6 +208,8 @@ All runtime log messages are emitted **in Korean with a `[UniNet]` prefix** — 
 
 | Symptom (actual log) | Cause | Fix |
 | --- | --- | --- |
+| `[UniNet] 씬 저장 전 오브젝트의 GlobalObjectId를 만들 수 없다 — 경로 해시 폴백 유지 (0)` (editor, on scene save) | The scene was never saved before (no scene GUID yet), so the stable scene id could not be stamped. | Save the scene once — the next save stamps it. Unstamped objects fall back to the path hash (legacy behavior). |
+| `[UniNet] 씬 안에서 안정 netId 중복 — 등록 시 조용히 덮어써진다…` (editor, on scene save) | Two objects in one scene resolved to the same stable id — impossible under Unity's GlobalObjectId guarantees; indicates a Unity-level anomaly. | Report it with the scene; the duplicate is logged instead of silently overwritten at registration. |
 | `[UniNet] ServerRpc 거부 — 비소유 발신: <Type>.<Method> netId=… sender=… owner=…` (rate-limited: first per sender + max 1 per 5 s globally) | A `ServerRpc` arrived from a connection that does not own the object. Security default, not a bug. | If the call is legitimately cross-client, declare it `[ServerRpc(RequireOwnership = false)]` and validate input server-side. If not, investigate the spoofing/misrouting client. |
 | `[UniNet] NetworkInstantiate 는 서버에서 NetworkBehaviour 컴포넌트가 있는 원본에만 유효하다 (호출 무시 — null 반환)` | Called on a client, offline, or on an object without `NetworkBehaviour`s. | Call it on the server (or host) with a template that has networked components. |
 | `[UniNet] NetworkDestroy 는 서버에서 NetworkBehaviour 컴포넌트가 있는 오브젝트에만 유효하다` | Same misuse for destroy. | Destroy from the server; clients receive the despawn. |
@@ -409,3 +411,5 @@ Checklist for a production dedicated server: set `ConnectionKey`, `MaxConnection
 - Ownership assignment is a round-robin minimal policy, not a game-specific allocator.
 - Off-screen (non-relevant) objects freeze at their last replicated state on the client; they do not despawn.
 - Diff-based replication is per-tick polling — no weaved/conflated per-property streams beyond the frequency cap.
+- Loading the same scene **twice additively** duplicates the stamped scene ids by definition — unsupported for scene objects; spawn such instances dynamically instead.
+- Scene-id stamping requires the scene to be saved in the editor at least once; a mismatch between a stamped and an unstamped end (e.g. one side on an old build) is not detected — keep scene assets in sync.
