@@ -353,6 +353,7 @@ Idempotent — no-op when not listening. Stop also sweeps dynamically spawned ob
 
 | Document | Contents |
 | --- | --- |
+| [skills/uninet/SKILL.md](skills/uninet/SKILL.md) | **Agent skill** — this whole manual as a `SKILL.md` for AI agents (pi / Claude Code / Codex compatible); install into your repo so your coding agent knows UniNet |
 | [Package/Documentation~/index.md](Package/Documentation~/index.md) | User manual — install & quickstart (shipped with the package) |
 | [Document/roadmap.md](Document/roadmap.md) | Unreal Network Framework parity matrix — every feature, mapped |
 | [Document/features/](Document/features/) | Per-feature documents — RPC & replication, connection lifecycle, custom serialization, collection deltas, bandwidth policies, prediction & timing hooks |

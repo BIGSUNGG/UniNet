@@ -3,6 +3,17 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-09-30]
+
+### Changed (하네스 — Skills 동기화 규칙)
+
+- **AGENTS.md 핵심 원칙 1에 Skills 갱신 bullet 추가** (ADR [[0022-사용자-가시-변경-skills-동기화-규칙]]) — 사용자 가시 변경(공개 API·동작 계약·UNINET0xx 진단·런타임 로그·설치 방법) 시 `skills/uninet/SKILL.md`를 같은 세션에서 반영하도록 의무화. 내부 리팩토링·테스트 등 스킬 무관 변경은 제외. [[harness]] 핵심 원칙에도 반영. doc-sync·reviewer·doc-guard 훅은 미변경 (사용자 결정 — AGENTS.md 한 곳만)
+
+### Added (에이전트용 사용자 매뉴얼 스킬)
+
+- **`skills/uninet/SKILL.md` 에이전트 스킬 신설** — 라이브러리 소비자(다른 프로젝트에서 UniNet을 쓰는 개발자·AI 에이전트) 관점의 영어 사용 매뉴얼. 표준 agent-skill 형식(YAML frontmatter `name: uninet` + 트리거 description)으로 pi·Claude Code·Codex 호환. 구성: Overview(정체성·설치·멘탈 모델·퀵스타트) / Core Usage(RPC 3종·Replicated/RepNotify/조건부·동적 스폰·소유권·수명주기) / Wrong Usage, Exceptions & Errors(UNINET001~015 진단 전수표 + 런타임 경고/오류 11종 + 조용히 틀어지는 오용 패턴 9종) / Advanced(대역폭 제어·커스텀 직렬화·FastArray·예측/리와인드·보안/전송 튜닝·스레딩/격리 모델) / Known Limitations. 원천: README·features 6종·제너레이터 진단 정의(UNINET001~015)·런타임 로그 원문(`[UniNet]` 접두어 한국어 메시지 그대로 수록 — grep 가능)
+- **README.md에 스킬 안내 추가** — Documentation 표에 `skills/uninet/SKILL.md` 행 신설 (소비자 저장소 설치 안내 포함)
+
 ## [2026-09-29]
 
 ### Changed (README·Description 영어 재작성)
