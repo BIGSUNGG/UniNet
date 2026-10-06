@@ -1,6 +1,33 @@
 # UniNet Changelog
 
-상세 변경 기록: 저장소 루트 `Document/changelog.md` (Obsidian Vault).
+Detailed internal history: `Document/changelog.md` in the repository root (Korean).
+
+## 0.2.0
+
+**Spawnable prefab spawning — a rework of dynamic spawns. Breaking.**
+
+### Highlights
+
+- **Mark prefabs as spawnable in the editor** — add a `NetworkSpawnable` marker to a prefab root and save once. The editor stamps a stable id (prefab GUID hash) and bakes a runtime lookup table (`Assets/Resources/UniNet/UniNetPrefabTable.asset`) — fully automatic, nothing to configure.
+- **`NetworkInstantiate` now spawns prefabs, and only prefabs** — unmarked prefabs and runtime-created `new GameObject(...)` templates are rejected with a warning. The server decides what can exist on the network, at edit time.
+- **Every client instantiates the same prefab** — the spawn message carries the prefab id; each client resolves it through its own baked table and instantiates **its own copy of that exact prefab** (renderer, model, and presets included — no more empty shells). Both ends must ship the same prefab assets.
+- **Multiple prefabs per component type** — the old one-prefab-per-type catalog limit is gone. Two prefabs with the same `NetworkBehaviour` spawn side by side.
+
+### Breaking changes & migration
+
+- `UniNetManager.RegisterPrefab<T>(...)` **removed** — delete the calls; the baked table replaces the runtime catalog.
+- Runtime template spawning (`new GameObject(...)` + `NetworkInstantiate(template)`) **removed** — mark a prefab instead (edit-time marking is the only path; a marker added at runtime has no stamped id and is rejected).
+- Client-side sub auto-restore **removed** — a client prefab whose `NetworkBehaviour` composition differs from the server's is now **rejected** ("spawn slot mismatch" error) instead of silently re-assembled. Keep prefabs identical on both ends.
+- Spawn message wire format changed (prefab id added) — update server and clients together.
+
+### Added
+
+- `NetworkInstantiate(original, position, rotation, configure)` overload.
+- Ghost catch-up guard — destroyed registered instances no longer throw during late-join catch-up.
+
+### Also included since v0.1.1 (unreleased as 0.1.2)
+
+- **Stable scene-object netIds** — scene `NetworkBehaviour`s get their `netId` stamped into the scene asset at save time (hash of the object's `GlobalObjectId`). Both ends agree even when hierarchies differ at runtime (renames, sibling reorders, added/removed objects, `DontDestroyOnLoad`) or across different build versions. Save each scene once to stamp; unstamped objects keep the legacy hierarchy-path hash behavior.
 
 ## 0.1.2
 

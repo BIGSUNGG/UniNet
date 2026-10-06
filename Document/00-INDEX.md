@@ -64,7 +64,7 @@
 - [[0021-DLL-캡슐-UPM-전환]] — 기반 스택 DLL·소스젠 패키지 동봉(개발=배포 형태 통일, NuGetForUnity 철거) + Git URL 배포 확정
 - [[0022-사용자-가시-변경-skills-동기화-규칙]] — 사용자 가시 변경 시 `skills/uninet/SKILL.md` 같은 세션 반영 의무화 (적용 지점 AGENTS.md 한 곳)
 - [[0023-씬-netId-직렬화-안정-아이디]] — 씬 오브젝트 netId를 에디트 타임 GlobalObjectId 해시 직렬화 각인으로 교체 — 이름·순서·계층 변경·DontDestroyOnLoad·빌드 버전 차이에서 양단 일치 (경로 해시는 폴백)
-
+- [[0024-Fusion식-spawnable-프리팹-스폰-시스템]] — NetworkInstantiate 전면 교체: NetworkSpawnable 마킹·프리팹 GUID 해시 각인·베이크 테이블·클라 동일 프리팹 인스턴스화 (RegisterPrefab·기본 팩토리·자동 복원 폐기)
 ### deployment — 배포
 
 - [[deployment]] — UPM Git URL 배포 절차(태그→푸시)·소비자 설치·기반 스택 갱신 스크립트·신규 프로젝트 검증
@@ -75,6 +75,8 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-06 — **Fusion식 spawnable 프리팹 스폰 시스템** (ADR-0024 — NetworkInstantiate 전면 교체·마커 컴포넌트·베이크 테이블·클라 동일 프리팹 인스턴스화. EditMode 80/80·PlayMode 17/17·2-proc PASS 3종)
 
 - 2026-10-01 — **씬 netId 직렬화 안정 아이디** (ADR-0023 — 에디터 씬 저장 시 GlobalObjectId 해시 각인·신규 에디터 어셈블리 UniNet.Unity.Editor. EditMode 80/80·PlayMode 17/17·2-프로세스 왕복 PASS — 2Proc 프로젝트의 NuGet 캐시 잔존 제너레이터 DLL 이중 로드 고장도 복구)
 

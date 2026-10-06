@@ -5,16 +5,16 @@ namespace UniNet.Unity
 {
     /// <summary>
     /// Applies client-side dynamic spawns and destroys — called from the generated client hub when a Spawn/Destroy
-    /// message arrives (marshalled through the main queue). Objects are created from the primary sub type's catalog
-    /// (RegisterPrefab) or the default factory, then verified against the sub composition in the spawn message.
+    /// message arrives (marshalled through the main queue). The spawn message carries the stamped prefab id
+    /// (ADR-0024); the object is instantiated from the baked prefab table and verified against the sub composition.
     /// Public only so generated code (in user assemblies) can call it — never call it directly.
     /// </summary>
     public static class UniNetSpawn
     {
-        /// <summary>Applies a spawn message from the server — creates the object, assigns the netId and transform, registers subs, and applies full state (main thread). Generated code only.</summary>
+        /// <summary>Applies a spawn message from the server — instantiates the prefab, assigns the netId, registers subs, and applies full state (main thread). Generated code only.</summary>
         public static void Apply(ulong netId,
             float px, float py, float pz, float qx, float qy, float qz, float qw,
-            byte subCount, ulong[] typeKeys, byte[][] states)
+            ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)
         {
             var client = UniNetEnvironment.Client;
             if (client == null) return;
@@ -43,40 +43,32 @@ namespace UniNet.Unity
                 return;
             }
 
-            // Create the object — prefer the primary sub type's catalog (prefab), else the default factory (single component)
-            var primary = UniNetSpawnRegistry.Create(typeKeys[0]) as NetworkBehaviour;
-            if (primary == null)
+            // Instantiate the SAME prefab the server spawned — resolved by the stamped id through the baked table (ADR-0024).
+            // Unknown id = this build lacks the prefab (not marked here, or version skew) — fail loudly.
+            var prefab = UniNetPrefabTable.Lookup(prefabId);
+            if (prefab == null)
             {
-                Debug.LogError($"[UniNet] 스폰 실패 — 등록되지 않은 타입 키 {typeKeys[0]} (netId={netId})");
+                Debug.LogError($"[UniNet] 스폰 실패 — 알 수 없는 프리팹 아이디 {prefabId} (netId={netId}) — 이 빌드에 해당 spawnable 프리팹이 없다 (미마킹·버전 어긋남)");
                 return;
             }
-
-            // Sub restoration — add any missing NetworkBehaviours in the spawn message's type-key order.
-            // The default factory only creates the primary sub, so multi-component objects (e.g. ArenaPlayer + NetworkTransform)
-            // are restored to the server's exact slot composition even without RegisterPrefab (See ADR-0014).
-            for (int i = 1; i < typeKeys.Length; i++)
+            var spawned = Object.Instantiate(prefab, new Vector3(px, py, pz), new Quaternion(qx, qy, qz, qw));
+            var primary = spawned.GetComponent<NetworkBehaviour>();
+            if (primary == null)
             {
-                if (HasSub(primary.gameObject, typeKeys[i])) continue;
-                var subType = UniNetSpawnRegistry.TypeOf(typeKeys[i]);
-                if (subType == null)
-                {
-                    Debug.LogError($"[UniNet] 스폰 실패 — 등록되지 않은 타입 키 {typeKeys[i]} (netId={netId}, 서브 {i})");
-                    DestroyObject(primary.gameObject);
-                    return;
-                }
-                primary.gameObject.AddComponent(subType);
+                Debug.LogError($"[UniNet] 스폰 실패 — 프리팹 루트에 NetworkBehaviour 가 없다 (netId={netId}, prefab={prefab.name})");
+                DestroyObject(spawned);   // never leave an unregistered orphan in the scene
+                return;
             }
 
             var comps = primary.gameObject.GetComponents<NetworkBehaviour>();
             if (!VerifySlots(comps, typeKeys))
             {
-                Debug.LogError($"[UniNet] 스폰 슬롯 불일치 (netId={netId}) — 자동 복원 후에도 서버 {subCount}개/클라 {comps.Length}개. 프리팹이 스폰 메시지와 다른 NetworkBehaviour 서브를 갖거나(초과·누락) 컴포넌트 순서가 어긋난 경우다 — 프리팹 구성을 서버와 동일하게 맞추세요");
+                Debug.LogError($"[UniNet] 스폰 슬롯 불일치 (netId={netId}, prefab={prefab.name}) — 이 빌드의 프리팹이 서버 구성과 다르다(초과·누락·순서 어긋남) — 양단 프리팹을 동일하게 맞추세요");
                 DestroyObject(primary.gameObject);
                 return;
             }
 
             primary.AssignNetId(netId);
-            primary.transform.SetPositionAndRotation(new Vector3(px, py, pz), new Quaternion(qx, qy, qz, qw));
             var boxed = (object[])comps;
             client.Register(netId, boxed);
             for (byte i = 0; i < comps.Length; i++)
@@ -93,15 +85,6 @@ namespace UniNet.Unity
                     handler.ApplyDelta(comps[i], ref reader);   // full state — includes InitialOnly; raises RepNotify (local initial values)
                 }
             }
-        }
-
-        /// <summary>Checks whether the object already has a sub with the given type key.</summary>
-        private static bool HasSub(GameObject go, ulong typeKey)
-        {
-            foreach (var nb in go.GetComponents<NetworkBehaviour>())
-                if (UniNetSpawnRegistry.TypeKeyOf(nb.GetType()) == typeKey)
-                    return true;
-            return false;
         }
 
         /// <summary>Applies a destroy message from the server — unregisters and destroys locally (main thread). No-op if the object is already gone. Generated code only.</summary>

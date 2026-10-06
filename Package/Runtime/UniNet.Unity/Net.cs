@@ -22,6 +22,9 @@ namespace UniNet.Unity
         public static GameObject NetworkInstantiate(GameObject original, Action<GameObject> configure)
             => UniNetManager.NetworkInstantiate(original, configure);
 
+        public static GameObject NetworkInstantiate(GameObject original, Vector3 position, Quaternion rotation, Action<GameObject> configure)
+            => UniNetManager.NetworkInstantiate(original, position, rotation, configure);
+
         /// <summary>Server-side network destroy — replicates the destroy to all clients and destroys the local object (forwards to UniNetManager).</summary>
         public static void NetworkDestroy(GameObject instance)
             => UniNetManager.NetworkDestroy(instance);

@@ -148,21 +148,27 @@ namespace Arena
                 DestroySurplus(players, -diff);
         }
 
+        private const string PlayerPrefabPath = "Assets/Scripts/Arena/ArenaPlayerPrefab.prefab";
+
+#if UNITY_EDITOR
+        private static GameObject LoadPlayerPrefab()
+            => UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
+#else
+        private static GameObject LoadPlayerPrefab() => null;   // the Arena demo is an editor sandbox — never built for players
+#endif
+
         private void SpawnPlayer()
         {
             var (x, z) = ArenaConfig.SpawnPoints[_spawnCounter % ArenaConfig.SpawnPoints.Length];
-            var template = new GameObject("ArenaPlayer");
-            template.transform.position = new Vector3(x, 0.5f, z);
-            template.AddComponent<ArenaPlayer>();
 
             string displayName = ArenaConfig.DisplayNames[_spawnCounter % ArenaConfig.DisplayNames.Length];
             int colorSeed = _spawnCounter * 173 + 57;   // unique color seed per spawn (InitialOnly — rides on the spawn baseline)
             _spawnCounter++;
 
-            // clone → configure (set non-serialized InitialOnly state) → register and broadcast — one NetworkInstantiate call
-            var go = NetworkInstantiate(template,
+            // prefab → configure (set non-serialized InitialOnly state) → register and broadcast — one NetworkInstantiate call (ADR-0024)
+            var go = NetworkInstantiate(LoadPlayerPrefab(),
+                new Vector3(x, 0.5f, z), Quaternion.identity,
                 clone => clone.GetComponent<ArenaPlayer>().InitServerState(displayName, colorSeed));
-            Destroy(template);   // clean up the template — its state was captured into the clone at configure time
             var player = go.GetComponent<ArenaPlayer>();
             Debug.Log($"[Arena] 플레이어 스폰 name={player.DisplayName} netId={player.NetId}");
         }

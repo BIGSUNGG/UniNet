@@ -105,12 +105,9 @@ namespace UniNet.Tests
 
             // 1) Dynamic spawn — NetworkInstantiate clones, registers, and broadcasts (position and initial state are
             // copied from the template by serialization → propagated in the spawn message)
-            var template = new GameObject("spawned");
-            template.AddComponent<SpawnablePlayer>();
-            template.transform.position = new Vector3(10f, 20f, 30f);
-            var go = UniNetManager.NetworkInstantiate(template);
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.SpawnablePlayerPrefab),
+                new Vector3(10f, 20f, 30f), Quaternion.identity);
             var spawned = go.GetComponent<SpawnablePlayer>();
-            UnityEngine.Object.Destroy(template);   // dispose the template — its state was copied into the clone at instantiate time
             Assert.AreNotEqual(0ul, spawned.NetId, "동적 netId 할당");
             Assert.IsTrue(spawned.IsServer, "서버 등록");
 
@@ -147,15 +144,10 @@ namespace UniNet.Tests
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
 
             // 1) Multi-component object spawn — MovementBrain + HealthTank on one GameObject (baseline 10/20 copied from the template by serialization)
-            var template = new GameObject("multi-host");
-            var tBrain = template.AddComponent<MovementBrain>();
-            var tTank = template.AddComponent<HealthTank>();
-            tBrain.Speed = 10;
-            tTank.Armor = 20;
-            var go = UniNetManager.NetworkInstantiate(template);
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.MultiTankPrefab),
+                clone => { clone.GetComponent<MovementBrain>().Speed = 10; clone.GetComponent<HealthTank>().Armor = 20; });
             var brain = go.GetComponent<MovementBrain>();
             var tank = go.GetComponent<HealthTank>();
-            UnityEngine.Object.Destroy(template);
             yield return WaitUntil(() => UniNetEnvironment.Client.Get(brain.NetId) != null, 5);
 
             var clientComps = UniNetEnvironment.Client.Get(brain.NetId);

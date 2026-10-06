@@ -136,7 +136,7 @@ using static UniNet.Unity.Net;   // optional: unqualified NetworkInstantiate / N
 // One call on the server: clones the original, registers it, and propagates the spawn
 // (netId, type keys, transform, full initial state) to all clients.
 // The RETURN VALUE is the registered instance — the original template stays put, clean it up yourself.
-var projectile = NetworkInstantiate(_projectilePrefab, pos, rot);
+var projectile = NetworkInstantiate(_projectilePrefab, pos, rot);   // prefab must carry NetworkSpawnable
 UniNetManager.NetworkDestroy(projectile);        // destroy propagates to all clients
 
 // Seed private [Replicated] initial values (the InitialOnly baseline) via the configure callback —
@@ -148,7 +148,7 @@ var avatar = UniNetManager.NetworkInstantiate(_avatarPrefab,
 var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
 ```
 
-- **Client-side visuals** — optional `UniNetManager.RegisterPrefab<T>(prefab)` maps a type to a prefab. Unregistered types spawn as an empty `GameObject` + components, and the server's component composition is restored automatically from the spawn message.
+- **Spawnable prefab gating (ADR-0024, Fusion-style)** — a prefab must carry a `NetworkSpawnable` marker on its root to be spawnable. Save the prefab once in the editor: the postprocessor stamps a GUID-hash id and bakes `Assets/Resources/UniNet/UniNetPrefabTable.asset` (auto, per project). `NetworkInstantiate` accepts only stamped prefabs — unmarked prefabs and runtime-created objects are rejected (warning + null). The spawn message carries the prefab id and every client instantiates its own copy of the same prefab; both ends must ship the prefab asset. Composition mismatches are rejected (no auto-restore). Multiple prefabs per component type are allowed.
 - **Ghost prevention** — a registered object destroyed with plain `Destroy` is detected and the destroy is propagated. Prefer `NetworkDestroy` (propagation is immediate and intentional, not detected after the fact).
 - **Multiple `NetworkBehaviour`s per object** — two-level identity gives each component its own SubId slot (up to 255 per object, same-type duplicates allowed). **Never add/remove `NetworkBehaviour`s at runtime** — slot order must match on both ends.
 - **Ownership** — `NetworkInstantiate(original, ownerConnId)` spawns pre-owned; `ReassignOwnership` keeps live owners intact and reassigns only orphans, so reconnections and restarts cannot steal ownership.
@@ -211,10 +211,10 @@ All runtime log messages are emitted **in Korean with a `[UniNet]` prefix** — 
 | `[UniNet] 씬 저장 전 오브젝트의 GlobalObjectId를 만들 수 없다 — 경로 해시 폴백 유지 (0)` (editor, on scene save) | The scene was never saved before (no scene GUID yet), so the stable scene id could not be stamped. | Save the scene once — the next save stamps it. Unstamped objects fall back to the path hash (legacy behavior). |
 | `[UniNet] 씬 안에서 안정 netId 중복 — 등록 시 조용히 덮어써진다…` (editor, on scene save) | Two objects in one scene resolved to the same stable id — impossible under Unity's GlobalObjectId guarantees; indicates a Unity-level anomaly. | Report it with the scene; the duplicate is logged instead of silently overwritten at registration. |
 | `[UniNet] ServerRpc 거부 — 비소유 발신: <Type>.<Method> netId=… sender=… owner=…` (rate-limited: first per sender + max 1 per 5 s globally) | A `ServerRpc` arrived from a connection that does not own the object. Security default, not a bug. | If the call is legitimately cross-client, declare it `[ServerRpc(RequireOwnership = false)]` and validate input server-side. If not, investigate the spoofing/misrouting client. |
-| `[UniNet] NetworkInstantiate 는 서버에서 NetworkBehaviour 컴포넌트가 있는 원본에만 유효하다 (호출 무시 — null 반환)` | Called on a client, offline, or on an object without `NetworkBehaviour`s. | Call it on the server (or host) with a template that has networked components. |
+| `[UniNet] NetworkInstantiate 는 NetworkSpawnable 이 각인된 프리팹만 스폰할 수 있다 (ADR-0024) — …` | The original is not a spawnable-marked prefab: a runtime-created template, an unmarked prefab, or a marker added at runtime (unstamped, id 0). | Mark the prefab at edit time (add `NetworkSpawnable` to the prefab root, save once) and spawn the prefab. |
+| `[UniNet] 스폰 실패 — 알 수 없는 프리팹 아이디 … (netId=…)` on the client | This build lacks the prefab the server spawned — not marked on this end or version skew. | Ship the same prefab assets on both ends; the baked table resolves ids at runtime. |
+| `[UniNet] 스폰 슬롯 불일치 (netId=…, prefab=…) — …` | The client's prefab has a different NetworkBehaviour composition (extra/missing/out-of-order) than the server's. | Make the prefab identical on both ends — mismatches are rejected, not auto-restored. |
 | `[UniNet] NetworkDestroy 는 서버에서 NetworkBehaviour 컴포넌트가 있는 오브젝트에만 유효하다` | Same misuse for destroy. | Destroy from the server; clients receive the despawn. |
-| `[UniNet] 스폰 실패 — 등록되지 않은 타입 키 … (netId=…)` on the client | The client build lacks a `NetworkBehaviour` type the server spawned (assembly not referenced, type stripped). | Ship the same assemblies on both ends; check code stripping. |
-| `[UniNet] 스폰 슬롯 불일치 (netId=…) — … 서버 N개/클라 M개 …` | Client prefab/scene object has different `NetworkBehaviour` composition or order than the server. | Make prefab composition identical on both ends; never Add/Remove networked components at runtime. |
 | `[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 스폰 거부/등록 건너뜀` | More than 255 networked components on one object. | Split the object. |
 | `RUDP 리스너 바인딩 실패` (binding failure on the next start) | Previous session was not stopped — the port is still bound. | Always `ServerStopAsync`/`HostStopAsync` (or sync variants in `OnApplicationQuit`) before starting again. Stop is idempotent. |
 | `[UniNet] 송신 실패(정지·재접속 경로의 정상 종료 노이즈): <message>` | Sends racing the stop path (`InvalidOperationException`). Already handled inside generated code as a warning, not a throw. | Benign during shutdown; if you see it outside shutdown, check for manual sends on a closed session. |
@@ -412,4 +412,5 @@ Checklist for a production dedicated server: set `ConnectionKey`, `MaxConnection
 - Off-screen (non-relevant) objects freeze at their last replicated state on the client; they do not despawn.
 - Diff-based replication is per-tick polling — no weaved/conflated per-property streams beyond the frequency cap.
 - Loading the same scene **twice additively** duplicates the stamped scene ids by definition — unsupported for scene objects; spawn such instances dynamically instead.
+- Dynamic spawns only accept `NetworkSpawnable`-marked prefabs (edit-time marking; runtime-created objects are rejected) — see Quick start.
 - Scene-id stamping requires the scene to be saved in the editor at least once; a mismatch between a stamped and an unstamped end (e.g. one side on an old build) is not detected — keep scene assets in sync.

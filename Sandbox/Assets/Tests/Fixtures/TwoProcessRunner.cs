@@ -89,12 +89,14 @@ namespace UniNet.Tests
                     Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-B netId=" + _b.NetId);
 
                     // Multi-component object — MovementBrain + HealthTank on one GameObject (see ADR-0010)
-                    var template = new GameObject("MultiTemplate");
-                    var tmb = template.AddComponent<MovementBrain>();
-                    var tht = template.AddComponent<HealthTank>();
-                    UniNetManager.RegisterPrefab<MovementBrain>(template);   // Catalog — the client rebuilds the same configuration from it
-                    tmb.Speed = 10; tht.Armor = 20;   // Spawn baseline — template values are copied through serialization
-                    _multi = UniNetManager.NetworkInstantiate(template);   // Clone-spawns the same configuration (the template is the catalog original — never destroy it)
+                    // Spawnable prefab (ADR-0024) — the client instantiates the same prefab from its baked table
+                    var multiPrefab = TestPrefabs.Load(TestPrefabs.MultiTankPrefab);
+                    _multi = UniNetManager.NetworkInstantiate(multiPrefab, clone =>
+                    {
+                        var mb0 = clone.GetComponent<MovementBrain>();
+                        var ht0 = clone.GetComponent<HealthTank>();
+                        mb0.Speed = 10; ht0.Armor = 20;   // Spawn baseline — configure runs on the clone before replication
+                    });
                     var mb = _multi.GetComponent<MovementBrain>();
                     var ht = _multi.GetComponent<HealthTank>();
                     mb.Speed = 99;    // unconditional delta
@@ -140,14 +142,14 @@ namespace UniNet.Tests
         /// <summary>Creates a fixture for dynamic-spawn verification — clones, registers, and broadcasts the template (public field initial values ride the serialized copy as the InitialOnly baseline).</summary>
         private static SpawnablePlayer CreateSpawnable(int seed, int score, int secret, Vector3 pos)
         {
-            var template = new GameObject("Dyn" + seed);
-            var s = template.AddComponent<SpawnablePlayer>();
-            template.transform.position = pos;
-            s.Score = score;
-            s.SecretHp = secret;
-            s.SpawnSeed = seed;
-            var go = UniNetManager.NetworkInstantiate(template);
-            UnityEngine.Object.Destroy(template);
+            var prefab = TestPrefabs.Load(TestPrefabs.SpawnablePlayerPrefab);
+            var go = UniNetManager.NetworkInstantiate(prefab, pos, Quaternion.identity, clone =>
+            {
+                var s = clone.GetComponent<SpawnablePlayer>();
+                s.Score = score;
+                s.SecretHp = secret;
+                s.SpawnSeed = seed;
+            });
             return go.GetComponent<SpawnablePlayer>();
         }
 
@@ -175,11 +177,8 @@ namespace UniNet.Tests
                 return;
             }
 
-            // Catalog for the client-side multi-component object — create only after the connection is confirmed, or RegisterAllToClient would register the template as a scene object
-            var template = new GameObject("MultiTemplate");
-            template.AddComponent<MovementBrain>();
-            template.AddComponent<HealthTank>();
-            UniNetManager.RegisterPrefab<MovementBrain>(template);
+            // (ADR-0024) No client-side catalog registration — the client resolves spawn prefab ids
+            // through its own baked prefab table (same Fixtures prefabs as the server).
 
             // Wait for ownership, then send a ServerRpc over the network wire — [netId][int amount]
             deadline = DateTime.UtcNow.AddSeconds(5);

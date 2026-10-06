@@ -40,11 +40,8 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var template = new GameObject("RewindTarget");
-            template.AddComponent<SpawnablePlayer>();
-            var go = UniNetManager.NetworkInstantiate(template);
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.SpawnablePlayerPrefab));
             var player = go.GetComponent<SpawnablePlayer>();
-            UnityEngine.Object.Destroy(template);
             player.NetworkRewindHistory = true;   // register as a P4 rewind target — a server-behavior flag (not serialized), so set it on the clone after spawn
 
             // P4 rewind — record samples synchronously so verification is independent of driver tick timing

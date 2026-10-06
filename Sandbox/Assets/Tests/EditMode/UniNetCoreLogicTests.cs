@@ -114,7 +114,7 @@ namespace UniNet.Tests
             public void SendWelcome(long connId) => WelcomeConnId = connId;
             public void SendOwnerUpdate(ulong netId, long ownerConnId) => OwnerUpdates.Add((netId, ownerConnId));
             public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) { }
-            public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)
+            public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)
                 => Spawns.Add(netId);
             public void SendDestroy(ulong netId) => Destroys.Add(netId);
             public void SendTimeSync(double serverTime) { }

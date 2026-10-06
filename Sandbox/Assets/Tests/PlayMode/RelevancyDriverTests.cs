@@ -22,11 +22,8 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var template = new GameObject("RelDestroyed");
-            template.AddComponent<SpawnablePlayer>();
-            var go = UniNetManager.NetworkInstantiate(template);
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.SpawnablePlayerPrefab));
             var player = go.GetComponent<SpawnablePlayer>();
-            UnityEngine.Object.Destroy(template);
             player.NetworkCullDistance = 10f;   // activates the cull path — the path where touching a destroyed transform.position was the problem (a server-side flag, so set it after spawn)
 
             var server = UniNetEnvironment.Server;

@@ -180,18 +180,16 @@ namespace UniNet.Unity
             ServerStop();
         }
 
-        /// <summary>Registers a prefab for client-side dynamic spawns — dynamic spawns of type T are created from this prefab on clients (if unregistered: an empty GameObject + AddComponent). Call it on both ends with the same code.</summary>
-        public static void RegisterPrefab<T>(GameObject prefab) where T : NetworkBehaviour
-        {
-            if (prefab == null) throw new ArgumentNullException(nameof(prefab));
-            UniNetSpawnRegistry.Override(typeof(T), () => UnityEngine.Object.Instantiate(prefab).GetComponent<T>());
-        }
-
         /// <summary>
-        /// Server-side dynamic spawn — clones the original (prefab or template), registers it, and replicates the spawn. Returns the registered instance (the original stays behind — clean it up on the caller side).
-        /// The clone is a serialization copy, so only public and [SerializeField] fields carry over — initialize private [Replicated] state in the configure callback (runs right after the clone, before the spawn is replicated).
+        /// Server-side dynamic spawn — clones a spawnable-marked prefab (NetworkSpawnable on the root, ADR-0024),
+        /// registers it, and replicates the spawn. Returns the registered instance (the prefab asset stays put).
+        /// Objects without a stamped marker — runtime-created templates, unmarked prefabs — are rejected with a warning
+        /// (edit-time marking is the only path; a marker added at runtime has no stamped id either).
+        /// The clone is a serialization copy, so only public and [SerializeField] fields carry over — initialize private
+        /// [Replicated] state in the configure callback (runs right after the clone, before the spawn is replicated).
         /// ALL NetworkBehaviours on the object are registered as slots (multi-component support — slot order = GetComponents order).
-        /// Multi-component objects need the same prefab registered on both ends via RegisterPrefab (the default factory creates single-component objects only). Server authority — valid on server/host only.
+        /// Both ends must ship the same prefab — the spawn message identifies it by the stamped prefab id and each
+        /// client instantiates its copy from the baked prefab table. Server authority — valid on server/host only.
         /// </summary>
         public static GameObject NetworkInstantiate(GameObject original)
             => NetworkInstantiateCore(original, original.transform.position, original.transform.rotation, null, 0);
@@ -199,6 +197,10 @@ namespace UniNet.Unity
         /// <summary>Clones, registers, and replicates with an explicit position and rotation. Returns the registered instance.</summary>
         public static GameObject NetworkInstantiate(GameObject original, Vector3 position, Quaternion rotation)
             => NetworkInstantiateCore(original, position, rotation, null, 0);
+
+        /// <summary>Clones, registers, and replicates with an explicit position, rotation, and configure callback. Returns the registered instance.</summary>
+        public static GameObject NetworkInstantiate(GameObject original, Vector3 position, Quaternion rotation, Action<GameObject> configure)
+            => NetworkInstantiateCore(original, position, rotation, configure, 0);
 
         /// <summary>Destroys every dynamically spawned network object — session teardown. Stale dynamic objects
         /// survive scene loads (DontDestroyOnLoad) and alias onto the next session's recycled netIds.</summary>
@@ -225,10 +227,16 @@ namespace UniNet.Unity
         private static GameObject NetworkInstantiateCore(GameObject original, Vector3 position, Quaternion rotation, Action<GameObject> configure, long ownerConnId)
         {
             var server = UniNetEnvironment.Server;
-            var comps = original != null ? original.GetComponents<NetworkBehaviour>() : null;
-            if (server == null || comps == null || comps.Length == 0)
+            var marker = original != null ? original.GetComponent<NetworkSpawnable>() : null;
+            if (server == null || marker == null || marker.PrefabId == 0)
             {
-                Debug.LogWarning("[UniNet] NetworkInstantiate 는 서버에서 NetworkBehaviour 컴포넌트가 있는 원본에만 유효하다 (호출 무시 — null 반환)");
+                Debug.LogWarning($"[UniNet] NetworkInstantiate 는 NetworkSpawnable 이 각인된 프리팹만 스폰할 수 있다 (ADR-0024) — 런타임 생성 오브젝트·미마킹 프리팹은 거부된다: {(original != null ? original.name : "null")}");
+                return null;
+            }
+            var comps = original.GetComponents<NetworkBehaviour>();
+            if (comps.Length == 0)
+            {
+                Debug.LogWarning("[UniNet] spawnable 프리팹 루트에 NetworkBehaviour 가 없다 — 스폰 거부");
                 return null;
             }
 
@@ -243,7 +251,7 @@ namespace UniNet.Unity
                 return null;
             }
 
-            var netId = server.RegisterDynamicObject(instComps, ownerConnId);
+            var netId = server.RegisterDynamicObject(instComps, ownerConnId, marker.PrefabId);
             for (byte i = 0; i < instComps.Length; i++)
             {
                 instComps[i].AssignNetId(netId);

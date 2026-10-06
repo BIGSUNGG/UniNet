@@ -118,11 +118,8 @@ namespace UniNet.Tests
         private static ArenaPlayer CreatePlayer(string name, int seed, Vector3 pos)
         {
             // Clone-spawn from a template — private [Replicated] initialization (InitServerState) rides the spawn baseline via the configure callback
-            var template = new GameObject("TestPlayer_" + name);
-            template.transform.position = pos;
-            template.AddComponent<ArenaPlayer>();
-            var go = UniNetManager.NetworkInstantiate(template, clone => clone.GetComponent<ArenaPlayer>().InitServerState(name, seed));
-            UnityEngine.Object.Destroy(template);
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.ArenaPlayerPrefab), pos, Quaternion.identity,
+                clone => clone.GetComponent<ArenaPlayer>().InitServerState(name, seed));
             return go.GetComponent<ArenaPlayer>();
         }
 

@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0000000b31b37ba048662daaff42f94c, type: 3}
+  m_Name: UniNetPrefabTable
+  m_EditorClassIdentifier: 
+  _entries:
+  - Id: 1811143917692347722
+    Prefab: {fileID: 3757463980668550254, guid: e0f7c38d2bb796b40a628e502f036f29, type: 3}
+  - Id: 8099985012311143542
+    Prefab: {fileID: 4493770269212065304, guid: 0db831da9840c194fa565ca2b7f65b52, type: 3}
+  - Id: 9152061177492051594
+    Prefab: {fileID: 1850836557420052695, guid: 701bcd053b7f42449be4b9b9c6bbe441, type: 3}
+  - Id: 16390594825614399659
+    Prefab: {fileID: 4819618846835940401, guid: 62112fba9ee79c544b8acd685da432d5, type: 3}
+  - Id: 17507008669199997140
+    Prefab: {fileID: 5898529824075740515, guid: 6a33a20d41a6a39499f500f7b64a4a39, type: 3}

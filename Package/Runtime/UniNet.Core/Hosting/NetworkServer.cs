@@ -70,6 +70,9 @@ namespace UniNet.Core.Hosting
             /// <summary>Whether the object was dynamically spawned (resent as a spawn message during late-join catch-up).</summary>
             public bool IsDynamic;
 
+            /// <summary>Spawnable prefab identity (stamped NetworkSpawnable GUID hash — ADR-0024) — carried on spawn messages so clients instantiate the same prefab.</summary>
+            public ulong PrefabId;
+
             /// <summary>Sub-object table in slot (SubId) order — holds each NetworkBehaviour's replication state.</summary>
             public SubObjectEntry[] Subs = Array.Empty<SubObjectEntry>();
 
@@ -129,11 +132,12 @@ namespace UniNet.Core.Hosting
 
         /// <summary>
         /// Registers a dynamic object and returns its server-assigned netId. Accepts all components in slot
-        /// order. The owning connection is assigned immediately: ownerConnId when given (explicit ownership —
+        /// order plus the spawnable prefab identity (stamped NetworkSpawnable GUID hash — ADR-0024).
+        /// The owning connection is assigned immediately: ownerConnId when given (explicit ownership —
         /// NetSession spawns each joiner's token for that joiner), otherwise round-robin. Afterwards call
         /// BroadcastSpawn(netId) to propagate it to all clients (main thread).
         /// </summary>
-        public ulong RegisterDynamicObject(IReadOnlyList<object> components, long ownerConnId = 0)
+        public ulong RegisterDynamicObject(IReadOnlyList<object> components, long ownerConnId = 0, ulong prefabId = 0)
         {
             lock (_gate)
             {
@@ -141,7 +145,7 @@ namespace UniNet.Core.Hosting
                 while (_objects.ContainsKey(netId)) netId++;   // skip collisions with scene hashes — keeps the registration invariant
                 _nextDynamicNetId = netId + 1;
 
-                var entry = new ServerObjectEntry(components[0]) { IsDynamic = true };
+                var entry = new ServerObjectEntry(components[0]) { IsDynamic = true, PrefabId = prefabId };
                 AttachSubs(entry, components);
                 if (ownerConnId != 0)
                     entry.OwnerConnId = ownerConnId;
@@ -800,7 +804,7 @@ namespace UniNet.Core.Hosting
                     ? TryWriteFull(entry.Subs[i].Replication, entry.Subs[i].Instance, isOwner)
                     : Array.Empty<byte>();
             }
-            channel.SendSpawn(netId, px, py, pz, qx, qy, qz, qw, (byte)entry.Subs.Length, typeKeys, states);
+            channel.SendSpawn(netId, px, py, pz, qx, qy, qz, qw, entry.PrefabId, (byte)entry.Subs.Length, typeKeys, states);
         }
 
         private static void GetSpawnTransform(ServerObjectEntry entry,

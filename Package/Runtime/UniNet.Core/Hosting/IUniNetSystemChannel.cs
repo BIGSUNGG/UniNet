@@ -16,12 +16,13 @@ public interface IUniNetSystemChannel
     void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload);
 
     /// <summary>
-    /// Sends a dynamic object spawn — the seven transform values place it initially, and the sub count
-    /// plus per-sub typeKey/state let the client create and verify every NetworkBehaviour on the object
+    /// Sends a dynamic object spawn — the seven transform values place it initially; the prefab id (ADR-0024
+    /// stamped NetworkSpawnable GUID hash) tells the client which prefab to instantiate; the sub count plus
+    /// per-sub typeKey/state verify composition and seed every NetworkBehaviour's full state
     /// (sub slots are implied by array order).
     /// </summary>
     void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw,
-        byte subCount, ulong[] typeKeys, byte[][] states);
+        ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states);
 
     /// <summary>Sends a dynamic object destruction (the whole object).</summary>
     void SendDestroy(ulong netId);

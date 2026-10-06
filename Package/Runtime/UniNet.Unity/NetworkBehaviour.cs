@@ -143,6 +143,11 @@ namespace UniNet.Unity
         void IUniNetSpawnTransform.GetSpawnTransform(
             out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw)
         {
+            if (this == null)   // destroyed ghost — Unity's null overload; the driver's sweep propagates the destroy next frame.
+            {                    // Default identity keeps catch-up from throwing on a dead instance (test teardown ordering).
+                px = py = pz = 0f; qx = qy = qz = 0f; qw = 1f;
+                return;
+            }
             var p = transform.position;
             var r = transform.rotation;
             px = p.x; py = p.y; pz = p.z;

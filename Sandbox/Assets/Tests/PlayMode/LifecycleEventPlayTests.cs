@@ -95,13 +95,10 @@ namespace UniNet.Tests
             };
 
             // Dynamically spawn an avatar owned by the host client (same pattern as ArenaRoundtripTests — private InitialOnly values ride the baseline via the configure callback)
-            var template = new GameObject("LifePlayer");
-            template.transform.position = new Vector3(0f, 0.5f, 0f);
-            template.AddComponent<ArenaPlayer>();
-            var go = UniNetManager.NetworkInstantiate(template, clone => clone.GetComponent<ArenaPlayer>().InitServerState("Gone", 7));
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.ArenaPlayerPrefab), new Vector3(0f, 0.5f, 0f), Quaternion.identity,
+                clone => clone.GetComponent<ArenaPlayer>().InitServerState("Gone", 7));
             var alpha = go.GetComponent<ArenaPlayer>();
             alpha.LocalInputEnabled = false;
-            UnityEngine.Object.Destroy(template);
             ulong netId = alpha.NetId;
 
             yield return WaitUntil(() => alpha.IsOwner, 5, "호스트 클라 소유권");

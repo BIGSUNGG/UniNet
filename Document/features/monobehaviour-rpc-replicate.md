@@ -1,12 +1,12 @@
 # MonoBehaviour RPC & 변수 Replicate
 
-- **상태**: 구현됨 (P1 전체 + P2 전체 + 다중 컴포넌트 — [[0008-구현-아키텍처]]·[[0009-동적-스폰-조건부-리플리케이션]]·[[0010-2층-식별자-다중-컴포넌트]] 참조)
+- **상태**: 구현됨 (P1 전체 + P2 전체 + 다중 컴포넌트 + spawnable 프리팹 스폰 — [[0008-구현-아키텍처]]·[[0009-동적-스폰-조건부-리플리케이션]]·[[0010-2층-식별자-다중-컴포넌트]]·[[0024-Fusion식-spawnable-프리팹-스폰-시스템]] 참조)
 - **최초 작성**: 2026-09-14
-- **마지막 갱신**: 2026-09-16
+- **마지막 갱신**: 2026-10-06
 
 ## 개요
 
-`NetworkBehaviour` 파생 타입에 `[ServerRpc]`·`[ClientRpc(Delivery)]`·`[MulticastRpc]` 속성으로 partial 선언하고 본문을 `{Name}_Implementation`에, 검증 훅이 필요하면 `[ServerRpc(Validate = true)]`로 옵트인하고 `{Name}_Validate`에 쓰면 — UniNet 소스 제너레이터가 DRPC 허브 배선과 직렬화를 생성해 서버-클라 간 오브젝트 단위 RPC가 동작한다 (ADR-0018 — 자동 감지 없음). `[Replicated(Notify = nameof(...))]` 필드는 서버에서 변경 시 델타가 클라에 동기화되고 RepNotify(이전값) 콜백이 호출된다. 동적 오브젝트는 `UniNetManager.NetworkInstantiate`/`NetworkDestroy`로 생애주기를 동기화하고, `[Replicated(ReplicateCondition.OwnerOnly)]` 등 조건으로 수신자를 제한할 수 있다.
+`NetworkBehaviour` 파생 타입에 `[ServerRpc]`·`[ClientRpc(Delivery)]`·`[MulticastRpc]` 속성으로 partial 선언하고 본문을 `{Name}_Implementation`에, 검증 훅이 필요하면 `[ServerRpc(Validate = true)]`로 옵트인하고 `{Name}_Validate`에 쓰면 — UniNet 소스 제너레이터가 DRPC 허브 배선과 직렬화를 생성해 서버-클라 간 오브젝트 단위 RPC가 동작한다 (ADR-0018 — 자동 감지 없음). `[Replicated(Notify = nameof(...))]` 필드는 서버에서 변경 시 델타가 클라에 동기화되고 RepNotify(이전값) 콜백이 호출된다. 동적 오브젝트는 spawnable 마킹 프리팹을 `UniNetManager.NetworkInstantiate`/`NetworkDestroy`로 생애주기를 동기화하고 (ADR-0024), `[Replicated(ReplicateCondition.OwnerOnly)]` 등 조건으로 수신자를 제한할 수 있다.
 
 ## 요구사항 / 목표
 
@@ -94,7 +94,7 @@ private void RpcFire_Implementation(float dirX, float dirY, double hitTime) { ..
 
 ## 동적 스폰/파괴 (명시적 API)
 
-서버에서 `NetworkInstantiate` 한 줄 — 원본(프리팹·템플릿)을 복제해 등록하고 전 클라에 스폰(netId·타입·변환·전체 상태)이 전파된다. **반환값이 등록된 인스턴스**다 (원본은 남으니 호출측에서 정리) (사용법: `Sandbox/Assets/Scripts/Arena/ArenaBootstrap.cs`):
+서버에서 `NetworkInstantiate` 한 줄 — **spawnable 마킹 프리팹**(NetworkSpawnable 마커를 프리팹 루트에 부착하면 에디터 저장 시 프리팹 GUID 해시 ID가 각인된다 — ADR-0024)을 복제해 등록하고 전 클라에 스폰(netId·프리팹 ID·변환·전체 상태)이 전파된다. 미마킹 프리팹·런타임 생성 오브젝트는 서버 경고 후 null이다.
 
 ```csharp
 var projectile = UniNetManager.NetworkInstantiate(_projectilePrefab, pos, rot);
@@ -106,7 +106,7 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 - **무한정자 호출** — 파일 상단에 `using static UniNet.Unity.Net;`를 두면 `NetworkInstantiate(...)`·`NetworkDestroy(...)`를 일반 Instantiate/Destroy처럼 한정자 없이 쓸 수 있다 (`Net` 정적 클래스 — UniNetManager 전달 전용. 사용례: ArenaBootstrap)
 - **복제는 직렬화 복사** — `Object.Instantiate`는 public·[SerializeField] 필드만 복사한다. private [Replicated] 초기화(InitialOnly 기준선 등)는 **configure 콜백**으로 세팅한다 — 콜백은 복제 직후·전파 직전에 클론으로 실행된다 (ADR-0017): `NetworkInstantiate(original, clone => clone.GetComponent<Player>().InitServerState("Alpha", 123))`. 델리게이트·서버 동작 플래그(MovementRule·NetworkCullDistance 등 비전파 상태)는 스폰 후 클론에 주입해도 무관하다 (기준선에 실리지 않음)
 
-- **클라 생성 우선순위**: `UniNetManager.RegisterPrefab<T>(prefab)` 타입 카탈록(한 타입=프리팹 1개, 선택) → 소스젠 기본 팩토리(빈 GameObject+AddComponent). 누락 서브는 스폰 메시지의 typeKeys로 자동 복원(ADR-0014)
+- **클라 생성 = 동일 프리팹 인스턴스화** (ADR-0024): 스폰 메시지의 프리팹 ID를 베이크 테이블(`Assets/Resources/UniNet/UniNetPrefabTable.asset` — 포스트프로세서가 마킹 프리팹에서 자동 생성)로 해석해 클라가 자기 프리팹 사본을 Instantiate한다. **양단 프리팹 에셋 존재 필수**(Fusion과 동일 전제). 클라 프리팹의 컴포넌트 구성이 서버와 다르면 자동 복원 대신 **거부**(슬롯 불일치 에러). 한 타입에 프리팹 N개 허용(구 typeKey 1:1 카탈로그·RegisterPrefab·자동 복원 폐기)
 - **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화
 - **후발 접속 캐치업** — 연결 확정 시 기존 동적 오브젝트(스폰+전체 상태)·씬 오브젝트(전체 상태) 일괄 합류
 - **호스트** — 서버 인스턴스를 클라 등록으로 재사용(이중 생성 없음). 일반 `Destroy`로 사라진 등록 오브젝트도 드라이버가 감지해 파괴 전파(고스트 방지)
@@ -137,11 +137,9 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 public sealed partial class MovementBrain : NetworkBehaviour { [Replicated] public int Speed; ... }
 public sealed partial class HealthTank : NetworkBehaviour { [Replicated(ReplicateCondition.OwnerOnly)] public int Armor; ... }
 
-// 스폰 — 템플릿을 복제·등록한다 (원본의 public 필드 값이 기준선에 실린다)
-var template = new GameObject("robot");
-template.AddComponent<MovementBrain>();
-template.AddComponent<HealthTank>();
-var go = UniNetManager.NetworkInstantiate(template);   // 서브 구성은 스폰 메시지의 typeKeys로 클라에 자동 복원된다 (ADR-0014)
+// 스폰 — spawnable 프리팹을 복제·등록한다 (프리팹의 public 필드 값이 기준선에 실린다 — NetworkSpawnable 마킹 필수, ADR-0024)
+// 프리팹의 컴포넌트 순서가 SubId 슬롯을 정의한다
+var go = UniNetManager.NetworkInstantiate(_robotPrefab);   // 서브 구성은 스폰 메시지의 typeKeys로 슬롯 대조 — 불일치는 거부된다 (ADR-0024)
 ```
 
 - **슬롯 불변식**: 슬롯 순서는 GetComponents 순서 — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다 (양단 같은 프리팩/씬이 전제). 클라는 스폰 메시지의 서브 구성과 생성 오브젝트를 슬롯·타입별 대조해 불일치 시 거부(진단)
@@ -155,7 +153,7 @@ var go = UniNetManager.NetworkInstantiate(template);   // 서브 구성은 스�
 - **연결 종료 수명주기** — 해소됨: 아래 "수명주기 종료 (Stop API)" 섹션 참조 (2026-09-17 — 명시적 Stop API 구현)
 - **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가).
 - **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 컬렉션(List<T> 등)의 직접 파라미터는 여전히 미지원 — 메시지 내부 필드로 담아 전달(MP가 처리). 32필드 상한(UNINET008) 유지.
-- **동적 스폰 제약** — 스폰 메시지의 typeKeys 순서대로 누락 서브가 클라에서 자동 복원된다(ADR-0014 — RegisterPrefab은 커스텀 비주얼·사전 구성용 선택). 타입-프리팹 카탈로그 1:1(카탈로그 키=첫 NetworkBehaviour 타입), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
+- **동적 스폰 제약** — 스폰은 `NetworkSpawnable` 마킹 프리팹만(ADR-0024 — 미마킹·런타임 생성 거부, 구성 불일치 거부), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
 - **슬롯 불변식** — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다(ADR-0010). 씬 오브젝트의 증감은 감지 창구가 없어 계약으로만 방어, 동적 스폰은 구성 대조로 거부. 오브젝트당 NetworkBehaviour 상한 **255개**(SubId byte — 초과 시 등록·스폰 거부)
 - **같은 프로세스 재시작** — 해소됨: Stop으로 정리 후 동일 포트 재리슨 검증 (`LifecycleStopTests.호스트_정지후_재시작_성공`)
 
@@ -197,3 +195,4 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 2026-09-22 — 동적 스폰 API 교체 — `Spawn(instance)` 제거, `NetworkInstantiate`(복제 겸함·3종 오버로드·configure 콜백)로 통합 (ADR-0017)
 - 2026-09-22 — ServerRpc 검증 훅 옵트인화 — `_Validate` 자동 감지 제거, `[ServerRpc(Validate = true)]`로 연결 (진단 UNINET011 에러·UNINET012 경고 신설 — ADR-0018)
 - 2026-10-01 — 씬 netId 안정화 — 에디터 씬 저장 시 GlobalObjectId 해시를 직렬화 각인. 이름·순서·계층 변경·DontDestroyOnLoad·빌드 버전 차이에서도 양단 일치 (ADR-0023 — SceneNetIdTests 4종·전체 회귀)
+- 2026-10-06 — 스폰 시스템 전면 교체 — spawnable 프리팹 마킹(NetworkSpawnable·GUID 해시 각인)·프리팹 ID 와이어·클라 동일 프리팹 인스턴스화·RegisterPrefab/기본 팩토리/자동 복원 폐기 (ADR-0024 — SpawnablePrefabTests 4종·호출처 전수 재작성·2-proc PASS)

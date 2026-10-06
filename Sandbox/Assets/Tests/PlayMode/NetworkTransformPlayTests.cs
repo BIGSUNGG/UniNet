@@ -22,11 +22,8 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var template = new GameObject("NTMove");
-            template.AddComponent<NetworkTransform>();
-            var go = UniNetManager.NetworkInstantiate(template);
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.NetworkTransformPrefab));
             var nt = go.GetComponent<NetworkTransform>();
-            UnityEngine.Object.Destroy(template);
             nt.MovementRule = (ref float x, ref float y, ref float z, float ix, float iy, float iz, float dt) =>
                 x += ix * 4f * dt;   // injected game movement rule (DIP) — a delegate (not serialized, not replicated), so inject it into the clone after spawn
 
@@ -46,11 +43,8 @@ namespace UniNet.Tests
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
-            var template = new GameObject("NTPosition");
-            template.AddComponent<NetworkTransform>();
-            var go = UniNetManager.NetworkInstantiate(template);
+            var go = UniNetManager.NetworkInstantiate(TestPrefabs.Load(TestPrefabs.NetworkTransformPrefab));
             var nt = go.GetComponent<NetworkTransform>();
-            UnityEngine.Object.Destroy(template);
 
             nt.SetNetworkPosition(new Vector3(5f, 1f, 6f));
             yield return null;   // one server tick frame — confirm the authoritative position holds

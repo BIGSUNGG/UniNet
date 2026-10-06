@@ -56,6 +56,7 @@ namespace UniNet.Tests
                 // real flow — NetworkInstantiate clones and registers the original, injecting netId and SubIds
                 var server = new NetworkServer();
                 UniNetEnvironment.SetServer(server);
+                MarkSpawnableForTest(go);   // ADR-0024 — the gate requires a stamped marker (test injection; real marking is edit-time)
                 instance = UniNetManager.NetworkInstantiate(go);
                 var h1 = instance.GetComponent<HealthTank>();
                 var h2 = instance.GetComponents<HealthTank>()[1];
@@ -178,15 +179,11 @@ namespace UniNet.Tests
             brain.Speed = 42;
             tank.Armor = 77;
 
-            // prefab template for client creation — same composition (MovementBrain+HealthTank)
-            var template = new GameObject("template");
-            template.AddComponent<MovementBrain>();
-            template.AddComponent<HealthTank>();
+            var multiPrefab = TestPrefabs.Load(TestPrefabs.MultiTankPrefab);
+            ulong prefabId = multiPrefab.GetComponent<NetworkSpawnable>().PrefabId;
             try
             {
-                UniNetManager.RegisterPrefab<MovementBrain>(template);
-
-                ulong netId = server.RegisterDynamicObject(comps);
+                ulong netId = server.RegisterDynamicObject(comps, 0, prefabId);
                 var entry = server.GetEntry(netId);
                 var typeKeys = new[] { entry.Subs[0].TypeKey, entry.Subs[1].TypeKey };
                 var states = new[]
@@ -195,9 +192,9 @@ namespace UniNet.Tests
                     UniNetTypeRegistry.Find(tank.GetType()).WriteFull(tank, true),
                 };
 
-                // client-side apply (not a host — pure client path)
+                // client-side apply (not a host — pure client path) — the prefab id drives client instantiation (ADR-0024)
                 UniNetEnvironment.SetServer(null);
-                UniNetSpawn.Apply(netId, 1f, 2f, 3f, 0f, 0f, 0f, 1f, 2, typeKeys, states);
+                UniNetSpawn.Apply(netId, 1f, 2f, 3f, 0f, 0f, 0f, 1f, prefabId, 2, typeKeys, states);
 
                 var clientComps = UniNetEnvironment.Client.Get(netId);
                 Assert.IsNotNull(clientComps, "클라 등록");
@@ -211,23 +208,18 @@ namespace UniNet.Tests
                 Assert.AreEqual(0, clientBrain.SubId, "클라 슬롯 주입");
                 Assert.AreEqual(1, clientTank.SubId, "클라 슬롯 주입");
 
-                // sub auto-restore (see ADR-0014) — even with a single-component template (slot 0 only), missing subs are added automatically in typeKeys order
-                var solo = new GameObject("solo");
-                solo.AddComponent<MovementBrain>();
-                UniNetManager.RegisterPrefab<MovementBrain>(solo);
-                UniNetSpawn.Apply(netId + 1, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 2, typeKeys, states);
-                var restored = UniNetEnvironment.Client.Get(netId + 1);
-                Assert.IsNotNull(restored, "자동 복원 — 스폰 등록");
-                Assert.AreEqual(2, restored.Length, "서버와 동일한 2슬롯 복원");
-                Assert.IsInstanceOf<MovementBrain>(restored[0], "슬롯 0 — 템플릿 제공분");
-                Assert.IsInstanceOf<HealthTank>(restored[1], "슬롯 1 — 자동 복원분");
-                Assert.AreEqual(77, ((HealthTank)restored[1]).Armor, "복원분에도 전체 상태 적용");
-                UnityEngine.Object.DestroyImmediate(solo);
+                // (ADR-0024) composition mismatch is now REJECTED, not auto-restored — the client's prefab must match the server's
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("슬롯 불일치"));
+                var serverComps3 = new NetworkBehaviour[] { new GameObject("m3a").AddComponent<MovementBrain>(), new GameObject("m3b").AddComponent<HealthTank>(), new GameObject("m3c").AddComponent<HealthTank>() };
+                ulong netId3 = server.RegisterDynamicObject(serverComps3, 0, prefabId);
+                var keys3 = new[] { server.GetEntry(netId3).Subs[0].TypeKey, server.GetEntry(netId3).Subs[1].TypeKey, server.GetEntry(netId3).Subs[2].TypeKey };
+                UniNetSpawn.Apply(netId3, 0f, 0f, 0f, 0f, 0f, 0f, 1f, prefabId, 3, keys3, states);
+                Assert.IsNull(UniNetEnvironment.Client.Get(netId3), "구성 불일치 — 스폰 거부 (자동 복원은 ADR-0024로 폐기)");
+                foreach (var c in serverComps3) if (c != null) UnityEngine.Object.DestroyImmediate(c.gameObject);
             }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(comps[0].gameObject);
-                UnityEngine.Object.DestroyImmediate(template);
             }
         }
 
@@ -241,6 +233,7 @@ namespace UniNet.Tests
             {
                 var server = new NetworkServer();
                 UniNetEnvironment.SetServer(server);
+                MarkSpawnableForTest(go);   // pass the ADR-0024 gate so the 255 limit is what rejects this
                 UnityEngine.TestTools.LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("최대 255"));
                 Assert.IsNull(UniNetManager.NetworkInstantiate(go), "상한 초과 — null 반환");
                 Assert.AreEqual(0, server.SnapshotObjects().Count, "상한 초과 — 서버 미등록 (랩어라운드 루프 도달 불가)");
@@ -255,6 +248,14 @@ namespace UniNet.Tests
                 UniNetEnvironment.SetServer(null);
                 UnityEngine.Object.DestroyImmediate(go);
             }
+        }
+
+        /// <summary>Marks a runtime object as spawnable for tests (internal injection — real marking is the editor postprocessor, ADR-0024).</summary>
+        private static void MarkSpawnableForTest(GameObject go)
+        {
+            var marker = go.GetComponent<NetworkSpawnable>() ?? go.AddComponent<NetworkSpawnable>();
+            marker.Stamp(0xC0FFEE00 + (ulong)go.GetInstanceID());
+            UniNetPrefabTable.RegisterForTest(marker.PrefabId, go);
         }
 
         /// <summary>Sends a [netId][subId][int amount] payload through the real dispatch table.</summary>
@@ -276,7 +277,7 @@ namespace UniNet.Tests
             public void SendWelcome(long connId) { }
             public void SendOwnerUpdate(ulong netId, long ownerConnId) { }
             public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) { }
-            public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)
+            public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)
                 => Spawns.Add((netId, subCount, typeKeys, states));
             public void SendDestroy(ulong netId) { }
             public void SendTimeSync(double serverTime) { }

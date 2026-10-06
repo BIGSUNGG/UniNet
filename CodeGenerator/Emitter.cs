@@ -141,12 +141,13 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            FireAndForget(SendRPC(methodId, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered));");
             sb.AppendLine("        }");
             sb.AppendLine();
-            sb.AppendLine("        public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)");
+            sb.AppendLine("        public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)");
             sb.AppendLine("        {");
             sb.AppendLine($"            var w = {Writer}.Create();");
             sb.AppendLine("            w.WriteUInt64(netId);");
             sb.AppendLine("            w.WriteSingle(px); w.WriteSingle(py); w.WriteSingle(pz);");
             sb.AppendLine("            w.WriteSingle(qx); w.WriteSingle(qy); w.WriteSingle(qz); w.WriteSingle(qw);");
+            sb.AppendLine("            w.WriteUInt64(prefabId);   // spawnable prefab identity (ADR-0024) — the client instantiates this prefab");
             sb.AppendLine("            w.WriteByte(subCount);");
             sb.AppendLine("            for (int i = 0; i < subCount; i++)");
             sb.AppendLine("            {");
@@ -227,6 +228,7 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("                ulong netId = r.ReadUInt64();");
             sb.AppendLine("                float px = r.ReadSingle(); float py = r.ReadSingle(); float pz = r.ReadSingle();");
             sb.AppendLine("                float qx = r.ReadSingle(); float qy = r.ReadSingle(); float qz = r.ReadSingle(); float qw = r.ReadSingle();");
+            sb.AppendLine("                ulong prefabId = r.ReadUInt64();   // spawnable prefab identity (ADR-0024)");
             sb.AppendLine("                byte subCount = r.ReadByte();");
             sb.AppendLine("                var typeKeys = new ulong[subCount];");
             sb.AppendLine("                var states = new byte[subCount][];");
@@ -238,7 +240,7 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("                }");
             sb.AppendLine($"                {Env}.QueueOnMain(() =>");
             sb.AppendLine("                {");
-            sb.AppendLine("                    try { global::UniNet.Unity.UniNetSpawn.Apply(netId, px, py, pz, qx, qy, qz, qw, subCount, typeKeys, states); }");
+            sb.AppendLine("                    try { global::UniNet.Unity.UniNetSpawn.Apply(netId, px, py, pz, qx, qy, qz, qw, prefabId, subCount, typeKeys, states); }");
             sb.AppendLine("                    catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }   // protects the main-thread pump");
             sb.AppendLine("                });");
             sb.AppendLine("                return EmptyResponse();");
@@ -354,8 +356,7 @@ namespace UniNet.CodeGenerator
                     sb.AppendLine($"            {Dispatch}.RegisterClient({Fnv.MethodId(m.FullName + ".__Replicate")}, UniNetClientHub.__Replicate_{SafeNameOf(m)}_Requested, global::DRPC.RpcDeliveryMode.ReliableOrdered);");
                     sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetTypeRegistry.Register(typeof({TypeDisplay2(m)}), new __{SafeNameOf(m)}Replication());");
                 }
-                sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetSpawnRegistry.Register(typeof({TypeDisplay2(m)}), global::UniNet.Core.Hosting.Fnv1a.Hash64(\"{m.FullName}\"),");
-                sb.AppendLine($"                () => new global::UnityEngine.GameObject(\"{m.Name}\").AddComponent<{TypeDisplay2(m)}>());");
+                sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetSpawnRegistry.Register(typeof({TypeDisplay2(m)}), global::UniNet.Core.Hosting.Fnv1a.Hash64(\"{m.FullName}\"));   // sub-slot verification key (ADR-0024 — prefab-identity spawning, no factory)");
             }
 
             sb.AppendLine("        }");

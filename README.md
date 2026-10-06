@@ -44,7 +44,7 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 - `NetworkInstantiate` / `NetworkDestroy` — spawn and destroy dynamic networked objects in one call; position/rotation and full initial state propagate to every client. Optional `configure` callback seeds private `[Replicated]` fields on the clone before it propagates.
 - **Explicit-owner spawn** — `NetworkInstantiate(original, ownerConnId)` spawns an object owned by a specific connection the moment it connects.
 - Ownership reassignment keeps live owners intact and reassigns only orphans (`ReassignOwnership`) — reconnections and restarts cannot steal ownership.
-- Optional `RegisterPrefab<T>` catalog for custom visuals/pre-configured prefabs; without it, clients build objects as an empty `GameObject` + components, and the server-side component composition is restored automatically from the spawn message.
+- **Spawnable prefab gating (Fusion-style)** — a prefab must carry a `NetworkSpawnable` marker on its root to be spawnable; the editor stamps a prefab-GUID-hash id at save time and bakes the runtime table (`Assets/Resources/UniNet/UniNetPrefabTable.asset`) automatically. `NetworkInstantiate` rejects unmarked prefabs and runtime-created objects (warning + null). The spawn message carries the prefab id and every client instantiates **its own copy of the same prefab** — both ends must ship the prefab asset; composition mismatches are rejected (not auto-restored). Multiple prefabs per component type are allowed.
 - Ghost prevention — a registered object destroyed with a plain `Destroy` is detected and the destroy is propagated.
 - **Multiple `NetworkBehaviour`s per object** — two-level identity (`netId` + `SubId` slot); each component gets its own RPCs and replicated fields (up to 255 per object). Same-type duplicates are allowed.
 - **Network roles** — `IsServer` / `IsClient` / `IsOwner` on every behaviour model authority and ownership (UE's Authority / AutonomousProxy / SimulatedProxy as three booleans). Client and server share one API and branch on the role.
@@ -92,10 +92,10 @@ Everything above is implemented and verified (EditMode/PlayMode tests + two-proc
 Add one line to your project's `Packages/manifest.json`:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.1.1"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.2.0"
 ```
 
-`#v0.1.1` pins a version tag (omit it to track the default branch). Releases: [Releases](https://github.com/BIGSUNGG/UniNet/releases) · details: [Document/deployment.md](Document/deployment.md)
+`#v0.2.0` pins a version tag (omit it to track the default branch). Releases: [Releases](https://github.com/BIGSUNGG/UniNet/releases) · details: [Document/deployment.md](Document/deployment.md)
 
 ### 2. Declare a networked object
 
@@ -190,7 +190,7 @@ Late joiners are automatically caught up with every existing dynamic object.
 ```csharp
 // On the server: one call clones, registers, and propagates the spawn to all clients.
 // The return value is the registered instance (the original stays put).
-var projectile = NetworkInstantiate(_projectilePrefab, pos, rot);
+var projectile = NetworkInstantiate(_projectilePrefab, pos, rot);   // _projectilePrefab must carry NetworkSpawnable (ADR-0024)
 UniNetManager.NetworkDestroy(projectile);        // destroy sync
 
 // Private [Replicated] initial values (the InitialOnly baseline) go through the configure callback,
@@ -198,9 +198,9 @@ UniNetManager.NetworkDestroy(projectile);        // destroy sync
 var avatar = UniNetManager.NetworkInstantiate(_avatarPrefab,
     clone => clone.GetComponent<Player>().InitServerState("Alpha"));
 
-// Optional client-side prefab catalog for custom visuals. Unregistered types spawn as
-// GameObject + AddComponent, and the server's component composition is restored automatically.
-UniNetManager.RegisterPrefab<Projectile>(projectilePrefab);
+// Spawnable marking happens at edit time: add a NetworkSpawnable marker to the prefab root
+// and save once — the editor stamps a GUID-hash id and bakes the runtime prefab table.
+// No runtime catalog registration is needed (ADR-0024).
 
 // Spawn for a specific connection, the moment it connects:
 var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
@@ -215,10 +215,9 @@ public sealed partial class HealthTank : NetworkBehaviour
     [Replicated(ReplicateCondition.OwnerOnly)] public int Armor;
 }
 
-var template = new GameObject("robot");
-template.AddComponent<MovementBrain>();
-template.AddComponent<HealthTank>();
-var go = UniNetManager.NetworkInstantiate(template);   // every component registers in its own SubId slot
+// Mark the prefab at edit time: NetworkSpawnable on the prefab root, saved once (ADR-0024).
+// The prefab carries both components — order in the prefab defines the SubId slots.
+var go = UniNetManager.NetworkInstantiate(_robotPrefab);   // every component registers in its own SubId slot
 ```
 
 Do not add or remove `NetworkBehaviour`s at runtime — slot order must match on both ends (dynamic-spawn composition mismatches are rejected at spawn; scene objects rely on this contract).

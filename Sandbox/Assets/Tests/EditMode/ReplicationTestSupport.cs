@@ -46,7 +46,7 @@ namespace UniNet.Tests
         }
 
         public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw,
-            byte subCount, ulong[] typeKeys, byte[][] states) => Spawns.Add(netId);
+            ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states) => Spawns.Add(netId);
         public void SendDestroy(ulong netId) => Destroys.Add(netId);
         public void SendTimeSync(double serverTime) => TimeSyncs.Add(serverTime);
         public void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode) { }
