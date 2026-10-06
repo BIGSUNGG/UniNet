@@ -5,6 +5,10 @@
 
 ## [2026-10-06]
 
+### Deployed (v0.2.0)
+
+- **v0.2.0 태그 배포** — 커밋 1e2c697·태그 푸시 → CI 2종 success → GitHub Release [UniNet v0.2.0](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.2.0) 자동 생성. 릴리스 노트는 `Package/CHANGELOG.md` 0.2.0 섹션을 **영어·소비자 관점으로 재작성**(Highlights·Breaking changes & migration·0.1.2 미배포분 포함). README·deployment.md 설치 태그 v0.2.0 갱신
+
 ### Changed (스폰 시스템 전면 교체 — 파괴적)
 
 - **Fusion식 spawnable 프리팹 스폰 시스템** (ADR [[0024-Fusion식-spawnable-프리팹-스폰-시스템]]) — `NetworkInstantiate`가 `NetworkSpawnable` 마커(프리팹 루트 부착, 에디터 저장 시 프리팹 GUID 해시 ID 각인)가 붙은 프리팹만 스폰. 스폰 메시지에 프리팹 ID 추가, 클라는 베이크 테이블(`UniNetPrefabTable`, Resources 자동 생성)로 자기 프리팹 사본을 인스턴스화 — **양단 프리팹 에셋 존재 필수**. 한 타입 프리팹 N개 허용
