@@ -32,7 +32,7 @@ Add one line to your project's `Packages/manifest.json`:
 | Concept | Meaning |
 | --- | --- |
 | `NetworkBehaviour` | Base class for networked components. Declare `partial` — the generator fills in the plumbing. |
-| `netId` + `SubId` | Two-level identity: one `netId` per GameObject, one `SubId` slot per `NetworkBehaviour` component. Scene objects: the id is **stamped into the scene asset at save time** (hash of the `GlobalObjectId`) — stable across renames, sibling reorders, hierarchy changes, `DontDestroyOnLoad`, and differing build versions. Never-stamped objects fall back to the legacy hierarchy-path hash. Dynamic spawns: server-assigned. |
+| `netId` + `SubId` | Two-level identity: one `netId` per GameObject, one `SubId` slot per `NetworkBehaviour` component. Scene objects: the id is **stamped into the scene asset at save time** (hash of the `GlobalObjectId`) — stable across renames, sibling reorders, hierarchy changes, `DontDestroyOnLoad`, and differing build versions. Never-stamped objects fall back to the legacy hierarchy-path hash. Dynamic spawns: server-assigned. Scene objects register at connection start **and on every scene load** (v0.2.1) — scenes loaded after connecting (lobby → gameplay) register automatically; keep your scene-ready gate before the server targets the new scene's objects with RPCs. |
 | `IsServer` / `IsClient` / `IsOwner` | Role booleans on every behaviour (≈ UE Authority / AutonomousProxy / SimulatedProxy). Branch simulation and input on them. |
 | Server tick | The server diffs `[Replicated]` snapshots every tick and sends only changed fields to each client. |
 | Main-thread contract | All RPC execution, replication application, and lifecycle events fire on the Unity main thread. You never touch network threads. |
@@ -215,6 +215,7 @@ All runtime log messages are emitted **in Korean with a `[UniNet]` prefix** — 
 | `[UniNet] 스폰 실패 — 알 수 없는 프리팹 아이디 … (netId=…)` on the client | This build lacks the prefab the server spawned — not marked on this end or version skew. | Ship the same prefab assets on both ends; the baked table resolves ids at runtime. |
 | `[UniNet] 스폰 슬롯 불일치 (netId=…, prefab=…) — …` | The client's prefab has a different NetworkBehaviour composition (extra/missing/out-of-order) than the server's. | Make the prefab identical on both ends — mismatches are rejected, not auto-restored. |
 | `[UniNet] NetworkDestroy 는 서버에서 NetworkBehaviour 컴포넌트가 있는 오브젝트에만 유효하다` | Same misuse for destroy. | Destroy from the server; clients receive the despawn. |
+| `[UniNet] 씬 로드 네트 등록 — {scene}: 서버 +N, 클라 +M` (on scene load) | A scene loaded while connected registered its `NetworkBehaviour`s on both ends (v0.2.1). Fires only when the load registered at least one object. | Informational — the lobby → gameplay flow working as intended. |
 | `[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 스폰 거부/등록 건너뜀` | More than 255 networked components on one object. | Split the object. |
 | `RUDP 리스너 바인딩 실패` (binding failure on the next start) | Previous session was not stopped — the port is still bound. | Always `ServerStopAsync`/`HostStopAsync` (or sync variants in `OnApplicationQuit`) before starting again. Stop is idempotent. |
 | `[UniNet] 송신 실패(정지·재접속 경로의 정상 종료 노이즈): <message>` | Sends racing the stop path (`InvalidOperationException`). Already handled inside generated code as a warning, not a throw. | Benign during shutdown; if you see it outside shutdown, check for manual sends on a closed session. |
@@ -412,5 +413,6 @@ Checklist for a production dedicated server: set `ConnectionKey`, `MaxConnection
 - Off-screen (non-relevant) objects freeze at their last replicated state on the client; they do not despawn.
 - Diff-based replication is per-tick polling — no weaved/conflated per-property streams beyond the frequency cap.
 - Loading the same scene **twice additively** duplicates the stamped scene ids by definition — unsupported for scene objects; spawn such instances dynamically instead.
+- `SceneManager.CreateScene` (runtime empty-scene creation) does **not** fire `sceneLoaded` — the late-scene registration hook (v0.2.1) covers **loads** only. Use dynamic spawns for runtime-created scenes.
 - Dynamic spawns only accept `NetworkSpawnable`-marked prefabs (edit-time marking; runtime-created objects are rejected) — see Quick start.
 - Scene-id stamping requires the scene to be saved in the editor at least once; a mismatch between a stamped and an unstamped end (e.g. one side on an old build) is not detected — keep scene assets in sync.

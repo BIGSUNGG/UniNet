@@ -8,5 +8,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Arena.unity
     guid: c3a0ec9b8562ad745b4612820a71c391
+  - enabled: 1
+    path: Assets/Scenes/LateScene.unity
+    guid: 39124b2004fea2549a7f8d489a0304fa
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

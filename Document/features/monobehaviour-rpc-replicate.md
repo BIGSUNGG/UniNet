@@ -20,7 +20,8 @@
 - `Package/Runtime/UniNet.Core/Hosting/` — NetworkServer·NetworkClient·UniNetEnvironment(메인 펌프)·UniNetDispatch(전역 디스패치)·UniNetReplicationHandler·UniNetEndpointOptions·Fnv1a
 - `Package/Runtime/UniNet.Unity/` — NetworkBehaviour(netId·IsOwner)·UniNetManager(Host/Server/ClientAsync)·UniNetDriver
 - netId: 씬 오브젝트는 **에디트 타임 각인 직렬화 아이디**(GlobalObjectId FNV-1a 64 해시 — 이름·순서·계층 변경·빌드 버전 차이에도 불변, ADR-0023). 미각인 오브젝트는 기존 씬 경로 FNV-1a 64 해시 폴백. 동적 스폰은 서버 증번. 소유권: 라운드로빈+KEEP(라이브러리 내부)
-- 관련 ADR: [[0004-계약-자동-생성]]·[[0007-사용법-우선-api-확정]](변경 이력 — partial 재구조화)·[[0008-구현-아키텍처]]·[[0023-씬-netId-직렬화-안정-아이디]]
+- 씬 오브젝트 등록: 접속 개시(ServerAsync·ClientAsync)와 **매 씬 로드**(드라이버 `sceneLoaded` 재등록 훅 — 멱등, 이미 등록 오브젝트 스킵) — 로비 접속 후 게임플레이 씬을 늦게 로드하는 흐름에서도 씬 NetworkBehaviour 가 양단에 등록된다 (ADR-0025). 소비 계약: 클라의 씬 로드 완료 전에 그 씬 오브젝트로 RPC 를 보내면 전달이 안 된다 — 씬레디 게이트 이후에 이벤트를 발화할 것. `SceneManager.CreateScene`(런타임 빈 씬 생성)은 `sceneLoaded` 를 발화하지 않으니 런타임 생성 씬은 동적 스폰으로
+- 관련 ADR: [[0004-계약-자동-생성]]·[[0007-사용법-우선-api-확정]](변경 이력 — partial 재구조화)·[[0008-구현-아키텍처]]·[[0023-씬-netId-직렬화-안정-아이디]]·[[0025-접속-후-씬-로드-재등록]]
 
 ## 동작 상세
 

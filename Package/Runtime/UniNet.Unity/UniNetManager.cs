@@ -7,6 +7,7 @@ using DRPC.Server.Network;
 using DRPC.Shared.Network;
 using UniNet.Core.Hosting;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace UniNet.Unity
 {
@@ -308,8 +309,22 @@ namespace UniNet.Unity
         {
             if (_instance != null) return;
             UniNetTime.LocalClock = () => Time.unscaledTimeAsDouble;   // P4 — swap the core clock for Unity's unscaled clock (shared process-wide)
+            SceneManager.sceneLoaded += OnSceneLoaded;   // ADR-0025 — process-lifetime subscription; the driver survives scene reloads
             var go = new GameObject("UniNetDriver") { hideFlags = HideFlags.HideAndDontSave };
             _instance = go.AddComponent<UniNetDriver>();
+        }
+
+        /// <summary>Late-scene registration (ADR-0025) — re-runs scene-object registration on every scene load so
+        /// NetworkBehaviours in scenes loaded AFTER connecting (lobby → gameplay flow) become reachable on both ends.
+        /// Idempotent: objects already registered under the current session are skipped, so only the newly loaded
+        /// scene's objects register. Unloaded scenes leave stale dictionary entries behind — harmless (scene ids are
+        /// unique per scene asset and never targeted again; the server sweep drops destroyed instances).</summary>
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            int server = NetworkBehaviour.RegisterAllToServer();
+            int client = NetworkBehaviour.RegisterAllToClient();
+            if (server > 0 || client > 0)
+                Debug.Log($"[UniNet] 씬 로드 네트 등록 — {scene.name}: 서버 +{server}, 클라 +{client}");
         }
 
         private static double _nextTimeSync;   // P4 — periodic TimeSync broadcast (assumes a single driver instance)

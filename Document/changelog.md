@@ -3,6 +3,21 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-10-08]
+
+### Fixed (접속 후 씬 로드 재등록)
+
+- **접속 후 로드되는 씬의 오브젝트 자동 재등록** (ADR [[0025-접속-후-씬-로드-재등록]]) — 씬 오브젝트 등록이 `ServerAsync`/`ClientAsync` 시점 1회만 돼, 로비 접속 → 전투 씬 로드 흐름에서 늦게 로드된 씬의 NetworkBehaviour 가 양단 미등록(→ `IsServer=false` → RPC 송신 조용한 no-op)으로 남던 것을 수리. 드라이버에 `sceneLoaded` 재등록 훅(프로세스 수명 1회 구독), 재등록은 등록 플래그로 멱등 스킵(스냅샷 초기화 재실행 차단). 소비 사고: ck-darkness 씬 귀속 연출(구역·고치·낙석) 전체 미전달 회귀
+- **내부 API**: `RegisterAllToServer/Client` 반환값 신규(신규 등록 수) · 신규 로그 `[UniNet] 씬 로드 네트 등록 — {씬}: 서버 +N, 클라 +M`
+
+### Added (테스트)
+
+- **`SceneLoadRegistrationTests`** (PlayMode) — 호스트 접속 후 LateScene 애디티브 로드 → 양단 등록·멀티캐스트 왕복·재등록 스킵 검증. 테스트 씬 자산 `LateScene.unity` + 빌드세팅 등록은 배치 베이커 `LateSceneBaker`(`-executeMethod UniNet.Tests.LateSceneBaker.Bake`) 로 생성
+
+### 검증
+
+- PlayMode 18/18 (`Builds/tests-playmode-a25b.xml`) · EditMode 80/80 (`Builds/tests-editmode-a25.xml`) — 배치 모드
+
 ## [2026-10-06]
 
 ### Deployed (v0.2.0)

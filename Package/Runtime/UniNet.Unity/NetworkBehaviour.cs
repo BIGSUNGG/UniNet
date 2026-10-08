@@ -154,14 +154,19 @@ namespace UniNet.Unity
             qx = r.x; qy = r.y; qz = r.z; qw = r.w;
         }
 
-        /// <summary>Registers all scene objects at startup (called once by UniNetManager) — one entry per object, all of its components become slots.</summary>
-        internal static void RegisterAllToServer()
+        /// <summary>Registers all scene objects — at startup (called once by UniNetManager) and again on every scene load
+        /// (called by the driver's scene-load hook, ADR-0025) so scenes loaded AFTER connecting register too.
+        /// Idempotent per object: groups already registered under the current session are skipped (no duplicate slots,
+        /// no snapshot re-init). Returns the number of newly registered objects.</summary>
+        internal static int RegisterAllToServer()
         {
             var server = UniNetEnvironment.Server;
-            if (server == null) return;
+            if (server == null) return 0;
 
+            int registered = 0;
             foreach (var comps in CollectSceneObjects())
             {
+                if (comps[0]._registeredServer) continue;   // already registered this session — scene-load re-runs skip
                 if (comps.Length > byte.MaxValue)
                 {
                     Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 등록 건너뜀: {comps[0].gameObject.name}");
@@ -173,17 +178,22 @@ namespace UniNet.Unity
                     comps[i].AssignSubId(i);
                     comps[i]._registeredServer = true;
                 }
+                registered++;
             }
+            return registered;
         }
 
-        /// <summary>Registers all objects on the client — same composition (slot order) as the server.</summary>
-        internal static void RegisterAllToClient()
+        /// <summary>Registers all objects on the client — same composition (slot order) as the server. Startup and
+        /// scene-load re-runs (ADR-0025); idempotent per object. Returns the number of newly registered objects.</summary>
+        internal static int RegisterAllToClient()
         {
             var client = UniNetEnvironment.Client;
-            if (client == null) return;
+            if (client == null) return 0;
 
+            int registered = 0;
             foreach (var comps in CollectSceneObjects())
             {
+                if (comps[0]._registeredClient) continue;   // already registered this session — snapshot init must not re-run over live state
                 if (comps.Length > byte.MaxValue)
                 {
                     Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 등록 건너뜀: {comps[0].gameObject.name}");
@@ -196,7 +206,9 @@ namespace UniNet.Unity
                     comps[i]._registeredClient = true;
                     UniNetTypeRegistry.Find(comps[i].GetType())?.InitClientSnapshot(comps[i]);
                 }
+                registered++;
             }
+            return registered;
         }
 
         /// <summary>Groups the scene's NetworkBehaviours by GameObject (GetComponents order = slot order).

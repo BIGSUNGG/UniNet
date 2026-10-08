@@ -2,6 +2,22 @@
 
 Detailed internal history: `Document/changelog.md` in the repository root (Korean).
 
+## 0.2.1
+
+**Scene objects in scenes loaded after connecting now register automatically.**
+
+### Fixed
+
+- **Late-scene registration (ADR-0025)** — scene-object registration previously ran once at `ServerAsync`/`ClientAsync` time, so `NetworkBehaviour`s in scenes loaded **after** connecting (lobby → gameplay flow) stayed unregistered on both ends: `IsServer`/`IsClient` stayed false and their RPC sends were silent no-ops. A `sceneLoaded` hook (driver, process-lifetime) now re-runs registration on every scene load.
+- Re-registration is **idempotent** — objects already registered under the current session are skipped (no duplicate slots, no snapshot re-init over live state). `RegisterAllToServer`/`RegisterAllToClient` now return the number of newly registered objects (internal API).
+- New runtime log (fires only when a scene load registers something): `[UniNet] 씬 로드 네트 등록 — {scene}: 서버 +N, 클라 +M`.
+
+### Notes
+
+- The server must not send RPCs targeting a late scene's objects before clients finish loading it — keep your scene-ready gate (consumer-side ordering contract, documented in the manual).
+- Unloaded scenes leave stale dictionary entries behind — harmless (scene ids are unique per scene asset, destroyed instances are swept by the server's per-frame destroy sweep).
+- `SceneManager.CreateScene` (runtime empty-scene creation) does **not** fire `sceneLoaded` — the hook covers **loads** only. Use dynamic spawns for runtime-created scenes.
+
 ## 0.2.0
 
 **Spawnable prefab spawning — a rework of dynamic spawns. Breaking.**
