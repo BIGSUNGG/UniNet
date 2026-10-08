@@ -1,3 +1,12 @@
+## 0.2.2
+
+**Late-scene registration no longer deadlocks listen servers.**
+
+### Fixed
+
+- **Deferred scene-load registration (ADR-0025 revision)** — the v0.2.1 hook registered synchronously inside the `sceneLoaded` callback. When the load itself was initiated from inside an RPC dispatch (game-side `LoadScene` in a multicast implementation), registration re-entered the main pump's callstack and deadlocked listen-server clients (reproduced deterministically in the consumer's 3-instance verification). Registration now runs on the next main-pump drain — a clean driver `Update` callstack — via `UniNetEnvironment.QueueOnMain`.
+- Consumers keeping the documented scene-ready gate see no behavioral change: late-scene registration completes on the frame after the load, well before any scene-targeted events under the gate.
+
 # UniNet Changelog
 
 Detailed internal history: `Document/changelog.md` in the repository root (Korean).

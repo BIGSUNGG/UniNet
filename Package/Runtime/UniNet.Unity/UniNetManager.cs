@@ -321,10 +321,18 @@ namespace UniNet.Unity
         /// unique per scene asset and never targeted again; the server sweep drops destroyed instances).</summary>
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            int server = NetworkBehaviour.RegisterAllToServer();
-            int client = NetworkBehaviour.RegisterAllToClient();
-            if (server > 0 || client > 0)
-                Debug.Log($"[UniNet] 씬 로드 네트 등록 — {scene.name}: 서버 +{server}, 클라 +{client}");
+            string sceneName = scene.name;
+            // Deferred to the next main-thread pump drain: a load initiated INSIDE an RPC dispatch (game-side
+            // LoadScene in a multicast implementation) would otherwise re-run registration on the pump's callstack,
+            // contending with network threads — listen-server clients deadlocked at the loading gate in production
+            // (ck-darkness 3-EXE verification, 2026-10-08). The queue drains from a clean driver Update next frame.
+            UniNetEnvironment.QueueOnMain(() =>
+            {
+                int server = NetworkBehaviour.RegisterAllToServer();
+                int client = NetworkBehaviour.RegisterAllToClient();
+                if (server > 0 || client > 0)
+                    Debug.Log($"[UniNet] 씬 로드 네트 등록 — {sceneName}: 서버 +{server}, 클라 +{client}");
+            });
         }
 
         private static double _nextTimeSync;   // P4 — periodic TimeSync broadcast (assumes a single driver instance)

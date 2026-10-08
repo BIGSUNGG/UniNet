@@ -37,12 +37,14 @@ namespace UniNet.Tests
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
 
             // 2) Load a scene holding a NetworkBehaviour AFTER the connection — the driver's sceneLoaded
-            //    hook must register it on both ends (the old behavior left it unregistered: IsServer false)
+            //    hook must register it on both ends (the old behavior left it unregistered: IsServer false).
+            //    Registration is deferred to the next main-pump drain (ADR-0025 revision), so WAIT for it.
             SceneManager.LoadScene("LateScene", LoadSceneMode.Additive);
-            yield return null;   // sceneLoaded fires on load completion
+            yield return WaitUntil(() => SceneManager.GetSceneByName("LateScene").isLoaded, 5);   // PlayMode LoadScene 은 프레임 경계에서 완료된다
 
             var player = Object.FindFirstObjectByType<VerifyPlayer>();
             Assert.NotNull(player, "LateScene 의 VerifyPlayer");
+            yield return WaitUntil(() => player.IsServer && player.IsClient, 5);
             Assert.IsTrue(player.IsServer, "서버 등록 — 늦게 로드된 씬 오브젝트");
             Assert.IsTrue(player.IsClient, "클라 등록 — 동일 인스턴스");
             Assert.AreSame(player, (VerifyPlayer)UniNetEnvironment.Client.Get(player.NetId, player.SubId), "클라 등록 사전 — 동일 인스턴스");
