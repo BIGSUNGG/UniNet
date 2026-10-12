@@ -15,6 +15,7 @@
         "DRPC.Client.dll",
         "DRPC.Server.dll",
         "Communication.Shared.dll",
+        "Communication.Network.RUDP.Shared.dll",
         "MessageProtocol.Core.dll"
     ],
     "autoReferenced": false,

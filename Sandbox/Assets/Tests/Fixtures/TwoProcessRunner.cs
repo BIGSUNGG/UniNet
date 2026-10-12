@@ -53,6 +53,7 @@ namespace UniNet.Tests
             bool spawnedB = false;
             bool destroyed = false;
             bool destroyedMulti = false;
+            bool kicked = false;
             while (DateTime.UtcNow < deadline)
             {
                 UniNetEnvironment.PumpMain();
@@ -117,7 +118,19 @@ namespace UniNet.Tests
                     if (_multi != null) UniNetManager.NetworkDestroy(_multi);
                     Debug.Log("[UNINET-2PROC] SERVER-DESTROYED-MULTI");
                 }
-                if (destroyedMulti && DateTime.UtcNow > DeadlineAfter(11))
+                if (destroyedMulti && !kicked && DateTime.UtcNow > DeadlineAfter(11))
+                {
+                    kicked = true;
+                    var conns = UniNetEnvironment.Server.SnapshotConnections();
+                    if (conns.Count > 0)
+                    {
+                        UniNetEnvironment.Server.DisconnectClient(conns[0].ConnId, UniNet.Core.UniNetDisconnectReason.Kicked);   // ADR-0027 — notice flushes, grace, then the transport close
+                        Debug.Log("[UNINET-2PROC] SERVER-KICKED connId=" + conns[0].ConnId);
+                    }
+                    else
+                        Debug.LogWarning("[UNINET-2PROC] SERVER-KICK-SKIP — 연결 없음");
+                }
+                if (kicked && DateTime.UtcNow > DeadlineAfter(13))
                 {
                     Thread.Sleep(500);   // give the client time to observe the destroy
                     UniNetEnvironment.PumpMain();
@@ -214,6 +227,46 @@ namespace UniNet.Tests
             VerifyDynamicSpawn();
             VerifyMultiComponent();
             VerifySerialization();
+            VerifyKick();
+        }
+
+        /// <summary>Verifies the ADR-0027 kick round-trip on the CLIENT — the server kicks this connection and the
+        /// session-end event must arrive with the Kicked reason (notice dispatched before the transport close).</summary>
+        private static void VerifyKick()
+        {
+            UniNet.Core.UniNetDisconnectReason observed = UniNet.Core.UniNetDisconnectReason.None;
+            bool raised = false;
+            void OnEnded(UniNet.Core.UniNetDisconnectReason reason)
+            {
+                raised = true;
+                observed = reason;
+            }
+            UniNetManager.ClientDisconnected += OnEnded;
+            try
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(20);   // the server kicks at its +11 s mark — cover attach + propagation generously
+                while (!raised && DateTime.UtcNow < deadline)
+                {
+                    UniNetEnvironment.PumpMain();
+                    Thread.Sleep(20);
+                }
+                if (!raised)
+                {
+                    Debug.LogError("[UNINET-2PROC] KICK-REASON-FAIL — 해제 이벤트 미발화");
+                    return;
+                }
+                Debug.Log("[UNINET-2PROC] KICK reason=" + observed);
+                if (observed != UniNet.Core.UniNetDisconnectReason.Kicked)
+                {
+                    Debug.LogError("[UNINET-2PROC] KICK-REASON-FAIL — 사유 불일치");
+                    return;
+                }
+                Debug.Log("[UNINET-2PROC] KICK-REASON PASS — 서버 킥 사유가 클라에 전달됨");
+            }
+            finally
+            {
+                UniNetManager.ClientDisconnected -= OnEnded;
+            }
         }
 
         /// <summary>Verifies the ADR-0020 serialization features on the CLIENT — quantized position restore (0.01 buckets)

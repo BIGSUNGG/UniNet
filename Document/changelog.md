@@ -3,6 +3,23 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-10-12]
+
+### Added (킥·연결 종료 사유 — /list 항목 2)
+
+- **서버 강제 퇴장 API·와이어 종료사유 전달** ([[0027-킥-연결-종료-사유]]) — `NetworkServer.DisconnectClient(connId, reason)` (사유 공지를 와이어에 플러시한 뒤 150ms 유예 후 전송 폐쇄 — SendAsync는 큐 등록만이라 유실됨을 실증해 SendAndFlush+유예로 해결). `UniNetDisconnectReason` enum(None/ClientStopped/ServerShutdown/Kicked/ConnectionLost)·와이어 시스템 메시지 6 신설(제너레이터 0.2.2)
+- **클라 종료 사유 노출(파괴적 변경)** — `UniNetManager.ClientDisconnected`가 `Action<UniNetDisconnectReason>`로 서명 변경. 서버 종료/네트워크 유실/킥 구분. `ServerStopAsync`는 전 연결에 ServerShutdown 공지 후 리스너 폐기. 자발 `ClientStop` 미발화 계약 유지
+- **테스트** — EditMode `DisconnectNoticeTests` 3종·PlayMode `DisconnectReasonPlayTests` 2종·LifecycleEventPlayTests 서버 정지 사유 검증 추가·2-프로세스 `KICK-REASON PASS`(킥 왕복 — 기존 3종 PASS 유지, 양단 score=89)
+- **Sandbox 예시** — Arena 클라 HUD에 퇴장 사유 표시(킥/서버종료/유실 구분 안내)·2Proc 프로젝트 Fixtures 동기화
+- **문서** — ADR-0027 신규·connection-lifecycle 기능 문서 갱신·README·skills/uninet/SKILL.md 갱신(마이그레이션: 구독자 서명 변경 필수)
+
+### Fixed (그리드 가시성 cull=0 계약 정합 — /list 항목 1)
+
+- **클라→서버→다른 클라 이동 동기화 단절 근본 해소** ([[0026-그리드-가시성-cull0-계약-정합]]) — 그리드 가시성 활성 시 컬 거리 미설정(cull=0) 오브젝트도 그리드 반경 밖이면 연결별로 컬되던 것(P3 계약 "cull 0 = 항상 관련" 위반)을 복원. `IsRelevant` 그리드 분기가 cull>0 오브젝트에만 멤버십 판정을 적용(자체 컬 거리와 AND)하고, cull=0은 전 모드에서 항상 관련
+- **Arena 예제 정리** — ArenaBootstrap의 뷰어 위치 주입 제거(소규모 아레나는 컬 거리 설정 오브젝트가 없어 데드 웨이트였음). SetVisibilityGrid 호출은 선행 세션에서 이미 제거된 상태. P4 전환으로 총알이 제거된 뒤 사용처가 없던 고아 상수 4종(BulletSpeed·BulletLifetime·BulletUpdateFrequencyHz·BulletCullDistance)도 정리
+- **테스트 결정성 수리(사전 존재 결함)** — 에디터에서 Enter Play Mode 도메인 리로드 비활성 시 EditMode와 PlayMode 스위트가 한 도메인을 공유해 ADR-0016 정적 로그 스로틀 상태가 스위트 간 유출되고, 소유권 거부 로그 예측 테스트가 재현성 있게 실패하던 것을 확인 후 수리. `ResetRejectionLogThrottleForTests()` internal 훅(제품 동작 무변경)을 추가하고 양 테스트 SetUp에서 호출. 배치 모드(별도 프로세스)는 본래 무관
+- **회귀 테스트 신규** — `그리드_활성_시_cull_미설정_오브젝트는_반경_밖이어도_항상_관련이다`. 기존 그리드 컬 테스트는 cull>0 픽스처로 갱신(그리드 판정 대상 계약 반영)
+
 ## [2026-10-08]
 
 ### Fixed (씬 로드 재등록 지연 실행 — v0.2.2)

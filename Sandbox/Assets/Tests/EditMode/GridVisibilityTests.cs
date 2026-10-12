@@ -21,6 +21,7 @@ namespace UniNet.Tests
             near.transform.position = new Vector3(5f, 0f, 0f);
             var far = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grid-far");
             far.transform.position = new Vector3(500f, 0f, 0f);
+            near.NetworkCullDistance = far.NetworkCullDistance = 1000f;   // cull>0 — the grid (radius 30) is the binding spatial constraint (ADR-0026: grid gates cull>0 objects)
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
@@ -60,6 +61,26 @@ namespace UniNet.Tests
             near.Score = 21;
             server.TickReplication(server.SnapshotObjects(), 1.0);
             Assert.AreEqual(1, CountNetId(ch, near.NetId), "P3 계약 — 뷰어 위치 미설정 연결은 컬을 받지 않는다");
+        }
+
+        [Test]
+        public void 그리드_활성_시_cull_미설정_오브젝트는_반경_밖이어도_항상_관련이다()
+        {
+            var server = new NetworkServer();
+            var far = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grid-cullzero");   // NetworkCullDistance stays 0
+            far.transform.position = new Vector3(500f, 0f, 0f);
+
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();   // catch-up — no viewer → fail-open → full state + seed
+            ch.Clear();
+
+            server.SetVisibilityGrid(10f, 30f);           // grid on, radius 30
+            server.SetViewerPosition(ch.UniNetConnId, 0f, 0f, 0f);   // viewer at origin — far (500 m) is outside the radius
+
+            far.Score = 31;   // delta while outside the grid radius
+            server.TickReplication(server.SnapshotObjects(), 1.0);
+            Assert.GreaterOrEqual(CountNetId(ch, far.NetId), 1, "P3 계약 — cull=0 오브젝트는 그리드 반경 밖이어도 컬되지 않는다 (ADR-0026)");
         }
 
         private static int CountNetId(RecordingChannel ch, ulong targetNetId, int fromIndex = 0)

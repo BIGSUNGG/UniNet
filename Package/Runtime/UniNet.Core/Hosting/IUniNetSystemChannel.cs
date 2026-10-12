@@ -30,6 +30,13 @@ public interface IUniNetSystemChannel
     /// <summary>P4 time sync — sends the authoritative server time (UniNetTime domain, seconds) to clients (periodic broadcast).</summary>
     void SendTimeSync(double serverTime);
 
+    /// <summary>
+    /// Tells the client why the session is about to end (wire system message 6, ADR-0027) — flushed to the wire
+    /// before the caller closes the connection, so the client can distinguish kick/server-shutdown from an
+    /// unexplained connection loss. Best effort: a notice lost with a dying connection degrades to ConnectionLost.
+    /// </summary>
+    System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNetDisconnectReason reason);
+
     /// <summary>Sends a generic RPC payload (assembly-agnostic send path).</summary>
     void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode);
 }

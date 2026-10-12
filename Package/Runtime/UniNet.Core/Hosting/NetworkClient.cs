@@ -15,6 +15,20 @@ namespace UniNet.Core.Hosting
         /// <summary>This client's connection ID assigned by the server (set when the Welcome message arrives).</summary>
         public long LocalConnId { get; private set; }
 
+        /// <summary>
+        /// Why the last session ended — assigned by the generated client hub when a disconnect notice (ADR-0027)
+        /// arrives, read by UniNetManager when raising ClientDisconnected. None when no notice was received
+        /// (voluntary stop or an unexplained transport loss).
+        /// Written on the DRPC dispatch ThreadPool and read on the transport thread — volatile-backed so a weakly
+        /// ordered core cannot observe a stale None after the notice dispatch (reason would degrade to ConnectionLost).
+        /// </summary>
+        public UniNetDisconnectReason LastDisconnectReason
+        {
+            get => (UniNetDisconnectReason)System.Threading.Volatile.Read(ref _lastDisconnectReason);
+            set => System.Threading.Volatile.Write(ref _lastDisconnectReason, (int)value);
+        }
+        private int _lastDisconnectReason = (int)UniNetDisconnectReason.None;
+
         /// <summary>Registers an object — binds a NetworkBehaviour component array (in slot order) to a netId. Shared by scene objects and dynamic spawns.</summary>
         public void Register(ulong netId, object[] components)
         {

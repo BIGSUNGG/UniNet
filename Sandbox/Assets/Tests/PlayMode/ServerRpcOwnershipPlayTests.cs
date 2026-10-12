@@ -25,8 +25,12 @@ namespace UniNet.Tests
             public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states) { }
             public void SendDestroy(ulong netId) { }
             public void SendTimeSync(double serverTime) { }
+            public System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNet.Core.UniNetDisconnectReason reason) => System.Threading.Tasks.Task.CompletedTask;
             public void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode) { }
         }
+
+        [SetUp]
+        public void ResetThrottle() => NetworkServer.ResetRejectionLogThrottleForTests();   // static throttle leaks across suites in one editor domain (domain reload disabled)
 
         [TearDown]
         public void StopListeners() => UniNetManager.HostStop();   // clean up leftover listeners (idempotent)

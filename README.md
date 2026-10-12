@@ -69,11 +69,12 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 - **`NetworkTransform`** — a built-in component covering position replication, owner-side client prediction, and remote interpolation. You inject only the movement rule (`MovementRule` lambda, shared verbatim by server and prediction), submit inputs with `SubmitMove`, and gate simulation with `SimulationEnabled`.
 - **`SnapshotBuffer<T>`** — client interpolation buffer; render remote objects at `Now − InterpolationDelay` (default 0.12 s) so network jitter never reaches the screen.
 - **Lag compensation** — opt in with `NetworkRewindHistory = true`; the server records position history, and hit-scan logic queries `GetHistoryPosition(serverTime)` against the shooter's (clamped) aim time.
-- **Grid visibility** — `SetVisibilityGrid(cellSize, radius)` replaces distance checks with spatial cell membership for large worlds (RepGraph-style).
+- **Grid visibility** — `SetVisibilityGrid(cellSize, radius)` spatially pre-filters objects with a cull distance set for large worlds (RepGraph-style); objects without `NetworkCullDistance` stay always relevant in every mode.
 
 ### Connection lifecycle & shutdown
 
 - Server events `ClientConnected` / `ClientDisconnected` (by `connId`), fired on the main thread; disconnect fires **before** ownership reassignment so you can destroy the leaving connection's avatars precisely. Reassignment is guaranteed even if a subscriber throws.
+- **Kick & disconnect reasons (ADR-0027)** — `server.DisconnectClient(connId, reason)` force-disconnects a client (reason notice flushed to the wire, then the transport close); the client's `UniNetManager.ClientDisconnected` event carries an `Action<UniNetDisconnectReason>` (**Kicked / ServerShutdown / ConnectionLost**) so games can pick the right UX. `ServerStopAsync` notifies every client with ServerShutdown before unbinding.
 - Client side: `UniNetManager.ClientDisconnected` event for session loss (server shutdown, network drop) and `IsClientConnected` state query. `UniNetEnvironment.ServerChanged` fires the moment the server instance is set, before any connection is accepted.
 - Subscriber exceptions are isolated — one handler's bug never kills the others or the pump.
 - Start/stop one-liners: `UniNetManager.HostAsync / ServerAsync / ClientAsync` and `ServerStopAsync / ClientStop / HostStop` — stop is idempotent and clears the listener so the same port re-listens cleanly.
@@ -301,7 +302,8 @@ public sealed partial class Player : NetworkBehaviour
     }
 }
 
-// Server bootstrap — optional grid visibility for large worlds:
+// Server bootstrap — optional grid visibility for large worlds
+// (spatial pre-filter for objects with NetworkCullDistance > 0; cull=0 objects stay always relevant):
 server.SetVisibilityGrid(10f, 30f);
 ```
 
@@ -321,7 +323,7 @@ server.ClientDisconnected += connId =>
 };
 
 // Client — notice session loss (server shutdown, network drop):
-UniNetManager.ClientDisconnected += () => ShowReconnectPrompt();
+UniNetManager.ClientDisconnected += reason => ShowReconnectPrompt(reason);   // Kicked / ServerShutdown / ConnectionLost
 bool alive = UniNetManager.IsClientConnected;
 ```
 

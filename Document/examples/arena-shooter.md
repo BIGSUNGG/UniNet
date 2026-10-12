@@ -10,7 +10,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 
 - **맵**: 36×36 바닥 + 4면 경계 벽 + 중앙 기둥 4개 (규격은 `ArenaConfig` 단일 진실 공급원 — 씬 비주얼과 서버 판정이 같은 값을 쓴다)
 - **플레이어**: 접속 수만큼 서버가 동적 스폰. WASD 이동, 마우스 조준, 좌클릭 발사. 탄약 8발(자동 재생), HP 100, 사망 시 2초 후 랜덤 스폰 지점 리스폰
-- **총알**: 발사자 색을 따르는 구. 명중 시 25 피해(4발마다 치명타 2배). 피격·사망 FX는 전원이 로컬 재생
+- **발사(히트스캔)**: 좌클릭 즉시 판정 — 서버가 발신자 조준 시각으로 위치를 리와인드해(P4 래그컴펜세이션) 명중을 확정하고, 전원에게 발사자 색 트레이서 FX를 로컬 재생. 명중 시 25 피해(4발마다 치명타 2배)
 - **승부**: 킬 수를 점수로 집계 — HUD 점수 팝업 + 킬피드
 
 파일 구성:
@@ -21,7 +21,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | `ArenaRole.cs` | 역할 판별 — 인스펙터 강제값 → MPPM 태그 → MPPM 토폴로지 |
 | `ArenaBootstrap.cs` | 역할별 UniNet 시작 + 서버의 접속 수 ↔ 플레이어 수 동기화 |
 | `ArenaPlayer.cs` | RPC 3종·[Replicated] 조건 4종·RepNotify·서버 권위 시뮬레이션·로컬 입력·비주얼 |
-| `ArenaBullet.cs` | 총알 — 동적 스폰/파괴·InitialOnly 시드·선분 스윕 명중 판정 |
+| `ArenaMovement.cs` | 이동 규칙 단일 공급원 — 서버 시뮬과 클라 예측이 같은 Step을 공유 (P4 예측) |
 | `ArenaFx.cs` | 로컬 FX (네트워크 오브젝트 아님 — MulticastRpc 구현이 전원에서 호출) |
 | `ArenaHud.cs` | OnGUI HUD — 내 상태·네임플레이트·킬피드·서버 통계 |
 | `ArenaCameraRig.cs` | 탑다운 카메라 — 클라는 내 플레이어 추적, 서버는 전체 고정 |
@@ -58,9 +58,9 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | ServerRpc | `RpcSubmitMove` / `RpcSubmitAim` / `RpcFire` — 이동·조준·발사 요청 | ArenaPlayer |
 | ServerRpc 검증 후크(`_Validate`) | 이동 8방향 클램프·조각 각도 유효성·발사 단위벡터 검증 | ArenaPlayer |
 | ClientRpc | `RpcShowKillFeed` — 킬피드 전파 (서버는 미실행) | ArenaPlayer |
-| MulticastRpc | `RpcPlayFireFx`·`RpcPlayHitFx`(비신뢰) / `RpcPlayDeathFx`(신뢰) — 전원 로컬 FX | ArenaPlayer |
+| MulticastRpc | `RpcPlayTracer`·`RpcPlayHitFx`(비신뢰) / `RpcPlayDeathFx`(신뢰) — 전원 로컬 FX | ArenaPlayer |
 | 신뢰성 지정(Delivery) | FX 비신뢰(유실 허용)·사망/킬피드 신뢰 — 유실 허용 이벤트와 필수 이벤트 구분 | ArenaPlayer |
-| 오브젝트 단위 RPC | 총알·플레이어 각각이 독립 netId 오브젝트로 RPC/리플리케이션 | ArenaBullet·ArenaPlayer |
+| 오브젝트 단위 RPC | 플레이어 아바타 각각이 독립 netId 오브젝트로 RPC/리플리케이션 | ArenaPlayer |
 | RPC 매개변수 신뢰 경계 | 서버가 입력 값 범위를 `_Validate`로 검증(클램프) | ArenaPlayer |
 | ServerRpc 소유자 강제 (ADR-0016) | 모든 ServerRpc가 소유자 발신만 허용(자동 강제, 기본값) — 비소유 클라가 타 아바타 netId로 조립한 페이로드는 서버 디스패치에서 거부 + 경고 로그. Arena RPC는 전부 소유자 전용 의미론이라 코드 변경 없이 적용 | ArenaPlayer |
 
@@ -68,27 +68,27 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 
 | 기능 | 게임 내 사용 | 위치 |
 | --- | --- | --- |
-| [Replicated] 기본 | `_x·_y`(위치) `_hp` `_score` — 전 클라 항상 동기화 | ArenaPlayer·ArenaBullet |
+| [Replicated] 기본 | `_x·_y`(위치) `_hp` `_score` — 전 클라 항상 동기화 | ArenaPlayer |
 | 조건부 — OwnerOnly | `_ammo` 내 탄약 — 소유 클라만 수신 (검증기가 타인 미수신까지 관찰) | ArenaPlayer |
 | 조건부 — SkipOwner | `_aimYaw` 내 조준각 — 나는 로컬 렌더라 남에게만 전송 | ArenaPlayer |
-| 조건부 — InitialOnly | `_displayName`·`_colorSeed`(이름·색) / `_seed`(총알 치명타 판정) — 스폰 시 1회만 | ArenaPlayer·ArenaBullet |
+| 조건부 — InitialOnly | `_displayName`·`_colorSeed`(이름·색) — 스폰 시 1회만 | ArenaPlayer |
 | RepNotify | `OnHpChanged`(피격 플래시) `OnScoreChanged`(점수 팝업) `OnAmmoChanged` | ArenaPlayer |
 | 델타 전송 | 변경 필드만 전송 — 위치·HP·탄약·점수 전부 (라이브러리 자동) | — |
 | 동적 스폰 | 플레이어 접속 — `UniNetManager.NetworkInstantiate`(복제·등록·전파 통합, configure 콜백) | ArenaPlayer·ArenaBootstrap |
-| 동적 파괴 | 총알 히트/수명 만료 — `UniNetManager.NetworkDestroy` | ArenaBullet |
+| 동적 파괴 | 퇴장 플레이어 아바타 제거 — `UniNetManager.NetworkDestroy` | ArenaBootstrap |
 | 소유권(IsOwner) | 입력 처리 게이트·내 아바타 탐색(카메라·HUD) | ArenaPlayer·ArenaHud·ArenaCameraRig |
-| 네트워크 역할(IsServer/IsClient) | 시뮬레이션은 서버만, 클라는 복제 좌표 추종 | ArenaPlayer·ArenaBullet |
+| 네트워크 역할(IsServer/IsClient) | 시뮬레이션은 서버만, 클라는 복제 좌표 추종 | ArenaPlayer |
 | 후발 접속 캐치업 | 중간에 합류한 클라가 기존 플레이어를 전체 상태로 수신 | 라이브러리 (게임은 자동 활용) |
 
 ### P3 — 리플리케이션 고급 정책
 
 | 기능 | 게임 내 사용 | 위치 |
 | --- | --- | --- |
-| 가시성 컬 거리(NetCullDistance) | 총알 궤적 — 반경 24 밖 연결에는 전송하지 않고, 접근하면 관련 전환 틱에 스폰 | ArenaBullet (`NetworkCullDistance`) |
-| 뷰어 위치(SetViewerPosition) | 각 연결의 소유 플레이어 좌표를 컬 판정 기준점으로 서버에 주입 | ArenaBootstrap `ManagePlayers` |
-| 관련성 훅(IsNetRelevantFor) | 라이브러리 기능 — 아레나는 거리 컬만 사용 (커스텀 훅은 테스트 픽스처 FilteredRelay가 검증) | — |
-| 우선순위(NetPriority) | 플레이어 상태를 우선순위 2로 — 대역폭 부족 시 총알(기본 1)보다 먼저 전송 | ArenaPlayer `InitServerState` |
-| 전송 주기(NetUpdateFrequency) | 총알 궤적 30Hz 스로틀 — 미도달 변경분은 최신값으로 합쳐짐 | ArenaBullet `Init` |
+| 가시성 컬 거리(NetCullDistance) | 사용 안 함 — P4 히트스캔 전환으로 총알(ArenaBullet)이 제거된 뒤 컬 거리를 설정하는 오브젝트가 없음 (거리 컬 계약 자체는 RelevancyTests·GridVisibilityTests가 검증) | — |
+| 뷰어 위치(SetViewerPosition) | 사용 안 함 — 소규모 아레나는 컬 거리 설정 오브젝트가 없어 뷰어 주입이 데드 웨이트였음 (ADR-0026에서 제거) | — |
+| 관련성 훅(IsNetRelevantFor) | 라이브러리 기능 — 아레나는 미사용 (커스텀 훅은 테스트 픽스처 FilteredRelay가 검증) | — |
+| 우선순위(NetPriority) | 플레이어 상태를 우선순위 2로 — 대역폭 부족 시 다른 오브젝트(기본 1)보다 먼저 전송 | ArenaPlayer `InitServerState` |
+| 전송 주기(NetUpdateFrequency) | 사용 안 함 — P4 히트스캔 전환으로 총알이 제거된 뒤 주기 설정 오브젝트가 없음 (주기 계약 자체는 UpdateFrequencyTests가 검증) | — |
 | 휴면(Dormancy) | 사망 확정 델타 전송 후 리스폰까지 휴면(비교·전송 중단) → 리스폰 시 `FlushNetworkDormancy`로 상태 일괄 전파 | ArenaPlayer `ServerTick`·`Respawn` |
 | 채널 우선순위 큐(유형별 예산) | 플레이어 유형 틱 예산 512B — 유형별 대역폭 관리 예시 (P4 전환으로 총알이 제거되어 대상이 플레이어) | ArenaBootstrap (Start) |
 | 전역 틱 예산 | 기본 0(무제한) 유지 — 데모는 유형별 예산만 시연 | — |
@@ -108,7 +108,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 
 ### PlayMode 테스트 (Test Runner)
 
-`UniNet.Tests.ArenaRoundtripTests.호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우` — 실제 루프백 RUDP로 이동 ServerRpc → 서버 이동 → 피해·RepNotify → 발사·탄약(OwnerOnly) → 총알 동적 스폰 → 명중·사망·킬 크레딧 → ClientRpc 킬피드 → 총알 파괴 동기화 → 리스폰을 단언한다. 대기는 프레임 수 기반 — 에디터 스로틀링으로 `Time.deltaTime`이 실제 시간과 왜곡되는 환경에서도 강건하다.
+`UniNet.Tests.ArenaRoundtripTests.호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우` — 실제 루프백 RUDP로 이동 ServerRpc → 서버 시뮬 → 발사·히트스캔 명중(래그컴펜세이션) → 피해·RepNotify → 탄약(OwnerOnly) → 사망·킬 크레딧 → ClientRpc 킬피드 → 리스폰을 단언한다. 대기는 프레임 수 기반 — 에디터 스로틀링으로 `Time.deltaTime`이 실제 시간과 왜곡되는 환경에서도 강건하다.
 
 ### 2-프로세스 검증 (클라 2 접속 — 교차 클라 기능)
 
@@ -131,7 +131,7 @@ Unity.exe -batchmode -quit -projectPath C:\Projects\DS\tmp-arena-client -execute
 - `CLIENT-SPAWNED-2` — 동적 플레이어 2 스폰 전파 + 소유권 분배(라운드로빈) + InitialOnly 이름 전파
 - `CLIENT-SKIP-OWNER-AIM OK` — SkipOwner 조각: non-owner(B)만 조각각 수신
 - `CLIENT-OWNER-ONLY-AMMO OK` — OwnerOnly 탄약: non-owner(B)는 감소를 수신하지 않음
-- `CLIENT-BULLET-SPAWNED` → `CLIENT-DAMAGE-REPLICATED` — 총알 스폰 전파 + 피해 리플리케이션 + RepNotify
+- `CLIENT-HITSCAN-TRACER` → `CLIENT-DAMAGE-REPLICATED` — 발사 트레이서 전파 + 피해 리플리케이션 + RepNotify
 - `CLIENT-KILLFEED OK` / `CLIENT-MULTICAST-FX OK` — ClientRpc 킬피드·MulticastRpc FX
 - `CLIENT-DONE`
 
@@ -139,7 +139,6 @@ Unity.exe -batchmode -quit -projectPath C:\Projects\DS\tmp-arena-client -execute
 
 ## 알려진 한계 (라이브러리 후속 과제)
 
-- **발신자 식별 미전달** — 생성된 `_Implementation`에는 발신 연결 ID가 전달되지 않아, 서버가 "이 RPC를 보낸 연결이 이 오브젝트의 소유자인가"를 검증할 수 없다 (다른 플레이어의 netId로 ServerRpc를 호출하는 위조 가능). 값 범위 검증(`_Validate`)만 게임 차원에서 수행 중. 발신자 컨텍스트 전달은 라이브러리(P1 후속) 과제
 - **이동 보간** — 리모트는 SnapshotBuffer 인터폴레이션(0.12s 지연), 소유 클라는 예측+ReconcileAxis(스냅/소프트). 입력 ack 기반 재적용 큐는 미구현 (P4 훅 단순형 계약)
 - **위치 리플리케이션 순회** — 서버 틱 기반 전체 오브젝트 순회(라이브러리 현재 구조). 그리드 가시성(P4)으로 판정은 양자화 가속되지만 순회 자체는 유지 — 오브젝트 수가 매우 커지면 버킷 역방향 조회로 확장 가능
 - **관전 시 로컬 입력 없음** — 서버 역할 화면은 통계·전체 시점만 표시한다

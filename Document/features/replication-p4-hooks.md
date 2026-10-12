@@ -29,7 +29,7 @@ UE Network Framework의 상호작용 축을 **훅(유저 코드 확장점)** 형
 - **인터폴레이션**: 리모트 오브젝트를 `Now − InterpolationDelay` 시점으로 렌더 — 네트워크 지터가 화면에 직접 노출되지 않는다 (적용 시점 제어)
 - **예측**: 게임이 이동 규칙을 단일 공급원(예: ArenaMovement.Step)으로 추출해 서버·클라가 공유 → 소유 클라는 입력 즉시 적용, 서버 상태 수신 시 ReconcileAxis(스냅/소프트)
 - **래그 컴펜세이션**: `NetworkRewindHistory` 대상을 서버가 매 틱 기록 → 발사 ServerRpc에 발신자 조준 시각을 실어 보내면 서버가 `GetHistoryPosition(클램프된 hitTime)`으로 대상을 리와인드해 판정
-- **그리드 가시성**: 셀 멤버십으로 거리 판정 대체(양자화 오차 cellSize 이하). 관련성 훅·P3 전이 계약(첫 평가 조용한 시드, 재진입 기준선 복구) 유지
+- **그리드 가시성**: 셀 멤버십 공간 예비 필터(양자화 오차 cellSize 이하) — **cull>0 오브젝트에만 적용**되며 자체 컬 거리와 AND. cull=0 오브젝트는 어떤 모드에서도 항상 관련 (P3 계약 일관 — [[0026-그리드-가시성-cull0-계약-정합]]). 관련성 훅·P3 전이 계약(첫 평가 조용한 시드, 재진입 기준선 복구) 유지
 
 ```csharp
 // 게임 코드 — 리와인드 대상 등록 (서버)
@@ -47,7 +47,7 @@ server.SetViewerPosition(connId, x, y, z);
 
 ## 테스트 / 검증
 
-- **EditMode 7종 신규** — `P4CoreTests` 5(UniNetTime·SnapshotBuffer·PositionHistory)·`GridVisibilityTests` 2
+- **EditMode 7종 신규** — `P4CoreTests` 5(UniNetTime·SnapshotBuffer·PositionHistory)·`GridVisibilityTests` 2 (+2026-10-12 회귀 1종 추가 — cull=0 항상 관련, [[0026-그리드-가시성-cull0-계약-정합]])
 - **PlayMode 2종 신규** — `P4HookPlayTests`(TimeSync 동기화·리와인드 질의)
 - **아레나 전환** — 예측 이동·히트스캔 래그컴펜세이션 실동작: [[examples/arena-shooter]]
 

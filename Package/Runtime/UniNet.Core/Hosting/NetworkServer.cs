@@ -234,6 +234,20 @@ namespace UniNet.Core.Hosting
             }
         }
 
+        /// <summary>
+        /// Resets the rejection-log throttle. Test hook — the editor can run the EditMode and PlayMode suites in one
+        /// domain (Enter Play Mode domain reload disabled), leaking static throttle state across suites and silently
+        /// suppressing the expected rejection log. Batch runs (separate processes) never need this.
+        /// </summary>
+        internal static void ResetRejectionLogThrottleForTests()
+        {
+            lock (_rejectionGate)
+            {
+                _rejectionLoggedConns.Clear();
+                _lastRejectionLogUtc = default;
+            }
+        }
+
         /// <summary>Returns the instance in a sub slot (RPC routing).</summary>
         public object Get(ulong netId, byte subId)
         {
@@ -321,6 +335,73 @@ namespace UniNet.Core.Hosting
         public IReadOnlyList<ServerConnection> SnapshotConnections()
         {
             lock (_gate) return _connections.ToArray();
+        }
+
+        /// <summary>
+        /// Disconnects a client explicitly (ADR-0027) — flushes a disconnect notice to the wire (the reason rides
+        /// the wire, best effort) and then closes the transport connection; DetachConnection follows via the hub's
+        /// Disconnected event, so ownership reassignment and lifecycle events run the normal path. Returns false when
+        /// the connection id is unknown. The close is asynchronous (it waits for the notice flush) — the connection
+        /// stays live until the flush completes or faults. Test channels (not HubBase) receive the notice but are not
+        /// transport-closed.
+        /// </summary>
+        public bool DisconnectClient(long connId, UniNetDisconnectReason reason = UniNetDisconnectReason.Kicked)
+        {
+            foreach (var conn in SnapshotConnections())
+            {
+                if (conn.ConnId != connId || conn.Disconnected) continue;
+                _ = CloseAfterNoticeAsync(conn.Channel, reason);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Notice-then-close — the flush must reach the wire BEFORE the transport closes, and the close waits a short grace so the client's async dispatch of the notice (DRPC fire-and-forget ThreadPool) settles first.</summary>
+        private static async System.Threading.Tasks.Task CloseAfterNoticeAsync(IUniNetSystemChannel channel, UniNetDisconnectReason reason)
+        {
+            try
+            {
+                await channel.SendDisconnectNoticeAsync(reason).ConfigureAwait(false);
+            }
+            catch
+            {
+                // best effort — a broken connection cannot carry the notice; the client degrades to ConnectionLost
+            }
+            await System.Threading.Tasks.Task.Delay(150).ConfigureAwait(false);   // grace — let the client dispatch the notice before the close datagram arrives
+            if (channel is global::DRPC.Shared.Network.HubBase hub)
+            {
+                try { hub.Disconnect(); }
+                catch { /* disconnect cleanup noise must not propagate */ }
+            }
+        }
+
+        /// <summary>
+        /// Sends a disconnect notice to every live connection and waits until every flush reaches the wire (ADR-0027) —
+        /// UniNetManager.ServerStopAsync uses this before disposing the listener. Best effort: notices lost with
+        /// dying connections degrade to ConnectionLost on those clients.
+        /// </summary>
+        public async System.Threading.Tasks.Task BroadcastDisconnectNoticeAsync(UniNetDisconnectReason reason)
+        {
+            var tasks = new List<System.Threading.Tasks.Task>();
+            foreach (var conn in SnapshotConnections())
+                if (!conn.Disconnected)
+                    tasks.Add(conn.Channel.SendDisconnectNoticeAsync(reason));
+            try
+            {
+                await System.Threading.Tasks.Task.WhenAll(tasks.ToArray()).ConfigureAwait(false);
+            }
+            catch
+            {
+                // best effort — see CloseAfterNoticeAsync
+            }
+        }
+
+        /// <summary>Fire-and-forget variant for synchronous stop paths (quit) — the flushes race the teardown; best effort by design.</summary>
+        public void BroadcastDisconnectNotice(UniNetDisconnectReason reason)
+        {
+            foreach (var conn in SnapshotConnections())
+                if (!conn.Disconnected)
+                    _ = conn.Channel.SendDisconnectNoticeAsync(reason);
         }
 
         /// <summary>
@@ -552,10 +633,10 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>
-        /// P4 grid spatial-partition visibility (RepGraph style) — divides the world into a cellSize grid (XZ
-        /// plane) and treats only objects in cells within visibleRadius of a viewer as relevant. This is a
-        /// quantized test replacing exact distance (boundary error ≤ cellSize); per-object NetworkCullDistance > 0
-        /// still applies, ANDed with the grid. Connections without a viewer position fail open per the P3 contract (main thread).
+        /// P4 grid spatial-partition visibility (RepGraph style) — divides the world into a cellSize grid (XZ plane) and
+        /// spatially pre-filters objects in cells within visibleRadius of a viewer (quantized test, boundary error ≤ cellSize).
+        /// Applies only to objects with NetworkCullDistance > 0 (ANDed with their own cull); cull=0 objects stay always
+        /// relevant per the P3 contract (ADR-0026). Connections without a viewer position fail open per the P3 contract (main thread).
         /// </summary>
         public void SetVisibilityGrid(float cellSize, float visibleRadius)
         {
@@ -629,11 +710,12 @@ namespace UniNet.Core.Hosting
             if (!policy.IsNetworkRelevant(conn.ConnId)) return false;
 
             float cull = policy.NetworkCullDistance;
-            if (_gridEnabled && _viewerPositions.ContainsKey(conn.ConnId))
-            {
-                if (cull <= 0f) return GridContains(conn.ConnId, netId);   // grid membership replaces the distance test (quantization error ≤ cellSize)
-                if (!GridContains(conn.ConnId, netId)) return false;   // after the global radius passes, still check the object's own cull (AND)
-            }
+            // Grid membership gates only objects with their own cull distance — a cull=0 object keeps the P3 contract
+            // ("never distance-culled") and is not grid-culled either (ADR-0026). For cull>0 objects the grid is a spatial
+            // pre-filter (quantization error ≤ cellSize); their own cull distance still ANDs below.
+            if (_gridEnabled && cull > 0f && _viewerPositions.ContainsKey(conn.ConnId)
+                && !GridContains(conn.ConnId, netId))
+                return false;
             if (cull > 0f
                 && _viewerPositions.TryGetValue(conn.ConnId, out var viewer)
                 && entry.Instance is IUniNetSpawnTransform transform)

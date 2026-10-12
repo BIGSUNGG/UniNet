@@ -5,6 +5,7 @@ using Communication.Shared.Channels;
 using DRPC.Client.Network;
 using DRPC.Server.Network;
 using DRPC.Shared.Network;
+using UniNet.Core;
 using UniNet.Core.Hosting;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -28,11 +29,13 @@ namespace UniNet.Unity
         private static volatile bool _clientConnected;   // shared between the network thread (Disconnected handler) and the main thread — volatile for visibility
 
         /// <summary>
-        /// Client session-ended event — raised on the main thread when the session ends remotely (server shutdown, network loss).
-        /// A voluntary <see cref="ClientStop"/> only clears <see cref="IsClientConnected"/> immediately and does NOT raise this event.
-        /// Handle reconnect prompts, returning to the main menu, etc. here (connection lifecycle gateway).
+        /// Client session-ended event — raised on the main thread when the session ends remotely, with the
+        /// application-level reason (ADR-0027): Kicked (server DisconnectClient), ServerShutdown (server stop),
+        /// or ConnectionLost (no notice — network loss/timeout, or a best-effort notice lost with the connection).
+        /// A voluntary <see cref="ClientStop"/> only clears <see cref="IsClientConnected"/> immediately and does NOT
+        /// raise this event. Handle reconnect prompts, returning to the main menu, etc. here (connection lifecycle gateway).
         /// </summary>
-        public static event Action ClientDisconnected;
+        public static event Action<UniNetDisconnectReason> ClientDisconnected;
 
         /// <summary>True while the client is connected to the server with a live session (true after ClientAsync succeeds, false once the connection ends).</summary>
         public static bool IsClientConnected => _clientConnected;
@@ -101,20 +104,26 @@ namespace UniNet.Unity
                     if (!ReferenceEquals(hub, UniNetEnvironment.ClientSender)) return;   // ignore late observation from a stale session hub
                     if (!_clientConnected) return;   // absorb duplicate fires and voluntary ClientStop — ClientStop clears the flag first
                     _clientConnected = false;
-                    UniNetEnvironment.QueueOnMain(RaiseClientDisconnected);   // may arrive on a network thread — marshal to the main queue
+                    // ADR-0027 — the disconnect notice (if any) arrived before the transport close, so the stored reason is final here;
+                    // no notice means an unexplained transport loss
+                    var client = UniNetEnvironment.Client;
+                    var reason = client != null && client.LastDisconnectReason != UniNetDisconnectReason.None
+                        ? client.LastDisconnectReason
+                        : UniNetDisconnectReason.ConnectionLost;
+                    UniNetEnvironment.QueueOnMain(() => RaiseClientDisconnected(reason));   // may arrive on a network thread — marshal to the main queue
                 };
                 _clientConnected = true;
                 return hub;
             }
         }
 
-        private static void RaiseClientDisconnected()
+        private static void RaiseClientDisconnected(UniNetDisconnectReason reason)
         {
             var handlers = ClientDisconnected;
             if (handlers == null) return;
-            foreach (Action handler in handlers.GetInvocationList())
+            foreach (Action<UniNetDisconnectReason> handler in handlers.GetInvocationList())
             {
-                try { handler(); }
+                try { handler(reason); }
                 catch (Exception e) { Debug.LogException(e); }   // isolate each subscriber — same pattern as the generated code's main-pump guard
             }
         }
@@ -147,11 +156,18 @@ namespace UniNet.Unity
             }
         }
 
-        /// <summary>Stops the dedicated server — stops the listener (unbinding the socket) and clears environment state. Idempotent: no-op when not listening.</summary>
+        /// <summary>Stops the dedicated server — tells every client the shutdown is intentional (ADR-0027 notice, flushed to the wire), stops the listener (unbinding the socket), and clears environment state. Idempotent: no-op when not listening.</summary>
         public static async Task ServerStopAsync()
         {
             var handle = _listenHandle;
             _listenHandle = null;
+            var server = UniNetEnvironment.Server;
+            if (server != null)
+            {
+                try { await server.BroadcastDisconnectNoticeAsync(UniNetDisconnectReason.ServerShutdown); }
+                catch { /* best effort — stop proceeds regardless */ }
+                await Task.Delay(150);   // grace — let clients dispatch the notices before the close datagrams arrive (same rationale as DisconnectClient)
+            }
             UniNetEnvironment.SetServer(null);
             if (handle != null)
                 await handle.DisposeAsync();
@@ -162,6 +178,7 @@ namespace UniNet.Unity
         {
             var handle = _listenHandle;
             _listenHandle = null;
+            UniNetEnvironment.Server?.BroadcastDisconnectNotice(UniNetDisconnectReason.ServerShutdown);
             UniNetEnvironment.SetServer(null);
             handle?.Dispose();
             SweepDynamicSpawns();   // 서버 쪽 동적 스폰 원본도 마찬가지 — 낡은 netId 재사용 충돌 방지

@@ -1,5 +1,6 @@
 using System.Collections;
 using NUnit.Framework;
+using UniNet.Core;
 using UniNet.Core.Hosting;
 using UniNet.Unity;
 using UnityEngine;
@@ -18,6 +19,7 @@ namespace UniNet.Tests
         private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 48;   // random port per run (this class uses 2 ports)
 
         private static bool _clientBye;
+        private static UniNetDisconnectReason _clientByeReason;
 
         [SetUp]
         public void AllowStopNoise()
@@ -25,6 +27,7 @@ namespace UniNet.Tests
             // Fire-and-forget send noise during shutdown is unrelated to the functional assertions (same handling as LifecycleStopTests)
             LogAssert.ignoreFailingMessages = true;
             _clientBye = false;
+            _clientByeReason = UniNetDisconnectReason.None;
         }
 
         [TearDown]
@@ -41,7 +44,11 @@ namespace UniNet.Tests
             LogAssert.ignoreFailingMessages = false;
         }
 
-        private static void OnClientBye() => _clientBye = true;
+        private static void OnClientBye(UniNetDisconnectReason reason)
+        {
+            _clientBye = true;
+            _clientByeReason = reason;
+        }
 
         [UnityTest]
         public IEnumerator 서버와_클라_수명주기_이벤트가_실제_세션에서_발화한다()
@@ -72,6 +79,7 @@ namespace UniNet.Tests
 
             yield return WaitUntil(() => disconnected != 0, 5, "서버 ClientDisconnected 발화");
             yield return WaitUntil(() => _clientBye, 5, "클라 해제 콜백 발화 (원격 종료)");
+            Assert.AreEqual(UniNetDisconnectReason.ServerShutdown, _clientByeReason, "서버 정지 사유 전달 (ADR-0027)");
             Assert.IsFalse(UniNetManager.IsClientConnected, "해제 후 상태");
         }
 

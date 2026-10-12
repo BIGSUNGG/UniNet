@@ -20,6 +20,7 @@ namespace UniNet.Tests
         [SetUp]
         public void SetUp()
         {
+            NetworkServer.ResetRejectionLogThrottleForTests();   // static throttle leaks across suites in one editor domain (domain reload disabled)
             global::UniNet.Generated.__UniNetRegistration.Register();
             _server = new NetworkServer();
             UniNetEnvironment.SetServer(_server);

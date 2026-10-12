@@ -67,7 +67,28 @@ namespace Arena
                 _server.ClientConnected += OnClientConnected;
                 _server.ClientDisconnected += OnClientDisconnected;
             }
+
+            // ADR-0027 — surface the session-end reason to the player (kick vs. server shutdown vs. connection loss UX example).
+            // Subscribed for the component lifetime; static event — unsubscribed in OnDestroy to avoid leaking across scene reloads.
+            UniNetManager.ClientDisconnected += OnClientSessionEnded;
         }
+
+        private void OnDestroy()
+        {
+            UniNetManager.ClientDisconnected -= OnClientSessionEnded;
+        }
+
+        /// <summary>Client session ended — shows WHY on the HUD (the reason rides the disconnect notice, ADR-0027).</summary>
+        private static void OnClientSessionEnded(UniNet.Core.UniNetDisconnectReason reason)
+            => ArenaHud.NoteLifecycle($"연결 종료: {ReasonText(reason)}");
+
+        private static string ReasonText(UniNet.Core.UniNetDisconnectReason reason) => reason switch
+        {
+            UniNet.Core.UniNetDisconnectReason.Kicked => "서버에 의해 퇴장됨",
+            UniNet.Core.UniNetDisconnectReason.ServerShutdown => "서버 종료",
+            UniNet.Core.UniNetDisconnectReason.ConnectionLost => "연결 상실",
+            _ => reason.ToString(),
+        };
 
         /// <summary>Play mode exit — stops listeners and connections so the socket unbinds (restarting on the same port fails to bind otherwise).</summary>
         private void OnApplicationQuit()
@@ -121,7 +142,8 @@ namespace Arena
             }
         }
 
-        /// <summary>Server — matches the dynamic player count to the connection count and keeps each connection's viewer position at its owned player's coordinates (P3-①).</summary>
+        /// <summary>Server — matches the dynamic player count to the connection count. (Viewer positions were removed with the
+        /// grid demo: the small arena sets no cull distances, so per-connection viewers were dead weight — ADR-0026.)</summary>
         private void ManagePlayers()
         {
             int connections = 0;
@@ -130,14 +152,6 @@ namespace Arena
                     connections++;
 
             var players = FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-
-            // P3-① viewer position — the reference point for cull-distance checks; feeds each connection's owned player coordinates to the server
-            foreach (var player in players)
-            {
-                var ownerConnId = _server.GetEntry(player.NetId)?.OwnerConnId ?? 0;
-                if (ownerConnId != 0)
-                    _server.SetViewerPosition(ownerConnId, player.transform.position.x, 0f, player.transform.position.z);
-            }
 
             int diff = connections - players.Length;
 

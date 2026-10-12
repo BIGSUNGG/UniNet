@@ -167,9 +167,10 @@ server.ClientDisconnected += connId =>
     // Fires BEFORE ownership reassignment — identify and destroy the leaver's objects here:
     // server.GetEntry(netId).OwnerConnId tells you who owns what.
 };
+server.DisconnectClient(connId, UniNetDisconnectReason.Kicked);    // force-disconnect (cheat/moderation/auth reject) — notice flushes, then the transport close; the client receives the Kicked reason
 
 // Client:
-UniNetManager.ClientDisconnected += () => ShowReconnectPrompt();   // server shutdown, network drop
+UniNetManager.ClientDisconnected += reason => ShowReconnectPrompt(reason);   // Kicked / ServerShutdown / ConnectionLost (ADR-0027)
 bool alive = UniNetManager.IsClientConnected;                       // session state query
 UniNetEnvironment.ServerChanged += () => { /* server instance set, before any connection is accepted */ };
 ```
@@ -272,7 +273,7 @@ public sealed partial class Player : NetworkBehaviour
 server.SetViewerPosition(connId, x, y, z);                 // cull origin per connection (required for culling)
 server.SetReplicationChannelBudget(typeof(Bullet), 512);   // per-type per-tick byte budget
 server.ReplicationBudgetPerTickBytes = 8192;               // global per-tick budget (0 = unlimited)
-server.SetVisibilityGrid(10f, 30f);                        // optional: grid visibility instead of distance
+server.SetVisibilityGrid(10f, 30f);                        // optional: spatial grid pre-filter (gates objects with a cull distance set; cull=0 objects stay always relevant)
 server.ClearVisibilityGrid();                              // back to distance-based relevancy
 ```
 
@@ -282,7 +283,7 @@ Tuning notes:
 - **Budgets** — a type over its channel budget is deferred, not dropped; a single delta larger than the whole budget forces through so one huge object cannot stall.
 - **Dormancy** skips comparison (cheapest idle state); flush is a single batched send. Use it for dead/idle objects, not for pausing gameplay state you expect to change soon.
 - **Relevancy transitions** — leaving relevancy stops deltas but does **not** despawn on the client (it keeps the last state); re-entering restores a baseline via full state. Design your game around frozen-at-last-state off-screen objects.
-- **Grid visibility** replaces distance checks with spatial cell membership (quantization error ≤ `cellSize`). For large worlds with many objects, this is the scalable path (RepGraph-style).
+- **Grid visibility** spatially pre-filters objects with a cull distance set (quantization error ≤ `cellSize`), ANDed with their own `NetworkCullDistance`. Objects with **no cull distance stay always relevant in every mode** — the grid never culls them. For large worlds with many distance-culled objects, this is the scalable path (RepGraph-style).
 
 ### Custom field serializers
 

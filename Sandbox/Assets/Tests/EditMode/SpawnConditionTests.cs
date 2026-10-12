@@ -269,6 +269,7 @@ namespace UniNet.Tests
                 => Spawns.Add((netId, subCount, typeKeys, states));
             public void SendDestroy(ulong netId) => Destroys.Add(netId);
             public void SendTimeSync(double serverTime) { }
+            public System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNet.Core.UniNetDisconnectReason reason) => System.Threading.Tasks.Task.CompletedTask;
             public void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode) { }
         }
     }

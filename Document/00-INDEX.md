@@ -65,6 +65,10 @@
 - [[0022-사용자-가시-변경-skills-동기화-규칙]] — 사용자 가시 변경 시 `skills/uninet/SKILL.md` 같은 세션 반영 의무화 (적용 지점 AGENTS.md 한 곳)
 - [[0023-씬-netId-직렬화-안정-아이디]] — 씬 오브젝트 netId를 에디트 타임 GlobalObjectId 해시 직렬화 각인으로 교체 — 이름·순서·계층 변경·DontDestroyOnLoad·빌드 버전 차이에서 양단 일치 (경로 해시는 폴백)
 - [[0024-Fusion식-spawnable-프리팹-스폰-시스템]] — NetworkInstantiate 전면 교체: NetworkSpawnable 마킹·프리팹 GUID 해시 각인·베이크 테이블·클라 동일 프리팹 인스턴스화 (RegisterPrefab·기본 팩토리·자동 복원 폐기)
+- [[0025-접속-후-씬-로드-재등록]] — 접속 후 로드되는 씬의 오브젝트 자동 재등록: 드라이버 sceneLoaded 훅·멱등 스킵·QueueOnMain 지연 실행(리슨서버 교착 수리 포함)
+- [[0026-그리드-가시성-cull0-계약-정합]] — 그리드 가시성 cull=0 항상 관련 계약 복원: 그리드 멤버십 판정 cull>0 한정·Arena 뷰어 주입 제거
+- [[0027-킥-연결-종료-사유]] — 서버 강제 퇴장 DisconnectClient·와이어 시스템 메시지 6 사유 전달·클라 ClientDisconnected 사유 인자(Kicked/ServerShutdown/ConnectionLost)
+
 ### deployment — 배포
 
 - [[deployment]] — UPM Git URL 배포 절차(태그→푸시)·소비자 설치·기반 스택 갱신 스크립트·신규 프로젝트 검증
@@ -76,6 +80,8 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-12 — **킥·연결 종료 사유** (ADR-0027 — DisconnectClient API·와이어 사유 전달·클라 이벤트 사유 인자로 서명 변경. EditMode 84/84·PlayMode 20/20·2-프로세스 KICK-REASON PASS)
+- 2026-10-12 — **그리드 가시성 cull=0 계약 정합** (ADR-0026 — 클라→서버→다른 클라 이동 동기화 단절 해소. 그리드 멤버십 판정 cull>0 한정·Arena 뷰어 주입 제거·회귀 테스트 추가)
 - 2026-10-06 — **Fusion식 spawnable 프리팹 스폰 시스템** (ADR-0024 — NetworkInstantiate 전면 교체·마커 컴포넌트·베이크 테이블·클라 동일 프리팹 인스턴스화. EditMode 80/80·PlayMode 17/17·2-proc PASS 3종)
 
 - 2026-10-01 — **씬 netId 직렬화 안정 아이디** (ADR-0023 — 에디터 씬 저장 시 GlobalObjectId 해시 각인·신규 에디터 어셈블리 UniNet.Unity.Editor. EditMode 80/80·PlayMode 17/17·2-프로세스 왕복 PASS — 2Proc 프로젝트의 NuGet 캐시 잔존 제너레이터 DLL 이중 로드 고장도 복구)

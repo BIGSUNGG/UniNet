@@ -33,18 +33,6 @@ namespace Arena
         /// <summary>Crit check — 2x damage when seed % CritEvery == 0.</summary>
         public const int CritEvery = 4;
 
-        /// <summary>Bullet speed (units/second).</summary>
-        public const float BulletSpeed = 12f;
-
-        /// <summary>Bullet lifetime (seconds) — bullets destroy themselves on expiry.</summary>
-        public const float BulletLifetime = 2f;
-
-        /// <summary>P3-④ bullet replication frequency (Hz) — 30 Hz suffices for trajectories (player state replicates every tick). UE NetUpdateFrequency equivalent.</summary>
-        public const float BulletUpdateFrequencyHz = 30f;
-
-        /// <summary>P3-① bullet visibility cull distance (world-unit radius) — distant connections stop tracking bullet trajectories. UE NetCullDistance equivalent.</summary>
-        public const float BulletCullDistance = 24f;
-
         /// <summary>P4-⑤ per-tick send budget for the player type (bytes) — per-type bandwidth management example (retargeted from bullets to players after the P4 switch).</summary>
         public const int PlayerChannelBudgetPerTickBytes = 512;
 
