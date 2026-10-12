@@ -355,6 +355,7 @@ namespace UniNet.Unity
         }
 
         private static double _nextTimeSync;   // P4 — periodic TimeSync broadcast (assumes a single driver instance)
+        private static double _nextPing;   // ADR-0029 — periodic client RTT probe (assumes a single driver instance)
 
         private void Update()
         {
@@ -371,7 +372,25 @@ namespace UniNet.Unity
                 server.TickReplication(alive, Time.unscaledTimeAsDouble);   // feed the real clock — activates P3 rate and starvation policies
                 BroadcastTimeSync(server, Time.unscaledTimeAsDouble);   // P4 — time sync (once per second)
             }
+
+            // ADR-0029 — client RTT probe: ping once per second while connected; the generated server hub echoes it
+            // (wire 9) and the client handler EMA-smooths the round trip into NetworkClient.RoundTripTimeMs.
+            // The probe piggybacks the current RTT so the server keeps a per-connection view (ServerConnection.RttMs).
+            if (UniNetManager.IsClientConnected
+                && Time.unscaledTimeAsDouble >= _nextPing
+                && UniNetEnvironment.ClientSender != null)
+            {
+                _nextPing = Time.unscaledTimeAsDouble + 1.0;
+                var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
+                w.WriteDouble(StopwatchElapsedSeconds());   // probe origin — Stopwatch domain: readable from any thread (the echo handler runs on the dispatch thread, where Unity clocks throw)
+                w.WriteDouble(UniNetEnvironment.Client.RoundTripTimeMs);
+                UniNetEnvironment.ClientSender.UniNetSend(8, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered);
+            }
         }
+
+        /// <summary>Monotonic thread-safe clock (ADR-0029 RTT probe domain) — Stopwatch-based, independent of Unity's main-thread-only clocks.</summary>
+        private static double StopwatchElapsedSeconds()
+            => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
 
         /// <summary>P4 time sync — periodically replicates the server-authoritative clock to every connection (UE ReplicatedWorldTimeSeconds equivalent).</summary>
         private static void BroadcastTimeSync(NetworkServer server, double serverTime)

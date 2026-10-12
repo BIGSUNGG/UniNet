@@ -45,12 +45,13 @@ namespace UniNet.Core.Hosting
         /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 
-        /// <summary>
-        /// Protocol version this server expects from clients (ADR-0028 handshake). Set from UniNetEndpointOptions.ProtocolVersion;
+        /// <summary>Protocol version this server expects from clients (ADR-0028 handshake). Set from UniNetEndpointOptions.ProtocolVersion;
         /// defaults to the package version, so same-package ends always match. A client declaring a different version is rejected
-        /// with a VersionMismatch kick. Empty string disables the check.
-        /// </summary>
+        /// with a VersionMismatch kick. Empty string disables the check.</summary>
         public string ExpectedProtocolVersion { get; set; } = UniNetInfo.Version;
+
+        /// <summary>Server-side UniNet traffic counters (ADR-0029) — payload bytes/packets sent by this server. Per-connection view: <see cref="ServerConnection.RttMs"/>.</summary>
+        public UniNetTrafficCounters TrafficStats { get; } = new();
 
         /// <summary>
         /// Client connected event — fired on the main thread after Welcome, ownership assignment, and catch-up
@@ -115,6 +116,19 @@ namespace UniNet.Core.Hosting
 
             /// <summary>Whether the connection has ended.</summary>
             public bool Disconnected { get; internal set; }
+
+            /// <summary>
+            /// This connection's round-trip time in ms, as reported by the client's own probe (ADR-0029 ping wire 8 —
+            /// the client measures client↔server RTT and piggybacks the EMA on each ping). -1 until the first report.
+            /// Written on the DRPC dispatch thread, read on the main thread — volatile int-µs backing (same pattern as
+            /// NetworkClient.RoundTripTimeMs: doubles can tear on 32-bit runtimes and an unfenced write may read stale).
+            /// </summary>
+            public double RttMs
+            {
+                get => System.Threading.Volatile.Read(ref _rttUs) / 1000.0;
+                internal set => System.Threading.Volatile.Write(ref _rttUs, (int)(value * 1000.0));
+            }
+            private int _rttUs = -1000;   // microseconds backing store — the -1 ms sentinel encodes as -1000
 
             /// <summary>The connection's send channel (the generated server hub — generated code type-casts it for sends).</summary>
             public IUniNetSystemChannel Channel { get; }
@@ -344,10 +358,8 @@ namespace UniNet.Core.Hosting
             lock (_gate) return _connections.ToArray();
         }
 
-        /// <summary>
-        /// Applies a client's version declaration (ADR-0028 — generated server hub, wire message 7). Returns whether the version was
-        /// accepted; a mismatch kicks the connection with the VersionMismatch reason (the generated hub logs the rejection).
-        /// </summary>
+        /// <summary>Applies a client's version declaration (ADR-0028 — generated server hub, wire message 7). Returns whether the version was
+        /// accepted; a mismatch kicks the connection with the VersionMismatch reason (the generated hub logs the rejection).</summary>
         public bool OnClientVersionDeclared(long connId, string version)
         {
             if (string.IsNullOrEmpty(ExpectedProtocolVersion) || version == ExpectedProtocolVersion)
@@ -358,6 +370,21 @@ namespace UniNet.Core.Hosting
                     $"Version-mismatch kick found no connection {connId} — declaration raced attachment (ADR-0028). The mismatched client may survive this check."));   // surfaced instead of a silent false — the accept callback attaches synchronously so this window is theoretical, but never silent
             return false;
         }
+
+        /// <summary>Applies a client's RTT report from its ping probe (ADR-0029 wire 8 — client-measured EMA, piggybacked on each ping).</summary>
+        public void OnClientRttReported(long connId, double rttMs)
+        {
+            if (!(rttMs >= 0 && rttMs < 1e6)) return;   // trust-boundary clamp — drop NaN/negative/absurd client reports (observational data, keep it clean)
+            foreach (var conn in SnapshotConnections())
+                if (conn.ConnId == connId)
+                {
+                    conn.RttMs = rttMs;
+                    return;
+                }
+        }
+
+        /// <summary>Number of replication deltas deferred by the budget policy this tick (ADR-0029 queue-depth observability; main thread).</summary>
+        public int DeferredSendCount => _queue.Count;
 
         /// <summary>
         /// Disconnects a client explicitly (ADR-0027) — flushes a disconnect notice to the wire (the reason rides

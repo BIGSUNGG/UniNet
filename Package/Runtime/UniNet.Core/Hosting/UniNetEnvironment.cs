@@ -69,6 +69,9 @@ namespace UniNet.Core.Hosting
             if (action != null) MainQueue.Enqueue(action);
         }
 
+        /// <summary>Number of main-queue actions waiting for the next pump drain (ADR-0029 queue-depth observability).</summary>
+        public static int PendingMainActions => MainQueue.Count;
+
         /// <summary>Runs all scheduled work — call from the main thread (the Unity driver Update).</summary>
         public static void PumpMain()
         {

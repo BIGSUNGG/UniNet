@@ -25,6 +25,7 @@
 - [[features/replication-p3-policy|replication-p3-policy]] — 리플리케이션 고급 정책: 가시성·우선순위·휴면·전송 주기·채널 예산 (P3, 구현됨)
 - [[features/replication-p4-hooks|replication-p4-hooks]] — P4 훅: UniNetTime·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성 (구현됨)
 - [[features/custom-netserialize|custom-netserialize]] — 커스텀 필드 직렬화: [Replicated(Serializer)] 정적 Write/Read 계약·양자화 (구현됨 — 제너레이터 0.1.9, ADR-0020)
+- [[features/network-statistics|network-statistics]] — 네트워크 통계: 트래픽 카운터(페이로드 바이트)·RTT 프로브·큐 깊이 (구현됨 — 제너레이터 0.2.4, ADR-0029)
 - [[features/fastarray-delta|fastarray-delta]] — 배열/리스트 요소 델타 동기화: 옵 인코딩·섀도 diff (구현됨 — 제너레이터 0.2.1, ADR-0020)
 
 ### examples/ — 예시 게임 문서
@@ -69,6 +70,7 @@
 - [[0026-그리드-가시성-cull0-계약-정합]] — 그리드 가시성 cull=0 항상 관련 계약 복원: 그리드 멤버십 판정 cull>0 한정·Arena 뷰어 주입 제거
 - [[0027-킥-연결-종료-사유]] — 서버 강제 퇴장 DisconnectClient·와이어 시스템 메시지 6 사유 전달·클라 ClientDisconnected 사유 인자(Kicked/ServerShutdown/ConnectionLost)
 - [[0028-프로토콜-빌드-버전-핸드셰이크]] — 프로토콜 버전 선언-비교(와이어 7)·Welcome 서버 버전 필드·불일치 VersionMismatch 거부
+- [[0029-네트워크-통계-API]] — 트래픽 카운터(페이로드 바이트 계약)·자체 RTT 프로브(와이어 8/9)·큐 깊이 관측
 
 ### deployment — 배포
 
@@ -81,6 +83,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-12 — **네트워크 통계 API** (ADR-0029 — 트래픽 카운터·자체 RTT 프로브(와이어 8/9)·큐 깊이. 제너레이터 0.2.4. EditMode 90/90·PlayMode 23/23)
 - 2026-10-12 — **프로토콜/빌드 버전 핸드셰이크** (ADR-0028 — ProtocolVersion 옵션·와이어 7 선언·Welcome 서버 버전·불일치 VersionMismatch 거부. EditMode 87/87·PlayMode 22/22·2-프로세스 VERSION-MISMATCH PASS)
 - 2026-10-12 — **킥·연결 종료 사유** (ADR-0027 — DisconnectClient API·와이어 사유 전달·클라 이벤트 사유 인자로 서명 변경. EditMode 84/84·PlayMode 20/20·2-프로세스 KICK-REASON PASS)
 - 2026-10-12 — **그리드 가시성 cull=0 계약 정합** (ADR-0026 — 클라→서버→다른 클라 이동 동기화 단절 해소. 그리드 멤버십 판정 cull>0 한정·Arena 뷰어 주입 제거·회귀 테스트 추가)

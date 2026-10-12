@@ -38,6 +38,9 @@ namespace Arena
         /// <summary>Records a connection lifecycle event — for HUD display and test observation.</summary>
         internal static void NoteLifecycle(string text) => LastLifecycle = text;
 
+        /// <summary>Latest network statistics line (ADR-0029) — set by ArenaBootstrap every few seconds; also logged for headless servers.</summary>
+        public static string LastNetStats { get; internal set; } = "";
+
         /// <summary>RepNotify(HP decrease) — hit flash.</summary>
         public static void NotifyHit(string victimName, int amount)
         {
@@ -101,6 +104,8 @@ namespace Arena
             }
 
             GUI.Label(new Rect(10, 30, 360, 24), $"역할: {_role}" + (_mine == null ? " · 관전" : "") + (string.IsNullOrEmpty(LastLifecycle) ? "" : $"   {LastLifecycle}"));
+            if (!string.IsNullOrEmpty(LastNetStats))
+                GUI.Label(new Rect(10, 52, 520, 20), LastNetStats);   // ADR-0029 — traffic counters, queue depth, RTT (updated every 5 s)
 
             if (_mine != null)
             {

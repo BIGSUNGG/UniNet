@@ -5,6 +5,15 @@
 
 ## [2026-10-12]
 
+### Added (네트워크 통계 API — /list 항목 4)
+
+- **트래픽 카운터·RTT·큐 깊이 조회 API** ([[0029-네트워크-통계-API]]) — `UniNetTrafficCounters`(송수신 페이로드 바이트·패킷, Interlocked)를 생성 허브 전 송수신 경로에 계측(제너레이터 0.2.4). `NetworkServer.TrafficStats`·`NetworkClient.TrafficStats`. 측정 계약: RPC 파라미터 페이로드 바이트(와이어 프레이밍·전송 오버헤드 제외 — 애플리케이션 대역폭 관점)
+- **자체 RTT 프로브(와이어 8/9)** — 클라 1초 주기 핑 → 서버 에코 + `ServerConnection.RttMs`(클라 보고 피기백). 클라 `NetworkClient.RoundTripTimeMs` EMA(α=0.25). Stopwatch 도메인 채택 — 디스패치 스레드에서 Unity 시계 예외 발생 실증 후 교체(메인 스레드 전용 제약 회피)
+- **큐 깊이 관측** — `NetworkServer.DeferredSendCount`(P3 예산 지연 큐)·`UniNetEnvironment.PendingMainActions`(메인 펌프 대기열)
+- **테스트** — EditMode `NetworkStatsTests` 3종(카운터 누적·예산 지연(2델타/8B — 기아 방지 강제전송 규칙 반영)·큐 깊이)·PlayMode `NetworkStatsPlayTests` 1종(실세션 양단 카운터 증가·RTT 측정·서버 커넥션 RTT 보고)
+- **Sandbox 예시** — Arena 5초 주기 통계 라인(ArenaHud.LastNetStats HUD 표시 + 서버 로그 — 송수신 KB/pkt·지연큐·RTT)
+- **문서** — ADR-0029·기능 문서 network-statistics.md 신규·README·skills/uninet/SKILL.md·00-INDEX
+
 ### Added (프로토콜/빌드 버전 핸드셰이크 — /list 항목 3)
 
 - **버전 선언-비교 핸드셰이크** ([[0028-프로토콜-빌드-버전-핸드셰이크]]) — `UniNetEndpointOptions.ProtocolVersion`(기본 = 패키지 버전, 게임 빌드 버전 오버라이드)을 클라가 접속 직후 자동 선언(와이어 시스템 메시지 7)하고 서버가 `NetworkServer.ExpectedProtocolVersion`과 비교. 불일치 클라는 `VersionMismatch` 사유 킥으로 거부(ADR-0027 인프라 재사용 — 거부 사유가 클라에 전달돼 강제 업데이트 UX 분기 가능). Welcome에 서버 버전 필드 추가(`NetworkClient.ServerProtocolVersion`). 제너레이터 0.2.3

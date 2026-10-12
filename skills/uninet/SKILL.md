@@ -174,6 +174,13 @@ var options = new UniNetEndpointOptions { ProtocolVersion = "mygame-1.4.2" };
 await UniNetManager.ServerAsync(port, options);              // server enforces (ExpectedProtocolVersion)
 await UniNetManager.ClientAsync(host, port, options);        // client declares on connect — mismatch rejects with the VersionMismatch reason
 
+// Network statistics (ADR-0029) — application-bandwidth view (UniNet payload bytes; wire framing excluded):
+var st = server.TrafficStats;                                 // BytesSent/BytesReceived/PacketsSent/PacketsReceived (Interlocked)
+double rtt = UniNetEnvironment.Client.RoundTripTimeMs;        // client-measured EMA (built-in 1 Hz ping probe, -1 until the first round trip)
+int deferred = server.DeferredSendCount;                      // budget-deferred deltas this tick
+foreach (var conn in server.SnapshotConnections())
+    /* conn.RttMs */;                                         // client-reported per-connection RTT (observational — do not use for authoritative decisions)
+
 // Client:
 UniNetManager.ClientDisconnected += reason => ShowReconnectPrompt(reason);   // Kicked / ServerShutdown / ConnectionLost / VersionMismatch (ADR-0027·0028)
 bool alive = UniNetManager.IsClientConnected;                       // session state query

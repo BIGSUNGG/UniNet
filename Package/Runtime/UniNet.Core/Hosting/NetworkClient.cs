@@ -21,6 +21,21 @@ namespace UniNet.Core.Hosting
         /// </summary>
         public string ServerProtocolVersion { get; set; }
 
+        /// <summary>Client-side UniNet traffic counters (ADR-0029) — payload bytes/packets received by this client and sent by its RPCs.</summary>
+        public UniNetTrafficCounters TrafficStats { get; } = new();
+
+        private int _roundTripUs = -1000;   // microseconds backing store — the -1 ms sentinel encodes as -1000
+
+        /// <summary>
+        /// Round-trip time in ms measured by the client's ping probe (ADR-0029 wire 8/9 — send/echo, EMA-smoothed).
+        /// -1 until the first round trip completes. Volatile-backed: the echo handler runs on the dispatch thread.
+        /// </summary>
+        public double RoundTripTimeMs
+        {
+            get => System.Threading.Volatile.Read(ref _roundTripUs) / 1000.0;
+            set => System.Threading.Volatile.Write(ref _roundTripUs, (int)(value * 1000.0));   // runtime-assigned (generated echo handler, ADR-0029)
+        }
+
         /// <summary>
         /// Why the last session ended — assigned by the generated client hub when a disconnect notice (ADR-0027)
         /// arrives, read by UniNetManager when raising ClientDisconnected. None when no notice was received

@@ -22,6 +22,7 @@ namespace Arena
         /// <summary>Server instance (null in client role) — used for player count management.</summary>
         private NetworkServer _server;
         private float _nextManageUtc;
+        private float _nextStatsAt = 3f;   // ADR-0029 — periodic stats line (server log/HUD + client RTT)
         private int _spawnCounter;
         private ArenaRole _resolvedRole;
         private bool _started;   // whether listen/connect actually started (Stop only cleans up what was started)
@@ -117,6 +118,31 @@ namespace Arena
             if (Time.unscaledTime < _nextManageUtc) return;
             _nextManageUtc = Time.unscaledTime + 0.5f;
             ManagePlayers();
+            PublishNetStats();
+        }
+
+        /// <summary>
+        /// ADR-0029 usage example — surfaces the statistics API every few seconds: server traffic counters, budget-deferral
+        /// queue depth, and per-connection RTT (client-reported probe). Logged for headless servers and shown on the HUD.
+        /// </summary>
+        private void PublishNetStats()
+        {
+            if (Time.unscaledTime < _nextStatsAt) return;
+            _nextStatsAt = Time.unscaledTime + 5f;
+
+            var st = _server.TrafficStats;
+            double rtt = -1;
+            foreach (var conn in _server.SnapshotConnections())
+                if (!conn.Disconnected && conn.RttMs >= 0)
+                    rtt = rtt < 0 ? conn.RttMs : System.Math.Max(rtt, conn.RttMs);   // worst-case view — a demo choice
+
+            string line = $"[Arena] 네트워크 — \u2191{st.BytesSent / 1024.0:F1}KB/{st.PacketsSent}pkt \u2193{st.BytesReceived / 1024.0:F1}KB/{st.PacketsReceived}pkt "
+                          + $"지연큐 {_server.DeferredSendCount} RTT {(rtt < 0 ? "측정중" : rtt.ToString("F0") + "ms")}"
+                          + (UniNetEnvironment.Client != null && UniNetManager.IsClientConnected
+                              ? $" | 클라 RTT {UniNetEnvironment.Client.RoundTripTimeMs:F0}ms"
+                              : "");
+            ArenaHud.LastNetStats = line;
+            Debug.Log(line);
         }
 
         /// <summary>Client connected — update the HUD and run the management cycle immediately so the avatar spawns without waiting for the next poll.</summary>
