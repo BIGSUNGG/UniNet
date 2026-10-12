@@ -45,6 +45,11 @@ namespace UniNet.Core.Hosting
         // ADR-0031 — declared connection↔player-object mapping (game-owned; ownership transfers do not move it). Main thread.
         private readonly Dictionary<long, ulong> _playerObjects = new();
 
+        // ADR-0032 — per-connection ServerRpc fixed-window rate state. Keyed separately from _connections so the
+        // dispatch-thread check never contends with the connection registry lock; per-window lock is per-connection.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<long, RpcRateWindow> _rpcWindows = new();
+        private long _rateLimitedDrops;
+
         /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 
@@ -55,6 +60,13 @@ namespace UniNet.Core.Hosting
 
         /// <summary>Server-side UniNet traffic counters (ADR-0029) — payload bytes/packets sent by this server. Per-connection view: <see cref="ServerConnection.RttMs"/>.</summary>
         public UniNetTrafficCounters TrafficStats { get; } = new();
+
+        /// <summary>
+        /// Per-connection ServerRpc rate limit in calls/second (ADR-0032) — 0 = unlimited (default, opt-in).
+        /// Enforced in the generated dispatch before the handler runs; over-limit calls are dropped (empty response)
+        /// and counted. Set from game bootstrap; a generous normal-gameplay ceiling keeps floods (macros/cheats) out.
+        /// </summary>
+        public int ServerRpcRateLimitPerSecond { get; set; }
 
         /// <summary>
         /// Client connected event — fired on the main thread after Welcome, ownership assignment, and catch-up
@@ -348,6 +360,7 @@ namespace UniNet.Core.Hosting
                                 // staying owners (letting a rethrown exception skip the rest of this lambda would lose OwnerOnly delta receivers)
                                 ReassignOwnership();
                                 _playerObjects.Remove(conn.ConnId);   // ADR-0031 — the mapping dies with the connection, AFTER the event (ClientDisconnected handlers can still read GetPlayerObject for custom cleanup — loot drops etc.)
+                                _rpcWindows.TryRemove(conn.ConnId, out _);   // ADR-0032 — rate state dies with the connection
                             }
                         });
                         return;
@@ -385,6 +398,53 @@ namespace UniNet.Core.Hosting
                     conn.RttMs = rttMs;
                     return;
                 }
+        }
+
+        /// <summary>
+        /// Rate-limit gate for one ServerRpc call (ADR-0032) — called by the generated dispatch on the dispatch thread.
+        /// Fixed 1-second window per connection; over-limit calls are refused and counted (RateLimitedServerRpcDrops).
+        /// Runtime enforcement point — not intended for direct game calls.
+        /// </summary>
+        public bool AllowsServerRpc(long connId)
+        {
+            int limit = ServerRpcRateLimitPerSecond;
+            if (limit <= 0) return true;
+            double now = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;   // thread-safe clock — dispatch thread, Unity clocks are main-thread only
+            var w = _rpcWindows.GetOrAdd(connId, static _ => new RpcRateWindow());
+            lock (w)
+            {
+                if (now - w.WindowStart >= 1.0)
+                {
+                    w.WindowStart = now;
+                    w.Count = 0;
+                }
+                if (w.Count >= limit)
+                {
+                    w.Drops++;
+                    System.Threading.Interlocked.Increment(ref _rateLimitedDrops);
+                    return false;
+                }
+                w.Count++;
+                return true;
+            }
+        }
+
+        /// <summary>Total ServerRpc calls dropped by the rate limit (ADR-0032; all connections, since server start).</summary>
+        public long RateLimitedServerRpcDrops => System.Threading.Interlocked.Read(ref _rateLimitedDrops);
+
+        /// <summary>Rate-limited ServerRpc drops for one connection (ADR-0032; 0 for unknown/never-limited connections).</summary>
+        public long GetRateLimitedServerRpcDrops(long connId)
+        {
+            if (!_rpcWindows.TryGetValue(connId, out var w)) return 0;
+            lock (w) return w.Drops;   // consistent with the write side — no torn 64-bit read on 32-bit runtimes
+        }
+
+        /// <summary>Fixed-window rate state for one connection (ADR-0032).</summary>
+        private sealed class RpcRateWindow
+        {
+            public int Count;
+            public double WindowStart;
+            public long Drops;
         }
 
         /// <summary>

@@ -34,6 +34,10 @@ namespace Arena
         /// different demo builds reject each other with a VersionMismatch kick; bump this when the demo's wire content changes.</summary>
         public const string ProtocolVersion = "arena-1";
 
+        /// <summary>Per-connection ServerRpc rate limit (ADR-0032) — a generous normal-gameplay ceiling (player moves + fires
+        /// peak around 20/s) that still keeps macro floods out. 0 = unlimited.</summary>
+        public const int ServerRpcRateLimitPerSecond = 120;
+
         /// <summary>Crit check — 2x damage when seed % CritEvery == 0.</summary>
         public const int CritEvery = 4;
 

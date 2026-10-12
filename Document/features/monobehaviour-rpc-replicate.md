@@ -70,6 +70,7 @@ internal partial void RpcHeal(int amount);
 ```
 
 - **로컬 권위 경로는 대조에서 제외**된다 — `senderConnId == 0`(서버·호스트 직접 호출·오프라인 실행)은 발신자 대조 없이 실행. 네트워크로 도달한 발신만 검사한다
+- **레이트리밋 (ADR-0032)** — `NetworkServer.ServerRpcRateLimitPerSecond`로 커넥션별 호출/초 상한(0=무제한 기본). 생성 디스패치가 고정 1초 창 게이트 — 정당 소유자의 플러드(매크로)도 드롭·집계(`RateLimitedServerRpcDrops`)한다. 상한은 정상 플레이 피크의 여유 배수로 설정
 - 거부는 조용히 막히지 않는다 — `"[UniNet] ServerRpc 거부 — 비소유 발신: <타입>.<메서드> netId=… sender=… owner=…"` 경고 로그로 식별된다 — 로그는 유량 제한된다(발신자별 최초 1회 + 전역 5초당 최대 1회, `NetworkServer.ReportServerRpcRejection` — 비소유 churn 시 로그 플러딩 방어)
 - 호스트는 서버 권위 경로로 실행되므로 영향 없음. ClientRpc/MulticastRpc(서버→클라 방향)는 대상 아님
 - **마이그레이션** — 기본값이 보안 우선으로 바뀌었다. 기존에 비소유 클라가 호출하던 크로스-클라 ServerRpc는 업그레이드 후 거부되므로 명시적 `RequireOwnership = false`가 필요하다

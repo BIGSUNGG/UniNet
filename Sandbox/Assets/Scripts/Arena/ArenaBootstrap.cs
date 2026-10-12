@@ -65,6 +65,7 @@ namespace Arena
                 // P3-⑤ channel budget — per-type bandwidth management example limiting per-tick bytes for the player type
                 // (retargeted from bullets to players after the P4 switch removed bullets)
                 _server.SetReplicationChannelBudget(typeof(ArenaPlayer), ArenaConfig.PlayerChannelBudgetPerTickBytes);
+                _server.ServerRpcRateLimitPerSecond = ArenaConfig.ServerRpcRateLimitPerSecond;   // ADR-0032 — generous gameplay ceiling, floods dropped
 
                 // Connection lifecycle gateway — spawn avatars and update the HUD on join, precisely destroy the departed connection's avatar on leave
                 _server.ClientConnected += OnClientConnected;

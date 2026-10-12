@@ -73,6 +73,7 @@
 - [[0029-네트워크-통계-API]] — 트래픽 카운터(페이로드 바이트 계약)·자체 RTT 프로브(와이어 8/9)·큐 깊이 관측
 - [[0030-명시적-소유권-이전-API]] — SetOwner(netId, connId) 소유권 이전(전 연결 OwnerUpdate 전파·0=방치후 입양)
 - [[0031-플레이어-오브젝트-연결-매핑]] — connId↔플레이어 오브젝트 매핑(SetPlayerObject/GetPlayerObject)·퇴장 일괄 정리 DestroyObjectsOwnedBy
+- [[0032-커넥션별-ServerRpc-레이트리밋]] — ServerRpcRateLimitPerSecond 고정 창 게이트·초과 드롭+집계·플러드 방어
 
 ### deployment — 배포
 
@@ -85,6 +86,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-12 — **RPC 레이트리밋** (ADR-0032 — ServerRpcRateLimitPerSecond 고정 창 게이트·초과 드롭 집계. 제너레이터 0.2.5. EditMode 100/100·PlayMode 25/25)
 - 2026-10-12 — **플레이어 오브젝트·연결 매핑** (ADR-0031 — SetPlayerObject/GetPlayerObject/GetPlayerConnection·DestroyObjectsOwnedBy 퇴장 정리. Arena 전환. EditMode 97/97·PlayMode 24/24)
 - 2026-10-12 — **명시적 소유권 이전 API** (ADR-0030 — SetOwner·OwnerUpdate 전파·0=방치후 입양. EditMode 93/93·PlayMode 24/24·2-프로세스 소유권 이전 왕복)
 - 2026-10-12 — **네트워크 통계 API** (ADR-0029 — 트래픽 카운터·자체 RTT 프로브(와이어 8/9)·큐 깊이. 제너레이터 0.2.4. EditMode 90/90·PlayMode 23/23)

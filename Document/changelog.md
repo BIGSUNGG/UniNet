@@ -5,6 +5,14 @@
 
 ## [2026-10-12]
 
+### Added (RPC 레이트리밋 — /list 항목 7)
+
+- **커넥션별 ServerRpc 레이트리밋** ([[0032-커넥션별-ServerRpc-레이트리밋]]) — `NetworkServer.ServerRpcRateLimitPerSecond`(호출/초, 0=무제한 기본). 생성 디스패치 람다가 핸들러 실행 전 고정 1초 창 게이트(제너레이터 0.2.5) — 초과 드롭(빈 응답)·경고 로그는 ADR-0016 정적 스로틀 재사용. 상태는 연결 레지스트리와 분리된 ConcurrentDictionary(디스패치 스레드 무경합·Stopwatch 시계)로 연결 분리 시 해제
+- **통계 노출** — `RateLimitedServerRpcDrops`(전체)·`GetRateLimitedServerRpcDrops(connId)`
+- **테스트** — EditMode `RpcRateLimitTests` 3종(무제한 기본·플러드 드롭 집계(13발/한도3 → 드롭10)·창 갱신)·PlayMode `RpcRateLimitPlayTests` 1종(동시 프레임 40발 플러드 → 실행 ≤한도·드롭 30+ 집계 — 생성 디스패치 경로 e2e)
+- **Sandbox 예시** — Arena가 `ArenaConfig.ServerRpcRateLimitPerSecond`(120 — 정상 피크 약 20/s의 여유 상한) 설정
+- **문서** — ADR-0032·monobehaviour-rpc-replicate·README·skills/uninet/SKILL.md·00-INDEX
+
 ### Added (플레이어 오브젝트·연결 매핑 — /list 항목 6)
 
 - **connId↔플레이어 오브젝트 매핑 API** ([[0031-플레이어-오브젝트-연결-매핑]]) — `NetworkServer.SetPlayerObject(connId, netId)`(0=해제)·`ClearPlayerObject`·`GetPlayerObject`·`GetPlayerConnection`(역조회). 아바타 스폰 시 등록, 연결 분리 시 자동 해제. 선언적 계약 — SetOwner 소유권 이전이 매핑을 이동시키지 않음

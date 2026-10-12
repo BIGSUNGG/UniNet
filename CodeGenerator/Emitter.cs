@@ -104,8 +104,15 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            {");
             sb.AppendLine("                MethodCallActions.Add(kv.Key, data =>");
             sb.AppendLine("                {");
-            sb.AppendLine($"                    {Env}.Server?.TrafficStats.OnReceived(data.Length);   // ADR-0029");
-            sb.AppendLine("                    return kv.Value.Handler(UniNetConnId, data);   // per-connection hub — injects the sender's connId");
+            sb.AppendLine($"                    var __srv = {Env}.Server;");
+            sb.AppendLine("                    __srv?.TrafficStats.OnReceived(data.Length);   // ADR-0029");
+            sb.AppendLine("                    if (__srv != null && !__srv.AllowsServerRpc(UniNetConnId))   // ADR-0032 - per-connection rate limit");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        if (global::UniNet.Core.Hosting.NetworkServer.ReportServerRpcRejection(UniNetConnId))   // throttled - first per sender + one per 5 s (floods stay silent)");
+            sb.AppendLine("                            UnityEngine.Debug.LogWarning($\"[UniNet] ServerRpc 드롭 — 레이트리밋 초과: connId={UniNetConnId}\");");
+            sb.AppendLine("                        return global::System.Threading.Tasks.Task.FromResult(global::System.Array.Empty<byte>());   // dropped - empty response (one-way calls discard it anyway)");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                    return kv.Value.Handler(UniNetConnId, data);   // per-connection hub - injects the sender's connId");
             sb.AppendLine("                });");
             sb.AppendLine("                MethodDeliveryModes[kv.Key] = kv.Value.Mode;");
             sb.AppendLine("            }");
