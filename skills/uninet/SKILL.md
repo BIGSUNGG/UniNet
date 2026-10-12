@@ -174,6 +174,7 @@ UniNetManager.DestroyObjectsOwnedBy(connId);                    // departure cle
 server.ServerRpcRateLimitPerSecond = 120;                          // per-connection flood guard (ADR-0032) — 0 = unlimited; drops counted in RateLimitedServerRpcDrops
 server.SessionGraceSeconds = 10;  // reconnect grace (ADR-0034) — preserve ownership for 10 s; 0 = off
 server.LoadScene("BattleScene");                               // scene transition (ADR-0035) — clients auto-load + report; gate event:
+// Editor debugging: Window → UniNet → Network Debugger — live connections, traffic, objects, ownership (ADR-0036)
 server.AllClientsSceneLoaded += scene => { /* all clients ready — start gameplay */ };
 // On disconnect: UniNetManager.ReconnectAsync(address, port) — auto-sends resume, ownership restored
 

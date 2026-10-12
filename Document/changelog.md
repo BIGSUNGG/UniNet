@@ -5,6 +5,11 @@
 
 ## [2026-10-12]
 
+### Added (에디터 디버깅 툴 — /list 항목 11)
+
+- **UniNetDebuggerWindow** ([[0036-에디터-디버깅-툴]]) — Window → UniNet → Network Debugger. Play Mode 세션 실시간 표시: 연결 목록(connId·RTT·플레이어·씬 준비·레이트 드롭·세션 토큰)·트래픽 통계(ADR-0029)·등록 오브젝트(netId·타입·소유자·동적)·서버 설정·클라 상태. 읽기 전용·자동 리프레시
+- **문서** — ADR-0036·README·skills/uninet/SKILL.md·00-INDEX
+
 ### Added (씬 전환 동기화 — /list 항목 10)
 
 - **서버 주도 씬 전환** ([[0035-씬-전환-동기화]]) — `NetworkServer.LoadScene(sceneName)` 전 연결 브로드캐스트(와이어 11)·클라 보고(와이어 12) 시 준비 표시·전원 준비 시 `AllClientsSceneLoaded` 이벤트 발화. 연결 해제 시 게이트 재판정(마지막 연결 퇴장으로 게이트 완성 가능). 후발 접속자도 진행 중 전환에 참여(캐치업 시 SendLoadScene 재발송). 제너레이터 0.2.7
