@@ -5,6 +5,13 @@
 
 ## [2026-10-12]
 
+### Added (명시적 소유권 이전 API — /list 항목 5)
+
+- **`NetworkServer.SetOwner(netId, connId)`** ([[0030-명시적-소유권-이전-API]]) — 살아있는 오브젝트의 소유권을 서버가 다른 연결로 이전(아이템 줍기·탈것·점령 등 상용 패턴). 기존 OwnerUpdate 와이어(시스템 메시지 2)로 전 연결 전파 — 신규 와이어·제너레이터 변경 없음. connId 0 = 방치(다음 재배정 패스가 고아 입양), 명시 소유권은 조인/리브 관계없이 유지(기존 KEEP 정책 승계). 미지 netId → false
+- **테스트** — EditMode `OwnershipTransferTests` 3종(이전+전파·미지 false·방치→재배정 입양)·PlayMode `OwnershipTransferPlayTests` 1종(실세션 IsOwner 해제/재취득 왕복)·2-프로세스 `OWNERSHIP-TRANSFER PASS`(세션 중 해제·재부여 전파 관찰 — 클라 샘플링이 춤 관찰까지 대기하도록 수정)
+- **Sandbox 예시** — Arena K키 소유권 순환 데모(첫 아바타 소유자를 다음 연결로 이전 + HUD 안내)·2Proc 러너 소유권 춤 단계
+- **문서** — ADR-0030·monobehaviour-rpc-replicate 소유권 서술 갱신·README·skills/uninet/SKILL.md·00-INDEX
+
 ### Added (네트워크 통계 API — /list 항목 4)
 
 - **트래픽 카운터·RTT·큐 깊이 조회 API** ([[0029-네트워크-통계-API]]) — `UniNetTrafficCounters`(송수신 페이로드 바이트·패킷, Interlocked)를 생성 허브 전 송수신 경로에 계측(제너레이터 0.2.4). `NetworkServer.TrafficStats`·`NetworkClient.TrafficStats`. 측정 계약: RPC 파라미터 페이로드 바이트(와이어 프레이밍·전송 오버헤드 제외 — 애플리케이션 대역폭 관점)

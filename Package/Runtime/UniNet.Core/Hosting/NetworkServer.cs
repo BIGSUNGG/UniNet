@@ -383,6 +383,23 @@ namespace UniNet.Core.Hosting
                 }
         }
 
+        /// <summary>
+        /// Transfers an object's ownership to a specific connection (ADR-0030, main thread) — pickup, vehicles, capture points.
+        /// Propagates to every client via the existing OwnerUpdate wire. connId 0 releases the object (the next
+        /// reassignment pass adopts it round-robin); a non-live connId behaves like a release once reassignment runs.
+        /// Explicit ownership survives joins/leaves (the policy only adopts orphans). Returns false for unknown netIds.
+        /// </summary>
+        public bool SetOwner(ulong netId, long ownerConnId)
+        {
+            var entry = GetEntry(netId);
+            if (entry == null) return false;
+            entry.OwnerConnId = ownerConnId;
+            foreach (var conn in SnapshotConnections())   // all connections — same propagation as ReassignOwnership (clients without the object ignore the notice harmlessly)
+                if (!conn.Disconnected)
+                    conn.Channel.SendOwnerUpdate(netId, ownerConnId);
+            return true;
+        }
+
         /// <summary>Number of replication deltas deferred by the budget policy this tick (ADR-0029 queue-depth observability; main thread).</summary>
         public int DeferredSendCount => _queue.Count;
 

@@ -168,6 +168,7 @@ server.ClientDisconnected += connId =>
     // server.GetEntry(netId).OwnerConnId tells you who owns what.
 };
 server.DisconnectClient(connId, UniNetDisconnectReason.Kicked);    // force-disconnect (cheat/moderation/auth reject) — notice flushes, then the transport close; the client receives the Kicked reason
+server.SetOwner(item.NetId, pickerConnId);                        // explicit ownership transfer (ADR-0030) — pickups/vehicles; 0 releases (reassignment adopts)
 
 // Protocol version handshake (ADR-0028) — declare your GAME build version on both ends:
 var options = new UniNetEndpointOptions { ProtocolVersion = "mygame-1.4.2" };

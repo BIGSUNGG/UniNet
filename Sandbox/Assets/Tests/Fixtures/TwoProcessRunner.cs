@@ -103,6 +103,18 @@ namespace UniNet.Tests
                     mb.Speed = 99;    // unconditional delta
                     ht.Armor = 88;    // OwnerOnly delta
                     Debug.Log("[UNINET-2PROC] SERVER-SPAWNED-MULTI netId=" + mb.NetId);
+
+                    // ADR-0030 — mid-session ownership dance: release now, re-grant shortly after (the client samples the transitions)
+                    _originalOwner = UniNetEnvironment.Server.GetOwner(player.NetId);
+                    UniNetEnvironment.Server.SetOwner(player.NetId, 0);
+                    _releasedAt = DateTime.UtcNow;
+                    Debug.Log("[UNINET-2PROC] SERVER-OWNER-RELEASED orig=" + _originalOwner);
+                }
+                if (_releasedAt != default && _originalOwner >= 0 && !_regranted && DateTime.UtcNow > _releasedAt.AddSeconds(0.5))
+                {
+                    _regranted = true;
+                    UniNetEnvironment.Server.SetOwner(player.NetId, _originalOwner);
+                    Debug.Log("[UNINET-2PROC] SERVER-OWNER-REGRANTED conn=" + _originalOwner);
                 }
                 // Destroy after values had time to propagate — the client observes the deregistration
                 if (spawnedB && !destroyed && DateTime.UtcNow > DeadlineAfter(3))
@@ -145,6 +157,9 @@ namespace UniNet.Tests
         private static DateTime _phaseMark;
         private static SpawnablePlayer _b;
         private static GameObject _multi;
+        private static long _originalOwner = -1;   // ADR-0030 ownership dance — original owner before the release/re-grant
+        private static DateTime _releasedAt;
+        private static bool _regranted;
 
         private static DateTime DeadlineAfter(double seconds)
         {
@@ -211,10 +226,23 @@ namespace UniNet.Tests
             UniNetEnvironment.ClientSender.UniNetSend(pingId, w.ToArray(), RpcDeliveryMode.ReliableOrdered);
 
             deadline = DateTime.UtcNow.AddSeconds(15);
+            long lastOwner = long.MinValue;   // ADR-0030 — sample the observed owner history (the server runs a release/re-grant dance mid-session)
+            _ownerHistory.Clear();
+            bool sawRelease = false, sawRegrant = false;
+            var danceDeadline = DateTime.UtcNow.AddSeconds(8);   // the dance completes ~1.5 s after the ping — sample past it even when the roundtrip asserts finish early
             while (DateTime.UtcNow < deadline)
             {
                 UniNetEnvironment.PumpMain();
-                if (player.ScoreNotified && player.ClientFxRan && player.MulticastCount == 1) break;
+                long owner = UniNetEnvironment.Client.GetOwner(player.NetId);
+                if (owner != lastOwner)
+                {
+                    lastOwner = owner;
+                    _ownerHistory.Add(owner);
+                }
+                if (owner == 0) sawRelease = true;
+                else if (sawRelease && owner == UniNetEnvironment.Client.LocalConnId) sawRegrant = true;
+                if (player.ScoreNotified && player.ClientFxRan && player.MulticastCount == 1
+                    && (sawRegrant || DateTime.UtcNow > danceDeadline)) break;
                 Thread.Sleep(20);
             }
 
@@ -227,8 +255,31 @@ namespace UniNet.Tests
             VerifyDynamicSpawn();
             VerifyMultiComponent();
             VerifySerialization();
+            VerifyOwnershipTransfer();
             VerifyKick();
             VerifyVersionMismatch();
+        }
+
+        private static readonly System.Collections.Generic.List<long> _ownerHistory = new();
+
+        /// <summary>Verifies the ADR-0030 ownership-transfer round-trip — the server released and re-granted the player's
+        /// ownership mid-session (SetOwner 0 → back); the client must have observed both transitions over the wire.</summary>
+        private static void VerifyOwnershipTransfer()
+        {
+            Debug.Log("[UNINET-2PROC] OWNER history=[" + string.Join(",", _ownerHistory) + "]");
+            bool sawRelease = false;
+            bool sawRegrant = false;
+            for (int i = 0; i < _ownerHistory.Count; i++)
+            {
+                if (_ownerHistory[i] == 0) sawRelease = true;
+                else if (sawRelease && _ownerHistory[i] == UniNetEnvironment.Client.LocalConnId) sawRegrant = true;
+            }
+            if (!sawRelease || !sawRegrant)
+            {
+                Debug.LogError("[UNINET-2PROC] OWNERSHIP-TRANSFER-FAIL — 해제/재부여 관찰 실패");
+                return;
+            }
+            Debug.Log("[UNINET-2PROC] OWNERSHIP-TRANSFER PASS — SetOwner 해제·재부여가 클라에 전파됨 (ADR-0030)");
         }
 
         /// <summary>Verifies the ADR-0028 handshake on the CLIENT — reconnecting with a deliberately wrong protocol version must be

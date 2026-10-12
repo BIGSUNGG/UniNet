@@ -152,7 +152,7 @@ var go = UniNetManager.NetworkInstantiate(_robotPrefab);   // 서브 구성은 �
 - **ServerRpc 발신자 미검증** — 해소됨 (ADR-0016, 2026-09-21): 서버 디스패치가 발신자-소유자를 대조해 비소유 발신을 거부한다 (위 "ServerRpc 소유자 강제" 섹션). 네트워크로 도달한 발신만 검사하고, 정상 크로스-클라 RPC는 `RequireOwnership = false`로 옵트아웃한다. `_Validate`는 계속 인자 검증용 — 발신자 검증은 강제 계층이 담당한다
 - **접속 직후 첫 전송 레이스** — 접속 완료 직후(Welcome/소유권 수신 전) 즉발 one-way RPC가 유실될 수 있음 (ADR-0008 알려진 한계 — 상류 조사 후보). 연결 확정 후 전송하는 자연 패턴은 무영향.
 - **연결 종료 수명주기** — 해소됨: 아래 "수명주기 종료 (Stop API)" 섹션 참조 (2026-09-17 — 명시적 Stop API 구현)
-- **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가).
+- **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가). **명시적 이전**: `NetworkServer.SetOwner(netId, connId)`로 살아있는 오브젝트의 소유자를 서버가 넘긴다(전 연결에 OwnerUpdate 전파·connId 0 = 방치 후 재배정 입양 — [[0030-명시적-소유권-이전-API]]). 아이템 줍기·탈것 등 상용 패턴용.
 - **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 컬렉션(List<T> 등)의 직접 파라미터는 여전히 미지원 — 메시지 내부 필드로 담아 전달(MP가 처리). 32필드 상한(UNINET008) 유지.
 - **동적 스폰 제약** — 스폰은 `NetworkSpawnable` 마킹 프리팹만(ADR-0024 — 미마킹·런타임 생성 거부, 구성 불일치 거부), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
 - **슬롯 불변식** — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다(ADR-0010). 씬 오브젝트의 증감은 감지 창구가 없어 계약으로만 방어, 동적 스폰은 구성 대조로 거부. 오브젝트당 NetworkBehaviour 상한 **255개**(SubId byte — 초과 시 등록·스폰 거부)

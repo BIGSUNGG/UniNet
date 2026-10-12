@@ -115,6 +115,28 @@ namespace Arena
         {
             if (_server == null) return;
             if (UniNetEnvironment.Server != _server) return;   // step aside if another runtime (e.g. tests) has taken over the environment
+
+            // ADR-0030 — ownership-transfer demo (pickup-style): K rotates the first avatar's owner to the next connection
+            if (Input.GetKeyDown(KeyCode.K))
+            {
+                var players = FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                if (players.Length > 0)
+                {
+                    var entry = _server.GetEntry(players[0].NetId);
+                    var conns = _server.SnapshotConnections();
+                    if (entry != null && conns.Count > 0)
+                    {
+                        long prev = entry.OwnerConnId;
+                        int idx = 0;
+                        for (int i = 0; i < conns.Count; i++)
+                            if (conns[i].ConnId == prev) idx = i;
+                        long next = conns[(idx + 1) % conns.Count].ConnId;
+                        _server.SetOwner(players[0].NetId, next);
+                        ArenaHud.NoteLifecycle($"소유권 이전 (K): {prev} → {next}");
+                    }
+                }
+            }
+
             if (Time.unscaledTime < _nextManageUtc) return;
             _nextManageUtc = Time.unscaledTime + 0.5f;
             ManagePlayers();

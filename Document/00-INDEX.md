@@ -71,6 +71,7 @@
 - [[0027-킥-연결-종료-사유]] — 서버 강제 퇴장 DisconnectClient·와이어 시스템 메시지 6 사유 전달·클라 ClientDisconnected 사유 인자(Kicked/ServerShutdown/ConnectionLost)
 - [[0028-프로토콜-빌드-버전-핸드셰이크]] — 프로토콜 버전 선언-비교(와이어 7)·Welcome 서버 버전 필드·불일치 VersionMismatch 거부
 - [[0029-네트워크-통계-API]] — 트래픽 카운터(페이로드 바이트 계약)·자체 RTT 프로브(와이어 8/9)·큐 깊이 관측
+- [[0030-명시적-소유권-이전-API]] — SetOwner(netId, connId) 소유권 이전(전 연결 OwnerUpdate 전파·0=방치후 입양)
 
 ### deployment — 배포
 
@@ -83,6 +84,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-12 — **명시적 소유권 이전 API** (ADR-0030 — SetOwner·OwnerUpdate 전파·0=방치후 입양. EditMode 93/93·PlayMode 24/24·2-프로세스 소유권 이전 왕복)
 - 2026-10-12 — **네트워크 통계 API** (ADR-0029 — 트래픽 카운터·자체 RTT 프로브(와이어 8/9)·큐 깊이. 제너레이터 0.2.4. EditMode 90/90·PlayMode 23/23)
 - 2026-10-12 — **프로토콜/빌드 버전 핸드셰이크** (ADR-0028 — ProtocolVersion 옵션·와이어 7 선언·Welcome 서버 버전·불일치 VersionMismatch 거부. EditMode 87/87·PlayMode 22/22·2-프로세스 VERSION-MISMATCH PASS)
 - 2026-10-12 — **킥·연결 종료 사유** (ADR-0027 — DisconnectClient API·와이어 사유 전달·클라 이벤트 사유 인자로 서명 변경. EditMode 84/84·PlayMode 20/20·2-프로세스 KICK-REASON PASS)
