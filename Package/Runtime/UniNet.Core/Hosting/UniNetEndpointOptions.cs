@@ -24,6 +24,14 @@ namespace UniNet.Core.Hosting
         /// <summary>Connect timeout in ms (0 = default, about 5 seconds).</summary>
         public int ConnectTimeoutMs { get; set; }
 
+        /// <summary>
+        /// Disconnect-detection timeout in ms (ADR-0033) — with no packets from the peer for this long, the peer is
+        /// considered disconnected (the RUDP transport's only half-open detection signal). 0 = transport default
+        /// (5000 ms). Raise for lossy/mobile links (10000–15000), lower for faster dead-peer detection. Note the
+        /// built-in 1 Hz RTT probe (ADR-0029) keeps traffic flowing, so this window measures genuine silence.
+        /// </summary>
+        public int DisconnectTimeoutMs { get; set; }
+
         /// <summary>Maximum simultaneous connections (0 = unlimited, server only).</summary>
         public int MaxConnections { get; set; }
 
@@ -47,6 +55,7 @@ namespace UniNet.Core.Hosting
         {
             ConnectionKey = ConnectionKey,
             ConnectTimeoutMs = ConnectTimeoutMs,
+            DisconnectTimeoutMs = DisconnectTimeoutMs,
             MaxConnections = MaxConnections,
             EnableCrc32c = EnableCrc32c,
             ServerCertificate = ServerCertificate,

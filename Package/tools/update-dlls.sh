@@ -12,18 +12,18 @@ REPO_ROOT="$(cd "$PKG_ROOT/.." && pwd)"
 
 # 기반 스택 버전 고정 — 갱신 시 여기만 바꾼다
 declare -A VERSIONS=(
-  [Communication.Network.RUDP.Client]=2.7.0
-  [Communication.Network.RUDP.Server]=2.7.0
-  [Communication.Network.RUDP.Shared]=2.7.0
-  [Communication.Shared]=2.7.0
-  [DRPC.Attribute]=3.5.0
-  [DRPC.Client]=3.5.0
-  [DRPC.Server]=3.5.0
-  [DRPC.Shared]=3.5.0
-  [DRPC.CodeGenerator]=3.5.0
-  [MessageProtocol]=3.2.0
-  [MessageProtocol.CodeGenerator]=3.2.0
-  [MessageProtocol.Core]=3.2.0
+  [Communication.Network.RUDP.Client]=2.7.1
+  [Communication.Network.RUDP.Server]=2.7.1
+  [Communication.Network.RUDP.Shared]=2.7.1
+  [Communication.Shared]=2.7.1
+  [DRPC.Attribute]=3.6.1
+  [DRPC.Client]=3.6.1
+  [DRPC.Server]=3.6.1
+  [DRPC.Shared]=3.6.1
+  [DRPC.CodeGenerator]=3.6.1
+  [MessageProtocol]=3.2.1
+  [MessageProtocol.CodeGenerator]=3.2.1
+  [MessageProtocol.Core]=3.2.1
   [LiteNetLib]=2.1.4
   [BouncyCastle.Cryptography]=2.7.0
 )

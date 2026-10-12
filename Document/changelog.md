@@ -5,6 +5,12 @@
 
 ## [2026-10-12]
 
+### Added (하트비트 타임아웃 튜닝 노출 — /list 항목 8)
+
+- **`UniNetEndpointOptions.DisconnectTimeoutMs`** ([[0033-하트비트-타임아웃-튜닝-노출]]) — 유지(하프오픈) 타임아웃 튜닝(0=전송 기본 5000ms·양수=적용). **상류 릴리스 경로(사용자 선택 A)**: DRPC 공개 API에 전달 경로가 없어 DS_RPC 3.6.1에 `RpcEndpointOptions.DisconnectTimeoutMs`·`CreateTransportOptions(disconnectTimeoutMs)` 전달 추가(로컬 피드 패킹 — nuget.org 3.6.0에는 없는 기능)
+- **기반 스택 동반 갱신** — DRPC 3.5.0→3.6.1·Communication 2.7.0→2.7.1·MessageProtocol 3.2.0→3.2.1(형제 nupkg nuget.org→로컬 피드 확보)·update-dlls.sh 핀 갱신·DLL 재추출
+- **테스트** — EditMode `HeartbeatOptionsTests` 2종(전달 계약 UniNet→DRPC→RUDP 전송 옵션 12345 왕복·기본 0=전송 기본 5000ms 유지). 전체: EditMode 102/102·PlayMode 25/25 — 기반 스택 갱신 후 전 스위트 회귀 없음
+- **문서** — ADR-0033·README·skills/uninet/SKILL.md 설정 예시·00-INDEX. DS_RPC 저장소 문서(changelog·README·skills/drpc) 동기
 ### Added (RPC 레이트리밋 — /list 항목 7)
 
 - **커넥션별 ServerRpc 레이트리밋** ([[0032-커넥션별-ServerRpc-레이트리밋]]) — `NetworkServer.ServerRpcRateLimitPerSecond`(호출/초, 0=무제한 기본). 생성 디스패치 람다가 핸들러 실행 전 고정 1초 창 게이트(제너레이터 0.2.5) — 초과 드롭(빈 응답)·경고 로그는 ADR-0016 정적 스로틀 재사용. 상태는 연결 레지스트리와 분리된 ConcurrentDictionary(디스패치 스레드 무경합·Stopwatch 시계)로 연결 분리 시 해제

@@ -175,6 +175,7 @@ server.ServerRpcRateLimitPerSecond = 120;                          // per-connec
 
 // Protocol version handshake (ADR-0028) — declare your GAME build version on both ends:
 var options = new UniNetEndpointOptions { ProtocolVersion = "mygame-1.4.2" };
+options.DisconnectTimeoutMs = 10000;                             // keep-alive tuning (ADR-0033) — 0 = transport default 5000 ms; raise for lossy/mobile links (the 1 Hz RTT probe keeps traffic flowing)
 await UniNetManager.ServerAsync(port, options);              // server enforces (ExpectedProtocolVersion)
 await UniNetManager.ClientAsync(host, port, options);        // client declares on connect — mismatch rejects with the VersionMismatch reason
 
