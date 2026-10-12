@@ -6,8 +6,8 @@ public interface IUniNetSystemChannel
     /// <summary>Connection ID assigned by the server (set on AttachConnection) — used to identify ServerRpc senders.</summary>
     long UniNetConnId { get; set; }
 
-    /// <summary>Tells a client its own connection ID.</summary>
-    void SendWelcome(long connId);
+    /// <summary>Tells a client its own connection ID and the server's protocol version (ADR-0028 handshake).</summary>
+    void SendWelcome(long connId, string serverVersion);
 
     /// <summary>Notifies clients that an object's owner changed (per object).</summary>
     void SendOwnerUpdate(ulong netId, long ownerConnId);

@@ -30,6 +30,10 @@ namespace Arena
         /// <summary>Base damage — four hits to kill.</summary>
         public const int Damage = 25;
 
+        /// <summary>Protocol-handshake version (ADR-0028) — the demo's build identity. Clients and servers from
+        /// different demo builds reject each other with a VersionMismatch kick; bump this when the demo's wire content changes.</summary>
+        public const string ProtocolVersion = "arena-1";
+
         /// <summary>Crit check — 2x damage when seed % CritEvery == 0.</summary>
         public const int CritEvery = 4;
 

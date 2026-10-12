@@ -74,7 +74,8 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 ### Connection lifecycle & shutdown
 
 - Server events `ClientConnected` / `ClientDisconnected` (by `connId`), fired on the main thread; disconnect fires **before** ownership reassignment so you can destroy the leaving connection's avatars precisely. Reassignment is guaranteed even if a subscriber throws.
-- **Kick & disconnect reasons (ADR-0027)** — `server.DisconnectClient(connId, reason)` force-disconnects a client (reason notice flushed to the wire, then the transport close); the client's `UniNetManager.ClientDisconnected` event carries an `Action<UniNetDisconnectReason>` (**Kicked / ServerShutdown / ConnectionLost**) so games can pick the right UX. `ServerStopAsync` notifies every client with ServerShutdown before unbinding.
+- **Kick & disconnect reasons (ADR-0027)** — `server.DisconnectClient(connId, reason)` force-disconnects a client (reason notice flushed to the wire, then the transport close); the client's `UniNetManager.ClientDisconnected` event carries an `Action<UniNetDisconnectReason>` (**Kicked / ServerShutdown / ConnectionLost / VersionMismatch**) so games can pick the right UX. `ServerStopAsync` notifies every client with ServerShutdown before unbinding.
+- **Protocol version handshake (ADR-0028)** — set `UniNetEndpointOptions.ProtocolVersion` to your game build version on both ends (defaults to the package version, so same-package ends always match). Clients declare it on connect; a mismatched client is rejected with the `VersionMismatch` reason — the building block for forced-update flows. The server's version rides the Welcome (`NetworkClient.ServerProtocolVersion`).
 - Client side: `UniNetManager.ClientDisconnected` event for session loss (server shutdown, network drop) and `IsClientConnected` state query. `UniNetEnvironment.ServerChanged` fires the moment the server instance is set, before any connection is accepted.
 - Subscriber exceptions are isolated — one handler's bug never kills the others or the pump.
 - Start/stop one-liners: `UniNetManager.HostAsync / ServerAsync / ClientAsync` and `ServerStopAsync / ClientStop / HostStop` — stop is idempotent and clears the listener so the same port re-listens cleanly.
@@ -323,7 +324,7 @@ server.ClientDisconnected += connId =>
 };
 
 // Client — notice session loss (server shutdown, network drop):
-UniNetManager.ClientDisconnected += reason => ShowReconnectPrompt(reason);   // Kicked / ServerShutdown / ConnectionLost
+UniNetManager.ClientDisconnected += reason => ShowReconnectPrompt(reason);   // Kicked / ServerShutdown / ConnectionLost / VersionMismatch
 bool alive = UniNetManager.IsClientConnected;
 ```
 

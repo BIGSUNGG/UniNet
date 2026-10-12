@@ -14,6 +14,13 @@ namespace UniNet.Core.Hosting
         /// <summary>Connection authentication key (null = transport stack default).</summary>
         public string ConnectionKey { get; set; }
 
+        /// <summary>
+        /// Protocol version declared during the handshake (ADR-0028). Defaults to the UniNet package version — same-package ends
+        /// always match. Set a game build version to force clients and servers from different builds apart; a mismatch is rejected
+        /// server-side with a VersionMismatch kick.
+        /// </summary>
+        public string ProtocolVersion { get; set; }
+
         /// <summary>Connect timeout in ms (0 = default, about 5 seconds).</summary>
         public int ConnectTimeoutMs { get; set; }
 

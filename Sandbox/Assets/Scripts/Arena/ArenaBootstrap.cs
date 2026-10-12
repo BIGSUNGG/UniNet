@@ -35,16 +35,18 @@ namespace Arena
 
             try
             {
+                // ADR-0028 — the demo declares its build version on both ends (mismatched builds reject with a VersionMismatch kick)
+                var options = new UniNet.Core.Hosting.UniNetEndpointOptions { ProtocolVersion = ArenaConfig.ProtocolVersion };
                 switch (role)
                 {
                     case ArenaRole.Server:
-                        await UniNetManager.ServerAsync(_port);
+                        await UniNetManager.ServerAsync(_port, options);
                         break;
                     case ArenaRole.Client:
-                        await UniNetManager.ClientAsync("127.0.0.1", _port);
+                        await UniNetManager.ClientAsync("127.0.0.1", _port, options);
                         break;
                     case ArenaRole.Host:
-                        await UniNetManager.HostAsync(_port);
+                        await UniNetManager.HostAsync(_port, options, options);
                         break;
                 }
                 _started = true;

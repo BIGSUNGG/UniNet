@@ -130,9 +130,9 @@ namespace UniNet.Tests
                     else
                         Debug.LogWarning("[UNINET-2PROC] SERVER-KICK-SKIP — 연결 없음");
                 }
-                if (kicked && DateTime.UtcNow > DeadlineAfter(13))
+                if (kicked && DateTime.UtcNow > DeadlineAfter(15))
                 {
-                    Thread.Sleep(500);   // give the client time to observe the destroy
+                    Thread.Sleep(500);   // give the client time to finish the mismatch reconnect check
                     UniNetEnvironment.PumpMain();
                     Debug.Log("[UNINET-2PROC] SERVER-DONE score=" + player.Score);
                     return;
@@ -228,6 +228,49 @@ namespace UniNet.Tests
             VerifyMultiComponent();
             VerifySerialization();
             VerifyKick();
+            VerifyVersionMismatch();
+        }
+
+        /// <summary>Verifies the ADR-0028 handshake on the CLIENT — reconnecting with a deliberately wrong protocol version must be
+        /// rejected with the VersionMismatch reason (the server enforces; the kick infrastructure delivers the reason).</summary>
+        private static void VerifyVersionMismatch()
+        {
+            UniNet.Core.UniNetDisconnectReason observed = UniNet.Core.UniNetDisconnectReason.None;
+            bool raised = false;
+            void OnEnded(UniNet.Core.UniNetDisconnectReason reason)
+            {
+                raised = true;
+                observed = reason;
+            }
+            UniNetManager.ClientDisconnected += OnEnded;
+            try
+            {
+                var reconnect = UniNetManager.ClientAsync("127.0.0.1", Port,
+                    new UniNet.Core.Hosting.UniNetEndpointOptions { ProtocolVersion = "uninet-2proc-wrong" });   // deliberately mismatched (server keeps the package default)
+                Wait(reconnect, 15, "버전 불일치 재접속");
+                if (reconnect.IsFaulted)
+                {
+                    Debug.LogError("[UNINET-2PROC] VERSION-RECONNECT-FAIL " + reconnect.Exception);
+                    return;
+                }
+                var deadline = DateTime.UtcNow.AddSeconds(15);
+                while (!raised && DateTime.UtcNow < deadline)
+                {
+                    UniNetEnvironment.PumpMain();
+                    Thread.Sleep(20);
+                }
+                Debug.Log("[UNINET-2PROC] VERSION raised=" + raised + " reason=" + observed);
+                if (!raised || observed != UniNet.Core.UniNetDisconnectReason.VersionMismatch)
+                {
+                    Debug.LogError("[UNINET-2PROC] VERSION-MISMATCH-FAIL — 거부 미관측 또는 사유 불일치");
+                    return;
+                }
+                Debug.Log("[UNINET-2PROC] VERSION-MISMATCH PASS — 버전 불일치 클라가 사유와 함께 거부됨");
+            }
+            finally
+            {
+                UniNetManager.ClientDisconnected -= OnEnded;
+            }
         }
 
         /// <summary>Verifies the ADR-0027 kick round-trip on the CLIENT — the server kicks this connection and the

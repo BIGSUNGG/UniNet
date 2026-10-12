@@ -50,6 +50,7 @@ namespace UniNet.Unity
             var factory = RequireFactory();
             UniNetDriver.Ensure();
             var server = new NetworkServer();
+            server.ExpectedProtocolVersion = options?.ProtocolVersion ?? UniNet.Core.UniNetInfo.Version;   // ADR-0028 — handshake expectation
             UniNetEnvironment.SetServer(server);
             NetworkBehaviour.RegisterAllToServer();
 
@@ -73,6 +74,7 @@ namespace UniNet.Unity
             UniNetDriver.Ensure();
             UniNetEnvironment.SetClient(new NetworkClient());
             UniNetEnvironment.SetClientSender(null);   // so a stale session hub's late Disconnected fails the hub identity filter
+            UniNetEnvironment.LocalProtocolVersion = options?.ProtocolVersion ?? UniNet.Core.UniNetInfo.Version;   // ADR-0028 — declared on connect by the generated hub
             NetworkBehaviour.RegisterAllToClient();
 
             // Wrap client hub creation to observe session end (Disconnected) — mirrors the server-side OnConnected wiring

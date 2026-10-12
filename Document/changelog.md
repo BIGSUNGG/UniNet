@@ -5,6 +5,13 @@
 
 ## [2026-10-12]
 
+### Added (프로토콜/빌드 버전 핸드셰이크 — /list 항목 3)
+
+- **버전 선언-비교 핸드셰이크** ([[0028-프로토콜-빌드-버전-핸드셰이크]]) — `UniNetEndpointOptions.ProtocolVersion`(기본 = 패키지 버전, 게임 빌드 버전 오버라이드)을 클라가 접속 직후 자동 선언(와이어 시스템 메시지 7)하고 서버가 `NetworkServer.ExpectedProtocolVersion`과 비교. 불일치 클라는 `VersionMismatch` 사유 킥으로 거부(ADR-0027 인프라 재사용 — 거부 사유가 클라에 전달돼 강제 업데이트 UX 분기 가능). Welcome에 서버 버전 필드 추가(`NetworkClient.ServerProtocolVersion`). 제너레이터 0.2.3
+- **테스트** — EditMode `VersionHandshakeTests` 3종(불일치 거부·일치 수용·검사 비활성)·PlayMode `VersionMismatchPlayTests` 2종(실세션 불일치 거부·커스텀 일치 접속+서버 버전 수신)·2-프로세스 `VERSION-MISMATCH PASS`(킥 후 잘못된 버전 재접속 거부 — 기존 전 단계 PASS 유지)
+- **Sandbox 예시** — Arena가 `ArenaConfig.ProtocolVersion`("arena-1")을 양단 옵션으로 선언(빌드 버전 사용 예시)·2Proc 러너 버전 불일치 단계·2Proc 프로젝트 동기화
+- **문서** — ADR-0028 신규·connection-lifecycle 갱신·README·skills/uninet/SKILL.md 갱신·`UniNetInfo.Version` 0.2.2로 정합(package.json 동기, 핸드셰이크 기본값으로 기능적 의미 부여)
+
 ### Added (킥·연결 종료 사유 — /list 항목 2)
 
 - **서버 강제 퇴장 API·와이어 종료사유 전달** ([[0027-킥-연결-종료-사유]]) — `NetworkServer.DisconnectClient(connId, reason)` (사유 공지를 와이어에 플러시한 뒤 150ms 유예 후 전송 폐쇄 — SendAsync는 큐 등록만이라 유실됨을 실증해 SendAndFlush+유예로 해결). `UniNetDisconnectReason` enum(None/ClientStopped/ServerShutdown/Kicked/ConnectionLost)·와이어 시스템 메시지 6 신설(제너레이터 0.2.2)

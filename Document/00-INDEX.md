@@ -68,6 +68,7 @@
 - [[0025-접속-후-씬-로드-재등록]] — 접속 후 로드되는 씬의 오브젝트 자동 재등록: 드라이버 sceneLoaded 훅·멱등 스킵·QueueOnMain 지연 실행(리슨서버 교착 수리 포함)
 - [[0026-그리드-가시성-cull0-계약-정합]] — 그리드 가시성 cull=0 항상 관련 계약 복원: 그리드 멤버십 판정 cull>0 한정·Arena 뷰어 주입 제거
 - [[0027-킥-연결-종료-사유]] — 서버 강제 퇴장 DisconnectClient·와이어 시스템 메시지 6 사유 전달·클라 ClientDisconnected 사유 인자(Kicked/ServerShutdown/ConnectionLost)
+- [[0028-프로토콜-빌드-버전-핸드셰이크]] — 프로토콜 버전 선언-비교(와이어 7)·Welcome 서버 버전 필드·불일치 VersionMismatch 거부
 
 ### deployment — 배포
 
@@ -80,6 +81,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-12 — **프로토콜/빌드 버전 핸드셰이크** (ADR-0028 — ProtocolVersion 옵션·와이어 7 선언·Welcome 서버 버전·불일치 VersionMismatch 거부. EditMode 87/87·PlayMode 22/22·2-프로세스 VERSION-MISMATCH PASS)
 - 2026-10-12 — **킥·연결 종료 사유** (ADR-0027 — DisconnectClient API·와이어 사유 전달·클라 이벤트 사유 인자로 서명 변경. EditMode 84/84·PlayMode 20/20·2-프로세스 KICK-REASON PASS)
 - 2026-10-12 — **그리드 가시성 cull=0 계약 정합** (ADR-0026 — 클라→서버→다른 클라 이동 동기화 단절 해소. 그리드 멤버십 판정 cull>0 한정·Arena 뷰어 주입 제거·회귀 테스트 추가)
 - 2026-10-06 — **Fusion식 spawnable 프리팹 스폰 시스템** (ADR-0024 — NetworkInstantiate 전면 교체·마커 컴포넌트·베이크 테이블·클라 동일 프리팹 인스턴스화. EditMode 80/80·PlayMode 17/17·2-proc PASS 3종)

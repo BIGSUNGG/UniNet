@@ -247,7 +247,7 @@ namespace UniNet.Tests
 
             public void Clear() => Replicates.Clear();
 
-            public void SendWelcome(long connId) { }
+            public void SendWelcome(long connId, string serverVersion) { }
             public void SendOwnerUpdate(ulong netId, long ownerConnId) { }
             public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload)
             {

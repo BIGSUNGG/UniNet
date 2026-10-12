@@ -169,8 +169,13 @@ server.ClientDisconnected += connId =>
 };
 server.DisconnectClient(connId, UniNetDisconnectReason.Kicked);    // force-disconnect (cheat/moderation/auth reject) — notice flushes, then the transport close; the client receives the Kicked reason
 
+// Protocol version handshake (ADR-0028) — declare your GAME build version on both ends:
+var options = new UniNetEndpointOptions { ProtocolVersion = "mygame-1.4.2" };
+await UniNetManager.ServerAsync(port, options);              // server enforces (ExpectedProtocolVersion)
+await UniNetManager.ClientAsync(host, port, options);        // client declares on connect — mismatch rejects with the VersionMismatch reason
+
 // Client:
-UniNetManager.ClientDisconnected += reason => ShowReconnectPrompt(reason);   // Kicked / ServerShutdown / ConnectionLost (ADR-0027)
+UniNetManager.ClientDisconnected += reason => ShowReconnectPrompt(reason);   // Kicked / ServerShutdown / ConnectionLost / VersionMismatch (ADR-0027·0028)
 bool alive = UniNetManager.IsClientConnected;                       // session state query
 UniNetEnvironment.ServerChanged += () => { /* server instance set, before any connection is accepted */ };
 ```

@@ -46,6 +46,13 @@ namespace UniNet.Core.Hosting
         public int ReplicationBudgetPerTickBytes { get; set; }
 
         /// <summary>
+        /// Protocol version this server expects from clients (ADR-0028 handshake). Set from UniNetEndpointOptions.ProtocolVersion;
+        /// defaults to the package version, so same-package ends always match. A client declaring a different version is rejected
+        /// with a VersionMismatch kick. Empty string disables the check.
+        /// </summary>
+        public string ExpectedProtocolVersion { get; set; } = UniNetInfo.Version;
+
+        /// <summary>
         /// Client connected event — fired on the main thread after Welcome, ownership assignment, and catch-up
         /// have completed. Spawn the player's avatar, update HUD, etc. here (connection lifecycle gateway).
         /// </summary>
@@ -287,7 +294,7 @@ namespace UniNet.Core.Hosting
                 var connId = conn.ConnId;
                 UniNetEnvironment.QueueOnMain(() =>
                 {
-                    channel.SendWelcome(connId);
+                    channel.SendWelcome(connId, ExpectedProtocolVersion);   // ADR-0028 — the server's version rides the Welcome
                     ReassignOwnership();
                     SendCatchup(conn);
                     RaiseLifecycle(ClientConnected, connId);   // after catch-up — spawns raised here never race the catch-up
@@ -335,6 +342,21 @@ namespace UniNet.Core.Hosting
         public IReadOnlyList<ServerConnection> SnapshotConnections()
         {
             lock (_gate) return _connections.ToArray();
+        }
+
+        /// <summary>
+        /// Applies a client's version declaration (ADR-0028 — generated server hub, wire message 7). Returns whether the version was
+        /// accepted; a mismatch kicks the connection with the VersionMismatch reason (the generated hub logs the rejection).
+        /// </summary>
+        public bool OnClientVersionDeclared(long connId, string version)
+        {
+            if (string.IsNullOrEmpty(ExpectedProtocolVersion) || version == ExpectedProtocolVersion)
+                return true;
+            bool kicked = DisconnectClient(connId, UniNetDisconnectReason.VersionMismatch);
+            if (!kicked)
+                UniNetEnvironment.LogFault(new InvalidOperationException(
+                    $"Version-mismatch kick found no connection {connId} — declaration raced attachment (ADR-0028). The mismatched client may survive this check."));   // surfaced instead of a silent false — the accept callback attaches synchronously so this window is theoretical, but never silent
+            return false;
         }
 
         /// <summary>

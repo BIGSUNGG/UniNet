@@ -31,6 +31,12 @@ namespace UniNet.Core.Hosting
         public static IUniNetClientSender ClientSender { get; private set; }
 
         /// <summary>
+        /// Protocol version this endpoint declares in the handshake (ADR-0028). Set from UniNetEndpointOptions.ProtocolVersion
+        /// by UniNetManager.ClientAsync/HostAsync; the generated client hub sends it on connect. Defaults to the package version.
+        /// </summary>
+        public static string LocalProtocolVersion { get; set; } = UniNetInfo.Version;
+
+        /// <summary>
         /// Engine-level fault logger — the Unity layer wires UnityEngine.Debug.LogException here at startup so Core
         /// stays engine-agnostic. Core's replication tick routes user-serializer exceptions (custom Write/Read/Equals,
         /// see ADR-0020) through this hook: a faulty serializer skips its sub-object instead of killing the tick.

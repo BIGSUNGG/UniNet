@@ -16,6 +16,12 @@ namespace UniNet.Core.Hosting
         public long LocalConnId { get; private set; }
 
         /// <summary>
+        /// The server's protocol version as declared in the Welcome (ADR-0028). Null before the Welcome arrives. Informational —
+        /// enforcement is server-side (a mismatched client is kicked with VersionMismatch).
+        /// </summary>
+        public string ServerProtocolVersion { get; set; }
+
+        /// <summary>
         /// Why the last session ended — assigned by the generated client hub when a disconnect notice (ADR-0027)
         /// arrives, read by UniNetManager when raising ClientDisconnected. None when no notice was received
         /// (voluntary stop or an unexplained transport loss).

@@ -21,5 +21,8 @@ namespace UniNet.Core
 
         /// <summary>The transport dropped without a notice (network loss, timeout, or a lost best-effort notice).</summary>
         ConnectionLost = 4,
+
+        /// <summary>The server rejected the connection because the client's declared protocol version does not match (ADR-0028 version handshake).</summary>
+        VersionMismatch = 5,
     }
 }
