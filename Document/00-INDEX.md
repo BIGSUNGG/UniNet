@@ -72,6 +72,7 @@
 - [[0028-프로토콜-빌드-버전-핸드셰이크]] — 프로토콜 버전 선언-비교(와이어 7)·Welcome 서버 버전 필드·불일치 VersionMismatch 거부
 - [[0029-네트워크-통계-API]] — 트래픽 카운터(페이로드 바이트 계약)·자체 RTT 프로브(와이어 8/9)·큐 깊이 관측
 - [[0030-명시적-소유권-이전-API]] — SetOwner(netId, connId) 소유권 이전(전 연결 OwnerUpdate 전파·0=방치후 입양)
+- [[0031-플레이어-오브젝트-연결-매핑]] — connId↔플레이어 오브젝트 매핑(SetPlayerObject/GetPlayerObject)·퇴장 일괄 정리 DestroyObjectsOwnedBy
 
 ### deployment — 배포
 
@@ -84,6 +85,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-12 — **플레이어 오브젝트·연결 매핑** (ADR-0031 — SetPlayerObject/GetPlayerObject/GetPlayerConnection·DestroyObjectsOwnedBy 퇴장 정리. Arena 전환. EditMode 97/97·PlayMode 24/24)
 - 2026-10-12 — **명시적 소유권 이전 API** (ADR-0030 — SetOwner·OwnerUpdate 전파·0=방치후 입양. EditMode 93/93·PlayMode 24/24·2-프로세스 소유권 이전 왕복)
 - 2026-10-12 — **네트워크 통계 API** (ADR-0029 — 트래픽 카운터·자체 RTT 프로브(와이어 8/9)·큐 깊이. 제너레이터 0.2.4. EditMode 90/90·PlayMode 23/23)
 - 2026-10-12 — **프로토콜/빌드 버전 핸드셰이크** (ADR-0028 — ProtocolVersion 옵션·와이어 7 선언·Welcome 서버 버전·불일치 VersionMismatch 거부. EditMode 87/87·PlayMode 22/22·2-프로세스 VERSION-MISMATCH PASS)

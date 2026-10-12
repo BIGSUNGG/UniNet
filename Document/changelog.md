@@ -5,6 +5,14 @@
 
 ## [2026-10-12]
 
+### Added (플레이어 오브젝트·연결 매핑 — /list 항목 6)
+
+- **connId↔플레이어 오브젝트 매핑 API** ([[0031-플레이어-오브젝트-연결-매핑]]) — `NetworkServer.SetPlayerObject(connId, netId)`(0=해제)·`ClearPlayerObject`·`GetPlayerObject`·`GetPlayerConnection`(역조회). 아바타 스폰 시 등록, 연결 분리 시 자동 해제. 선언적 계약 — SetOwner 소유권 이전이 매핑을 이동시키지 않음
+- **퇴장 일괄 정리 헬퍼 2층** — Core `NetworkServer.DestroyObjectsOwnedBy`(네트워크 파괴만 — 등록 해제·와이어·가시성) + Unity `UniNetManager.DestroyObjectsOwnedBy`(로컬 GO 파괴 포함 — 게임 호출 대상). 서버 측 엔트리 기반으로 해당 연결 소유 동적 오브젝트만 정확히 파괴(씬 스캔 제거·씬 오브젝트 제외). 매핑은 ClientDisconnected 발화 후 해제(핸들러 내 GetPlayerObject 읽기 가능 — 순서 계약)
+- **테스트** — EditMode `PlayerMappingTests` 4종(등록/조회/역조회·분리 자동 해제·명시 해제 2경로·소유 동적만 선택 파괴+전파)
+- **Sandbox 전환** — Arena가 아바타 스폰 시 매핑 등록·퇴장 정리를 `DestroyObjectsOwnedBy`로 전환(FindObjectsByType 스캔 제거)
+- **문서** — ADR-0031·connection-lifecycle 갱신·README·skills/uninet/SKILL.md·00-INDEX
+
 ### Added (명시적 소유권 이전 API — /list 항목 5)
 
 - **`NetworkServer.SetOwner(netId, connId)`** ([[0030-명시적-소유권-이전-API]]) — 살아있는 오브젝트의 소유권을 서버가 다른 연결로 이전(아이템 줍기·탈것·점령 등 상용 패턴). 기존 OwnerUpdate 와이어(시스템 메시지 2)로 전 연결 전파 — 신규 와이어·제너레이터 변경 없음. connId 0 = 방치(다음 재배정 패스가 고아 입양), 명시 소유권은 조인/리브 관계없이 유지(기존 KEEP 정책 승계). 미지 netId → false

@@ -92,14 +92,14 @@ namespace UniNet.Tests
 
             // Arena pattern — the event handler destroys dynamic objects owned by the disconnecting connection (relies on the fires-before-ownership-reassignment contract)
             var server = UniNetEnvironment.Server;
-            server.ClientDisconnected += connId =>
+            // Arena pattern (ADR-0031) — the framework departure helper destroys the leaver's dynamic objects precisely
+            // (fires-before-ownership-reassignment contract); the mapping must still be readable INSIDE the handler
+            ulong avatarNetId = 0;   // assigned after the spawn below — captured by the handler
+            server.ClientDisconnected += leaving =>
             {
-                foreach (var player in Object.FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                {
-                    var entry = server.GetEntry(player.NetId);
-                    if (entry == null || !entry.IsDynamic || entry.OwnerConnId != connId) continue;
-                    UniNetManager.NetworkDestroy(player.gameObject);
-                }
+                Assert.AreEqual(avatarNetId, server.GetPlayerObject(leaving), "매핑은 이벤트 발화 시점에도 읽기 가능 (ADR-0031 순서 계약)");
+                int destroyed = UniNetManager.DestroyObjectsOwnedBy(leaving);
+                Assert.GreaterOrEqual(destroyed, 1, "퇴장자 소유 동적 오브젝트 파괴(로컬 GO 포함)");
             };
 
             // Dynamically spawn an avatar owned by the host client (same pattern as ArenaRoundtripTests — private InitialOnly values ride the baseline via the configure callback)
@@ -110,6 +110,8 @@ namespace UniNet.Tests
             ulong netId = alpha.NetId;
 
             yield return WaitUntil(() => alpha.IsOwner, 5, "호스트 클라 소유권");
+            avatarNetId = netId;
+            server.SetPlayerObject(UniNetEnvironment.Client.LocalConnId, netId);   // ADR-0031 — declare the avatar mapping (the handler above reads it)
             Assert.IsTrue(UniNetManager.IsClientConnected, "호스트 클라 접속 중");
 
             UniNetManager.ClientStop();

@@ -42,6 +42,9 @@ namespace UniNet.Core.Hosting
         private readonly List<List<ulong>> _bucketFree = new();   // pooled empty cell buckets available for reuse
         private readonly List<List<ulong>> _bucketUsed = new();   // cell buckets assigned during this tick
 
+        // ADR-0031 — declared connection↔player-object mapping (game-owned; ownership transfers do not move it). Main thread.
+        private readonly Dictionary<long, ulong> _playerObjects = new();
+
         /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 
@@ -344,6 +347,7 @@ namespace UniNet.Core.Hosting
                                 // Always runs regardless of subscriber exceptions — server invariant that keeps dead connections from
                                 // staying owners (letting a rethrown exception skip the rest of this lambda would lose OwnerOnly delta receivers)
                                 ReassignOwnership();
+                                _playerObjects.Remove(conn.ConnId);   // ADR-0031 — the mapping dies with the connection, AFTER the event (ClientDisconnected handlers can still read GetPlayerObject for custom cleanup — loot drops etc.)
                             }
                         });
                         return;
@@ -381,6 +385,52 @@ namespace UniNet.Core.Hosting
                     conn.RttMs = rttMs;
                     return;
                 }
+        }
+
+        /// <summary>
+        /// Declares a connection's player object (ADR-0031, main thread) — the game-owned connId↔netId mapping behind
+        /// GetPlayerObject/GetPlayerConnection. Register at avatar spawn; the mapping clears automatically when the
+        /// connection detaches. Declarative: a SetOwner ownership transfer does NOT move the mapping.
+        /// </summary>
+        public void SetPlayerObject(long connId, ulong netId)
+        {
+            if (netId == 0)
+                _playerObjects.Remove(connId);
+            else
+                _playerObjects[connId] = netId;
+        }
+
+        /// <summary>Removes a connection's player-object declaration (ADR-0031, main thread).</summary>
+        public void ClearPlayerObject(long connId) => _playerObjects.Remove(connId);
+
+        /// <summary>The connection's declared player object — 0 when none (ADR-0031).</summary>
+        public ulong GetPlayerObject(long connId)
+            => _playerObjects.TryGetValue(connId, out var netId) ? netId : 0;
+
+        /// <summary>The connection that declared this object as its player object — 0 when none (ADR-0031; linear scan).</summary>
+        public long GetPlayerConnection(ulong netId)
+        {
+            foreach (var kv in _playerObjects)
+                if (kv.Value == netId) return kv.Key;
+            return 0;
+        }
+
+        /// <summary>
+        /// NETWORK-side destroy of every DYNAMIC object owned by the connection (ADR-0031, main thread) — server
+        /// deregistration + destroy wire + visibility cleanup, precise from server entries (no scene scans). Does NOT
+        /// destroy the local GameObject (Core is engine-free) — in Unity use UniNetManager.DestroyObjectsOwnedBy,
+        /// which delegates here AND destroys the local instances. Scene objects are untouched (level furniture; their
+        /// ownership falls to the reassignment policy). Returns the number destroyed on the wire.
+        /// </summary>
+        public int DestroyObjectsOwnedBy(long connId)
+        {
+            int destroyed = 0;
+            foreach (var (netId, entry) in SnapshotObjects())
+            {
+                if (entry.IsDynamic && entry.OwnerConnId == connId && DestroyObject(netId))
+                    destroyed++;
+            }
+            return destroyed;
         }
 
         /// <summary>

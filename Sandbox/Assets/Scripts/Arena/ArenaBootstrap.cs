@@ -183,13 +183,11 @@ namespace Arena
             ArenaHud.NoteLifecycle($"- 플레이어 퇴장 (연결 {connId})");
             Debug.Log($"[Arena] 클라 퇴장 connId={connId}");
 
-            foreach (var player in FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-            {
-                var entry = _server.GetEntry(player.NetId);
-                if (entry == null || !entry.IsDynamic || entry.OwnerConnId != connId) continue;
-                Debug.Log($"[Arena] 퇴장 플레이어 아바타 파괴 connId={connId} name={player.DisplayName}");
-                UniNetManager.NetworkDestroy(player.gameObject);
-            }
+            // ADR-0031 — departure cleanup via the mapping API: precise from server-side entries (no scene scans),
+            // local GameObjects included. Fires before ownership reassignment (lifecycle contract).
+            int destroyed = UniNetManager.DestroyObjectsOwnedBy(connId);
+            if (destroyed > 0)
+                Debug.Log($"[Arena] 퇴장 플레이어 아바타 파괴 connId={connId} count={destroyed}");
         }
 
         /// <summary>Server — matches the dynamic player count to the connection count. (Viewer positions were removed with the
@@ -234,7 +232,14 @@ namespace Arena
                 new Vector3(x, 0.5f, z), Quaternion.identity,
                 clone => clone.GetComponent<ArenaPlayer>().InitServerState(displayName, colorSeed));
             var player = go.GetComponent<ArenaPlayer>();
-            Debug.Log($"[Arena] 플레이어 스폰 name={player.DisplayName} netId={player.NetId}");
+
+            // ADR-0031 — register the connection↔avatar mapping (connId ↔ netId) — the framework-owned replacement
+            // for game-side dictionaries and the "find my avatar" scan pattern
+            var ownerConnId = _server.GetEntry(player.NetId)?.OwnerConnId ?? 0;
+            if (ownerConnId != 0)
+                _server.SetPlayerObject(ownerConnId, player.NetId);
+
+            Debug.Log($"[Arena] 플레이어 스폰 name={player.DisplayName} netId={player.NetId} owner={ownerConnId}");
         }
 
         private static void DestroySurplus(ArenaPlayer[] players, int count)

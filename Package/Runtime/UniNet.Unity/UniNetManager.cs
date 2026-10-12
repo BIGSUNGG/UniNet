@@ -282,7 +282,7 @@ namespace UniNet.Unity
             return instance;
         }
 
-        /// <summary>Server-side network destroy — replicates the destroy to all clients and destroys the local object. Use on objects spawned via NetworkInstantiate (whole object, all subs).</summary>
+        /// <summary>Destroys a dynamic object — replicates the destroy to all clients and destroys the local object. Use on objects spawned via NetworkInstantiate (whole object, all subs).</summary>
         public static void NetworkDestroy(GameObject instance)
         {
             var server = UniNetEnvironment.Server;
@@ -295,6 +295,32 @@ namespace UniNet.Unity
 
             server.DestroyObject(nb.NetId);
             UnityEngine.Object.Destroy(instance);
+        }
+
+        /// <summary>
+        /// Departure cleanup (ADR-0031, main thread) — destroys every DYNAMIC object owned by the connection INCLUDING
+        /// the local GameObjects: NetworkDestroy (deregistration + destroy wire + visibility cleanup) + Object.Destroy.
+        /// Precise from server-side entries — no scene scans. Call from the ClientDisconnected handler (it fires before
+        /// ownership reassignment, so the leaver's objects are identified exactly). Scene objects are untouched (their
+        /// ownership falls to the reassignment policy). Returns the number destroyed.
+        /// </summary>
+        public static int DestroyObjectsOwnedBy(long connId)
+        {
+            var server = UniNetEnvironment.Server;
+            if (server == null) return 0;
+            int destroyed = 0;
+            foreach (var (netId, entry) in server.SnapshotObjects())   // copy — NetworkDestroy mutates the registry mid-iteration
+            {
+                if (!entry.IsDynamic || entry.OwnerConnId != connId) continue;
+                if (entry.Instance is NetworkBehaviour nb && nb != null)
+                {
+                    NetworkDestroy(nb.gameObject);
+                    destroyed++;
+                }
+                else if (server.DestroyObject(netId))   // engine-less instance — network-side destroy only (Core companion behavior)
+                    destroyed++;
+            }
+            return destroyed;
         }
 
         private static UniNetHubFactory RequireFactory()
