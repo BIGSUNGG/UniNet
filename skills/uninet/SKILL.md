@@ -172,7 +172,9 @@ server.SetOwner(item.NetId, pickerConnId);                        // explicit ow
 server.SetPlayerObject(connId, avatar.NetId);                    // declare the connection's avatar (ADR-0031) — auto-cleared on detach (readable inside the disconnect handler)
 UniNetManager.DestroyObjectsOwnedBy(connId);                    // departure cleanup — network destroy + local GO destroy of the leaver's dynamic objects (Core server.DestroyObjectsOwnedBy is network-only)
 server.ServerRpcRateLimitPerSecond = 120;                          // per-connection flood guard (ADR-0032) — 0 = unlimited; drops counted in RateLimitedServerRpcDrops
-server.SessionGraceSeconds = 10;                                // reconnect grace (ADR-0034) — preserve ownership for 10 s; 0 = off
+server.SessionGraceSeconds = 10;  // reconnect grace (ADR-0034) — preserve ownership for 10 s; 0 = off
+server.LoadScene("BattleScene");                               // scene transition (ADR-0035) — clients auto-load + report; gate event:
+server.AllClientsSceneLoaded += scene => { /* all clients ready — start gameplay */ };
 // On disconnect: UniNetManager.ReconnectAsync(address, port) — auto-sends resume, ownership restored
 
 // Protocol version handshake (ADR-0028) — declare your GAME build version on both ends:

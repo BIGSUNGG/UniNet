@@ -37,6 +37,9 @@ public interface IUniNetSystemChannel
     /// </summary>
     System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNetDisconnectReason reason);
 
+    /// <summary>Tells the client to load a scene (ADR-0035, wire 11 — scene transition).</summary>
+    void SendLoadScene(string sceneName);
+
     /// <summary>Sends a generic RPC payload (assembly-agnostic send path).</summary>
     void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode);
 }

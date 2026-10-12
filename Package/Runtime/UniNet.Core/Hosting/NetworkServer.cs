@@ -66,7 +66,8 @@ namespace UniNet.Core.Hosting
         /// <summary>Server-side UniNet traffic counters (ADR-0029) — payload bytes/packets sent by this server. Per-connection view: <see cref="ServerConnection.RttMs"/>.</summary>
         public UniNetTrafficCounters TrafficStats { get; } = new();
 
-        private ulong _nextSessionToken = (ulong)System.Environment.TickCount64 << 32 | (uint)new System.Random().Next();   // ADR-0034 — per-instance random seed (predictable +1 sequences let attackers guess neighbor tokens)
+        // netstandard2.1: TickCount64 unavailable — 32-bit tick + random is sufficient per-instance seed entropy
+        private ulong _nextSessionToken = (ulong)System.Environment.TickCount << 32 | (uint)new System.Random().Next();   // ADR-0034 — per-instance random seed (predictable +1 sequences let attackers guess neighbor tokens)
 
         /// <summary>Issues a new session token (ADR-0034) — sent in the Welcome; the client presents it on reconnect.</summary>
         public ulong IssueSessionToken() => _nextSessionToken++;
@@ -83,6 +84,13 @@ namespace UniNet.Core.Hosting
         /// objects and ownership survive before the reassignment policy adopts them. 0 disables (immediate).
         /// </summary>
         public double SessionGraceSeconds { get; set; }
+
+        // ADR-0035 — scene transition tracking
+        private string? _pendingScene;
+        private readonly HashSet<long> _sceneReadyConnections = new();
+
+        /// <summary>Fires on the main thread when every live connection has reported the pending scene loaded (ADR-0035). Parameter: the scene identifier.</summary>
+        public event Action<string>? AllClientsSceneLoaded;
 
         /// <summary>
         /// Client connected event — fired on the main thread after Welcome, ownership assignment, and catch-up
@@ -160,6 +168,9 @@ namespace UniNet.Core.Hosting
                 internal set => System.Threading.Volatile.Write(ref _rttUs, (int)(value * 1000.0));
             }
             private int _rttUs = -1000;   // microseconds backing store — the -1 ms sentinel encodes as -1000
+
+            /// <summary>Whether the Welcome has been sent (guards LoadScene broadcast from racing attach).</summary>
+            public bool WelcomeSent { get; internal set; }
 
             /// <summary>Session token issued in the Welcome (ADR-0034) — identifies the connection for grace-session reattach.</summary>
             public ulong SessionToken { get; internal set; }
@@ -344,7 +355,10 @@ namespace UniNet.Core.Hosting
                 var sessionToken = conn.SessionToken;
                 UniNetEnvironment.QueueOnMain(() =>
                 {
-                    channel.SendWelcome(connId, ExpectedProtocolVersion, sessionToken);   // ADR-0028 version + ADR-0034 token ride the Welcome
+                    channel.SendWelcome(connId, ExpectedProtocolVersion, sessionToken);
+                    conn.WelcomeSent = true;
+                    if (_pendingScene != null)
+                        channel.SendLoadScene(_pendingScene);   // ADR-0035 — late joiner participates in the in-flight transition
                     ReassignOwnership();
                     SendCatchup(conn);
                     RaiseLifecycle(ClientConnected, connId);   // after catch-up — spawns raised here never race the catch-up
@@ -385,6 +399,8 @@ namespace UniNet.Core.Hosting
                                     ReassignOwnership();
                                 _playerObjects.Remove(conn.ConnId);   // ADR-0031 — the mapping dies with the connection, AFTER the event (ClientDisconnected handlers can still read GetPlayerObject for custom cleanup — loot drops etc.)
                                 _rpcWindows.TryRemove(conn.ConnId, out _);   // ADR-0032 — rate state dies with the connection
+                                _sceneReadyConnections.Remove(conn.ConnId);   // ADR-0035 — scene gate readiness dies too
+                                CheckSceneGate();   // departure may complete the gate
                             }
                         });
                         return;
@@ -497,6 +513,48 @@ namespace UniNet.Core.Hosting
             foreach (var kv in _playerObjects)
                 if (kv.Value == netId) return kv.Key;
             return 0;
+        }
+
+        /// <summary>
+        /// Tells every client to load a scene (ADR-0035, wire 11) — the server must load its own copy itself (game responsibility — this method only broadcasts and gates). Ready tracking
+        /// begins immediately: <see cref="AllClientsSceneLoaded"/> fires once every live connection reports loaded (wire 12).
+        /// The Unity layer loads via SceneManager; this Core method broadcasts and tracks (main thread).
+        /// </summary>
+        public void LoadScene(string sceneName)
+        {
+            if (string.IsNullOrEmpty(sceneName)) throw new ArgumentNullException(nameof(sceneName));
+            _pendingScene = sceneName;
+            _sceneReadyConnections.Clear();
+            foreach (var conn in SnapshotConnections())
+            {
+                if (conn.Disconnected || !conn.WelcomeSent) continue;   // pre-Welcome — AttachConnection catchup covers
+                conn.Channel.SendLoadScene(sceneName);   // wire 11
+            }
+        }
+
+        /// <summary>Applies a client's scene-loaded report (ADR-0035, wire 12 — generated handler). Fires the gate event when all live connections are ready.</summary>
+        public void OnClientSceneLoaded(long connId, string sceneName)
+        {
+            if (_pendingScene == null || sceneName != _pendingScene) return;   // stale or unexpected report
+            _sceneReadyConnections.Add(connId);
+            CheckSceneGate();
+        }
+
+        /// <summary>The pending scene identifier (null when no transition is in progress — ADR-0035).</summary>
+        public string? PendingScene => _pendingScene;
+
+        /// <summary>Whether a specific connection has reported the pending scene loaded (ADR-0035).</summary>
+        public bool IsClientSceneReady(long connId) => _sceneReadyConnections.Contains(connId);
+
+        /// <summary>Fires AllClientsSceneLoaded when every live connection has reported (ADR-0035, main thread).</summary>
+        private void CheckSceneGate()
+        {
+            if (_pendingScene == null) return;
+            foreach (var conn in SnapshotConnections())
+                if (!conn.Disconnected && !_sceneReadyConnections.Contains(conn.ConnId)) return;   // someone not ready
+            var scene = _pendingScene;
+            _pendingScene = null;
+            AllClientsSceneLoaded?.Invoke(scene);
         }
 
         /// <summary>Saves a grace session for a disconnecting connection (ADR-0034, main thread).</summary>

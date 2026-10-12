@@ -27,6 +27,7 @@ namespace UniNet.Tests
             public void SendTimeSync(double serverTime) { }
             public System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNet.Core.UniNetDisconnectReason reason) => System.Threading.Tasks.Task.CompletedTask;
             public void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode) { }
+            public void SendLoadScene(string sceneName) { }
         }
 
         [SetUp]

@@ -119,6 +119,7 @@ namespace UniNet.Tests
             public void SendDestroy(ulong netId) => Destroys.Add(netId);
             public void SendTimeSync(double serverTime) { }
             public System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNet.Core.UniNetDisconnectReason reason) => System.Threading.Tasks.Task.CompletedTask;
+            public void SendLoadScene(string sceneName) { }
             public void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode) { }
         }
     }

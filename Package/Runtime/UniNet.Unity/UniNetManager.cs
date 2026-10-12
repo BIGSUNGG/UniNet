@@ -64,6 +64,26 @@ namespace UniNet.Unity
         }
 
         /// <summary>
+        /// Client-side scene transition handler (ADR-0035) — called by the generated hub (wire 11, main thread).
+        /// Loads the Unity scene; ADR-0025 re-registration runs automatically on scene load.
+        /// </summary>
+        public static void OnSceneTransitionRequested(string sceneName)
+        {
+            Debug.Log($"[UniNet] 씬 전환 지시 — {sceneName}");
+            SceneManager.LoadScene(sceneName);
+        }
+
+        /// <summary>Sends the scene-loaded report to the server (ADR-0035, wire 12) — call after the scene and registration settle.</summary>
+        public static void ReportSceneLoaded(string sceneName)
+        {
+            var sender = UniNetEnvironment.ClientSender;
+            if (sender == null) return;
+            var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
+            w.WriteString(sceneName);
+            sender.UniNetSend(12, w.ToArray(), global::DRPC.RpcDeliveryMode.ReliableOrdered);
+        }
+
+        /// <summary>
         /// Reconnects to the server after a disconnect (ADR-0034) — preserves the session token so the server reattaches
         /// the grace-held session (objects + ownership). The generated client hub automatically sends the resume request.
         /// Returns false when there was no previous session to resume.
@@ -392,6 +412,7 @@ namespace UniNet.Unity
                 int client = NetworkBehaviour.RegisterAllToClient();
                 if (server > 0 || client > 0)
                     Debug.Log($"[UniNet] 씬 로드 네트 등록 — {sceneName}: 서버 +{server}, 클라 +{client}");
+                UniNetManager.ReportSceneLoaded(sceneName);   // ADR-0035 — auto-report after registration (server gate checks all connections ready)
             });
         }
 

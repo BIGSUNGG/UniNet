@@ -68,6 +68,9 @@ namespace Arena
                 _server.ServerRpcRateLimitPerSecond = ArenaConfig.ServerRpcRateLimitPerSecond;   // ADR-0032 — generous gameplay ceiling, floods dropped
                 _server.SessionGraceSeconds = 10;   // ADR-0034 — reconnect grace (mobile network switches)
 
+                // ADR-0035 — scene transition gate: all clients loaded → start the round (demo wiring)
+                _server.AllClientsSceneLoaded += scene => ArenaHud.NoteLifecycle($"씬 전환 완료: {scene} (전원 준비)");
+
                 // Connection lifecycle gateway — spawn avatars and update the HUD on join, precisely destroy the departed connection's avatar on leave
                 _server.ClientConnected += OnClientConnected;
                 _server.ClientDisconnected += OnClientDisconnected;

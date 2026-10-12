@@ -5,6 +5,13 @@
 
 ## [2026-10-12]
 
+### Added (씬 전환 동기화 — /list 항목 10)
+
+- **서버 주도 씬 전환** ([[0035-씬-전환-동기화]]) — `NetworkServer.LoadScene(sceneName)` 전 연결 브로드캐스트(와이어 11)·클라 보고(와이어 12) 시 준비 표시·전원 준비 시 `AllClientsSceneLoaded` 이벤트 발화. 연결 해제 시 게이트 재판정(마지막 연결 퇴장으로 게이트 완성 가능). 후발 접속자도 진행 중 전환에 참여(캐치업 시 SendLoadScene 재발송). 제너레이터 0.2.7
+- **클라 자동 흐름** — 와이어 11 수신 → `UniNetManager.OnSceneTransitionRequested` → SceneManager.LoadScene → ADR-0025 재등록 → 드라이버 sceneLoaded 콜백에서 `ReportSceneLoaded` 자동 전송
+- **테스트** — EditMode `SceneTransitionTests` 4종(브로드캐스트·전원 보고 게이트 발화·이씬 보고 무시·후발 접속자 재발송)
+- **문서** — ADR-0035·README·skills/uninet·00-INDEX
+
 ### Added (재접속 세션 보존+재부착 — /list 항목 9)
 
 - **유예 세션·재부착** ([[0034-재접속-세션-보존-재부착]]) — `NetworkServer.SessionGraceSeconds`(기본 0=비활성) 설정 시 연결 해제 후 소유 오브젝트+플레이어 매핑을 토큰 키 유예 세션으로 보존(ReassignOwnership이 유예 소유자 스킵·드라이버 Update가 SweepGraceSessions 만료 정리). Welcome에 세션 토큰(증가 ulong) 탑재·클라는 SessionToken 보관

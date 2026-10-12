@@ -76,6 +76,7 @@
 - [[0032-커넥션별-ServerRpc-레이트리밋]] — ServerRpcRateLimitPerSecond 고정 창 게이트·초과 드롭+집계·플러드 방어
 - [[0033-하트비트-타임아웃-튜닝-노출]] — UniNetEndpointOptions.DisconnectTimeoutMs(상류 DS_RPC 3.6.1 전달 추가·기반 스택 3.6.x 갱신)
 - [[0034-재접속-세션-보존-재부착]] — SessionGraceSeconds 유예 세션·Welcome 토큰·ResumeRequest(와이어 10) 재부착·ReconnectAsync
+- [[0035-씬-전환-동기화]] — LoadScene 브로드캐스트(와이어 11)·클라 보고(와이어 12)·AllClientsSceneLoaded 준비 게이트
 
 ### deployment — 배포
 

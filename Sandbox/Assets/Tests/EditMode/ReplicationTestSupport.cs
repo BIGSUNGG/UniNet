@@ -29,6 +29,7 @@ namespace UniNet.Tests
         internal readonly List<(ulong netId, long owner)> Owners = new();
         internal readonly List<double> TimeSyncs = new();
         internal readonly List<UniNet.Core.UniNetDisconnectReason> DisconnectNotices = new();
+        internal readonly List<string> LoadScenes = new();
 
         public void Clear()
         {
@@ -36,6 +37,9 @@ namespace UniNet.Tests
             Spawns.Clear();
             Destroys.Clear();
             Owners.Clear();
+            TimeSyncs.Clear();
+            DisconnectNotices.Clear();
+            LoadScenes.Clear();
         }
 
         public void SendWelcome(long connId, string serverVersion, ulong sessionToken) { }
@@ -55,6 +59,7 @@ namespace UniNet.Tests
             DisconnectNotices.Add(reason);
             return System.Threading.Tasks.Task.CompletedTask;
         }
+        public void SendLoadScene(string sceneName) => LoadScenes.Add(sceneName);
         public void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode) { }
     }
 }
