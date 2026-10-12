@@ -120,6 +120,8 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            MethodDeliveryModes[7] = global::DRPC.RpcDeliveryMode.ReliableOrdered;");
             sb.AppendLine("            MethodCallActions.Add(8, data => __Ping_Requested(UniNetConnId, data));   // ADR-0029 — client RTT probe echo");
             sb.AppendLine("            MethodDeliveryModes[8] = global::DRPC.RpcDeliveryMode.ReliableOrdered;");
+            sb.AppendLine("            MethodCallActions.Add(10, data => __ResumeRequest_Requested(UniNetConnId, data));   // ADR-0034 — grace-session resume");
+            sb.AppendLine("            MethodDeliveryModes[10] = global::DRPC.RpcDeliveryMode.ReliableOrdered;");
             sb.AppendLine("        }");
             sb.AppendLine();
             sb.AppendLine("        /// <summary>ID the server assigned to this connection (set on AttachConnection) — identifies ServerRpc senders.</summary>");
@@ -132,11 +134,12 @@ namespace UniNet.CodeGenerator
                         EmitRequestedHandler(sb, m, rpc, "Server");
 
             // system channel implementation
-            sb.AppendLine("        public void SendWelcome(long connId, string serverVersion)");
+            sb.AppendLine("        public void SendWelcome(long connId, string serverVersion, ulong sessionToken)");
             sb.AppendLine("        {");
             sb.AppendLine($"            var w = {Writer}.Create();");
             sb.AppendLine("            w.WriteInt64(connId);");
-            sb.AppendLine("            w.WriteString(serverVersion);   // ADR-0028 — the server's protocol version rides the Welcome");
+            sb.AppendLine("            w.WriteString(serverVersion);   // ADR-0028");
+            sb.AppendLine("            w.WriteUInt64(sessionToken);   // ADR-0034 — grace-session reattach identity");
             sb.AppendLine("            var p1 = w.ToArray();");
             sb.AppendLine($"            {Env}.Server?.TrafficStats.OnSent(p1.Length);   // ADR-0029");
             sb.AppendLine("            FireAndForget(SendRPC(1, p1, global::DRPC.RpcDeliveryMode.ReliableOrdered));");
@@ -219,6 +222,25 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            return SendRPC(methodId, payload, mode);");
             sb.AppendLine("        }");
             sb.AppendLine();
+            sb.AppendLine("        /// <summary>Wire message 10 (ADR-0034) — grace-session resume request. Reattaches ownership on the main thread.</summary>");
+            sb.AppendLine($"        private static {TaskOfBytes} __ResumeRequest_Requested(long senderConnId, byte[] data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            try");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var r = new {Reader}(data);");
+            sb.AppendLine("                ulong token = r.ReadUInt64();");
+            sb.AppendLine($"                var server = {Env}.Server;");
+            sb.AppendLine("                server?.TrafficStats.OnReceived(data.Length);   // ADR-0029");
+            sb.AppendLine($"                {Env}.QueueOnMain(() => server?.ResumeSession(token, senderConnId));   // ADR-0034 — main thread (ownership mutation)");
+            sb.AppendLine($"                return global::System.Threading.Tasks.Task.FromResult({Empty});");
+            sb.AppendLine("            }");
+            sb.AppendLine("            catch (global::System.Exception ex)   // malformed");
+            sb.AppendLine("            {");
+            sb.AppendLine("                UnityEngine.Debug.LogException(ex);");
+            sb.AppendLine($"                return global::System.Threading.Tasks.Task.FromResult({Empty});");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
             sb.AppendLine("        /// <summary>Wire message 8 (ADR-0029) — client RTT probe. Records the client-reported RTT and echoes the clock back (wire 9).</summary>");
             sb.AppendLine($"        private {TaskOfBytes} __Ping_Requested(long senderConnId, byte[] data)");   // instance — SendRPC/FireAndForget are hub instance members
             sb.AppendLine("        {");
@@ -298,7 +320,19 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("                MethodDeliveryModes[kv.Key] = kv.Value.Mode;");
             sb.AppendLine("            }");
             sb.AppendLine($"            {Env}.SetClientSender(this);");
-            sb.AppendLine("            SendVersionDeclaration();   // ADR-0028 — declare the protocol version on connect (server rejects mismatches)");
+            sb.AppendLine("            SendVersionDeclaration();   // ADR-0028 — declare the protocol version on connect");
+            sb.AppendLine("            SendResumeRequest();   // ADR-0034 — resume grace session if we have a stored token");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        private void SendResumeRequest()");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var c = {Env}.Client;");
+            sb.AppendLine("            if (c == null || c.SessionToken == 0) return;   // fresh connection — no resume");
+            sb.AppendLine($"            var w = {Writer}.Create();");
+            sb.AppendLine("            w.WriteUInt64(c.SessionToken);");
+            sb.AppendLine("            var p10 = w.ToArray();");
+            sb.AppendLine($"            {Env}.Client?.TrafficStats.OnSent(p10.Length);");
+            sb.AppendLine("            FireAndForget(SendRPC(10, p10, global::DRPC.RpcDeliveryMode.ReliableOrdered));");
             sb.AppendLine("        }");
             sb.AppendLine();
             sb.AppendLine("        /// <summary>Declares the local protocol version to the server (ADR-0028, wire 7) — sent on connect so the server can reject mismatched builds with a VersionMismatch kick.</summary>");
@@ -318,7 +352,7 @@ namespace UniNet.CodeGenerator
             sb.AppendLine($"                var r = new {Reader}(data);");
             sb.AppendLine($"                {Env}.Client?.TrafficStats.OnReceived(data.Length);   // ADR-0029");
             sb.AppendLine($"                {Env}.Client?.SetLocalConnId(r.ReadInt64());");
-            sb.AppendLine($"                if ({Env}.Client != null) {Env}.Client.ServerProtocolVersion = r.ReadString();   // ADR-0028 — server's declared version (informational; enforcement is server-side). Missing on legacy servers (generator <= 0.2.2) — the catch keeps the Welcome alive with a null version");
+            sb.AppendLine($"                if ({Env}.Client != null) {{ {Env}.Client.ServerProtocolVersion = r.ReadString(); {Env}.Client.SessionToken = r.ReadUInt64(); }}   // ADR-0028 version + ADR-0034 token (legacy servers lack both — the catch keeps the Welcome alive)");
             sb.AppendLine("                return EmptyResponse();");
             sb.AppendLine("            }");
             sb.AppendLine("            catch (global::System.Exception ex)   // malformed/short payload (legacy Welcome without the version) — isolated like the other system handlers");

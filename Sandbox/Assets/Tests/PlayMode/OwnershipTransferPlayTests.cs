@@ -19,7 +19,7 @@ namespace UniNet.Tests
         private sealed class GuestChannel : IUniNetSystemChannel
         {
             public long UniNetConnId { get; set; }
-            public void SendWelcome(long connId, string serverVersion) { }
+            public void SendWelcome(long connId, string serverVersion, ulong sessionToken) { }
             public void SendOwnerUpdate(ulong netId, long ownerConnId) { }
             public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) { }
             public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states) { }

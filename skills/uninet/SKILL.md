@@ -171,7 +171,9 @@ server.DisconnectClient(connId, UniNetDisconnectReason.Kicked);    // force-disc
 server.SetOwner(item.NetId, pickerConnId);                        // explicit ownership transfer (ADR-0030) — pickups/vehicles; 0 releases (reassignment adopts)
 server.SetPlayerObject(connId, avatar.NetId);                    // declare the connection's avatar (ADR-0031) — auto-cleared on detach (readable inside the disconnect handler)
 UniNetManager.DestroyObjectsOwnedBy(connId);                    // departure cleanup — network destroy + local GO destroy of the leaver's dynamic objects (Core server.DestroyObjectsOwnedBy is network-only)
-server.ServerRpcRateLimitPerSecond = 120;                          // per-connection flood guard (ADR-0032) — 0 = unlimited; drops are counted in RateLimitedServerRpcDrops
+server.ServerRpcRateLimitPerSecond = 120;                          // per-connection flood guard (ADR-0032) — 0 = unlimited; drops counted in RateLimitedServerRpcDrops
+server.SessionGraceSeconds = 10;                                // reconnect grace (ADR-0034) — preserve ownership for 10 s; 0 = off
+// On disconnect: UniNetManager.ReconnectAsync(address, port) — auto-sends resume, ownership restored
 
 // Protocol version handshake (ADR-0028) — declare your GAME build version on both ends:
 var options = new UniNetEndpointOptions { ProtocolVersion = "mygame-1.4.2" };

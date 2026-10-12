@@ -66,6 +66,7 @@ namespace Arena
                 // (retargeted from bullets to players after the P4 switch removed bullets)
                 _server.SetReplicationChannelBudget(typeof(ArenaPlayer), ArenaConfig.PlayerChannelBudgetPerTickBytes);
                 _server.ServerRpcRateLimitPerSecond = ArenaConfig.ServerRpcRateLimitPerSecond;   // ADR-0032 — generous gameplay ceiling, floods dropped
+                _server.SessionGraceSeconds = 10;   // ADR-0034 — reconnect grace (mobile network switches)
 
                 // Connection lifecycle gateway — spawn avatars and update the HUD on join, precisely destroy the departed connection's avatar on leave
                 _server.ClientConnected += OnClientConnected;

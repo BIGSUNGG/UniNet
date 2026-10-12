@@ -63,6 +63,19 @@ namespace UniNet.Unity
             _listenHandle = handle;
         }
 
+        /// <summary>
+        /// Reconnects to the server after a disconnect (ADR-0034) — preserves the session token so the server reattaches
+        /// the grace-held session (objects + ownership). The generated client hub automatically sends the resume request.
+        /// Returns false when there was no previous session to resume.
+        /// </summary>
+        public static async Task<bool> ReconnectAsync(string address, int port, UniNetEndpointOptions options = null)
+        {
+            var prevToken = UniNetEnvironment.Client?.SessionToken ?? 0;
+            if (prevToken == 0) return false;
+            await ClientAsync(address, port, options);
+            return true;
+        }
+
         /// <summary>Connects as a client to the server at the given address.</summary>
         public static Task ClientAsync(string address, int port)
             => ClientAsync(address, port, null);
@@ -72,7 +85,9 @@ namespace UniNet.Unity
         {
             var factory = RequireFactory();
             UniNetDriver.Ensure();
+            var prevToken = UniNetEnvironment.Client?.SessionToken ?? 0;
             UniNetEnvironment.SetClient(new NetworkClient());
+            UniNetEnvironment.Client.SessionToken = prevToken;   // ADR-0034 — carry for reattach
             UniNetEnvironment.SetClientSender(null);   // so a stale session hub's late Disconnected fails the hub identity filter
             UniNetEnvironment.LocalProtocolVersion = options?.ProtocolVersion ?? UniNet.Core.UniNetInfo.Version;   // ADR-0028 — declared on connect by the generated hub
             NetworkBehaviour.RegisterAllToClient();
@@ -395,7 +410,8 @@ namespace UniNet.Unity
                 var objects = server.SnapshotObjects();   // once per frame — shared by the sweep and the tick (avoids a second copy)
                 var alive = SweepDestroyed(server, objects);   // drop destroyed entries and tick only the living ones
                 RecordRewindHistory(alive, Time.unscaledTimeAsDouble);   // P4 — record positions for rewind-tracked objects
-                server.TickReplication(alive, Time.unscaledTimeAsDouble);   // feed the real clock — activates P3 rate and starvation policies
+                server.TickReplication(alive, Time.unscaledTimeAsDouble);
+                server.SweepGraceSessions(Time.unscaledTimeAsDouble);   // ADR-0034 — expire grace sessions   // feed the real clock — activates P3 rate and starvation policies
                 BroadcastTimeSync(server, Time.unscaledTimeAsDouble);   // P4 — time sync (once per second)
             }
 

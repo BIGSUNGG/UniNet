@@ -38,6 +38,7 @@ namespace UniNet.Tests
             var faTank = new GameObject("FaTank").AddComponent<FastArrayTank>();
 
             var serverTask = UniNetManager.ServerAsync(Port);
+            UniNetEnvironment.Server.SessionGraceSeconds = 30;   // ADR-0034 — reconnect grace for the test timeline
             Wait(serverTask, 15, "서버 리슨");
             if (serverTask.IsFaulted) { Debug.LogError("[UNINET-2PROC] SERVER-ABORT"); return; }
 
@@ -142,7 +143,7 @@ namespace UniNet.Tests
                     else
                         Debug.LogWarning("[UNINET-2PROC] SERVER-KICK-SKIP — 연결 없음");
                 }
-                if (kicked && DateTime.UtcNow > DeadlineAfter(15))
+                if (kicked && DateTime.UtcNow > DeadlineAfter(18))
                 {
                     Thread.Sleep(500);   // give the client time to finish the mismatch reconnect check
                     UniNetEnvironment.PumpMain();
@@ -258,6 +259,7 @@ namespace UniNet.Tests
             VerifyOwnershipTransfer();
             VerifyKick();
             VerifyVersionMismatch();
+            VerifyReconnect(player);
         }
 
         private static readonly System.Collections.Generic.List<long> _ownerHistory = new();
@@ -572,6 +574,32 @@ namespace UniNet.Tests
         {
             var go = new GameObject("VProc");
             return go.AddComponent<VerifyPlayer>();
+        }
+
+                /// <summary>Verifies ADR-0034 reconnect — the client reconnects after the kick (grace period) and ownership should be reattached.</summary>
+        private static void VerifyReconnect(VerifyPlayer player)
+        {
+            var reconn = UniNetManager.ReconnectAsync("127.0.0.1", Port);
+            Wait(reconn, 15, "재접속");
+            if (reconn.IsFaulted)
+            {
+                Debug.LogError("[UNINET-2PROC] RECONNECT-FAIL " + reconn.Exception);
+                return;
+            }
+            // Wait for Welcome + ownership to settle (resume request is fire-and-forget from the hub)
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                UniNetEnvironment.PumpMain();
+                long owner = UniNetEnvironment.Client.GetOwner(player.NetId);
+                if (owner == UniNetEnvironment.Client.LocalConnId)
+                {
+                    Debug.Log("[UNINET-2PROC] RECONNECT PASS — 소유권 재부착 (ADR-0034)");
+                    return;
+                }
+                Thread.Sleep(50);
+            }
+            Debug.LogError("[UNINET-2PROC] RECONNECT-FAIL — 소유권 재부착 미관측");
         }
 
         private static void Wait(System.Threading.Tasks.Task task, double seconds, string what)

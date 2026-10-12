@@ -5,12 +5,21 @@
 
 ## [2026-10-12]
 
+### Added (재접속 세션 보존+재부착 — /list 항목 9)
+
+- **유예 세션·재부착** ([[0034-재접속-세션-보존-재부착]]) — `NetworkServer.SessionGraceSeconds`(기본 0=비활성) 설정 시 연결 해제 후 소유 오브젝트+플레이어 매핑을 토큰 키 유예 세션으로 보존(ReassignOwnership이 유예 소유자 스킵·드라이버 Update가 SweepGraceSessions 만료 정리). Welcome에 세션 토큰(증가 ulong) 탑재·클라는 SessionToken 보관
+- **재부착 와이어 10** — 클라 재접속 시 생성 허브가 자동 ResumeRequest(토큰) 전송 → 서버 `ResumeSession(token, newConnId)`이 소유 오브젝트를 새 connId로 이전·OwnerUpdate 전파·매핑 복원 (제너레이터 0.2.6)
+- **클라 API** — `UniNetManager.ReconnectAsync(address, port, options)` — 이전 토큰 계승 ClientAsync. ClientAsync 자체도 토큰 계승하므로 일반 재호출도 자동 재개
+- **테스트** — EditMode `ReconnectGraceTests` 4종(유예 보존·재부착 이전·만료 후 입양·유예 비활성 즉시 재배정)
+- **문서** — ADR-0034·README·skills/uninet/SKILL.md·00-INDEX
+
 ### Added (하트비트 타임아웃 튜닝 노출 — /list 항목 8)
 
 - **`UniNetEndpointOptions.DisconnectTimeoutMs`** ([[0033-하트비트-타임아웃-튜닝-노출]]) — 유지(하프오픈) 타임아웃 튜닝(0=전송 기본 5000ms·양수=적용). **상류 릴리스 경로(사용자 선택 A)**: DRPC 공개 API에 전달 경로가 없어 DS_RPC 3.6.1에 `RpcEndpointOptions.DisconnectTimeoutMs`·`CreateTransportOptions(disconnectTimeoutMs)` 전달 추가(로컬 피드 패킹 — nuget.org 3.6.0에는 없는 기능)
 - **기반 스택 동반 갱신** — DRPC 3.5.0→3.6.1·Communication 2.7.0→2.7.1·MessageProtocol 3.2.0→3.2.1(형제 nupkg nuget.org→로컬 피드 확보)·update-dlls.sh 핀 갱신·DLL 재추출
 - **테스트** — EditMode `HeartbeatOptionsTests` 2종(전달 계약 UniNet→DRPC→RUDP 전송 옵션 12345 왕복·기본 0=전송 기본 5000ms 유지). 전체: EditMode 102/102·PlayMode 25/25 — 기반 스택 갱신 후 전 스위트 회귀 없음
 - **문서** — ADR-0033·README·skills/uninet/SKILL.md 설정 예시·00-INDEX. DS_RPC 저장소 문서(changelog·README·skills/drpc) 동기
+
 ### Added (RPC 레이트리밋 — /list 항목 7)
 
 - **커넥션별 ServerRpc 레이트리밋** ([[0032-커넥션별-ServerRpc-레이트리밋]]) — `NetworkServer.ServerRpcRateLimitPerSecond`(호출/초, 0=무제한 기본). 생성 디스패치 람다가 핸들러 실행 전 고정 1초 창 게이트(제너레이터 0.2.5) — 초과 드롭(빈 응답)·경고 로그는 ADR-0016 정적 스로틀 재사용. 상태는 연결 레지스트리와 분리된 ConcurrentDictionary(디스패치 스레드 무경합·Stopwatch 시계)로 연결 분리 시 해제

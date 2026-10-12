@@ -50,6 +50,11 @@ namespace UniNet.Core.Hosting
         private readonly System.Collections.Concurrent.ConcurrentDictionary<long, RpcRateWindow> _rpcWindows = new();
         private long _rateLimitedDrops;
 
+        // ADR-0034 — grace sessions: disconnected connections whose objects+ownership are preserved for reattach.
+        // Keyed by session token (issued in Welcome). Main thread only.
+        private readonly Dictionary<ulong, GraceSession> _graceSessions = new();
+        private double _nextGraceSweep;
+
         /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 
@@ -61,12 +66,23 @@ namespace UniNet.Core.Hosting
         /// <summary>Server-side UniNet traffic counters (ADR-0029) — payload bytes/packets sent by this server. Per-connection view: <see cref="ServerConnection.RttMs"/>.</summary>
         public UniNetTrafficCounters TrafficStats { get; } = new();
 
+        private ulong _nextSessionToken = (ulong)System.Environment.TickCount64 << 32 | (uint)new System.Random().Next();   // ADR-0034 — per-instance random seed (predictable +1 sequences let attackers guess neighbor tokens)
+
+        /// <summary>Issues a new session token (ADR-0034) — sent in the Welcome; the client presents it on reconnect.</summary>
+        public ulong IssueSessionToken() => _nextSessionToken++;
+
         /// <summary>
         /// Per-connection ServerRpc rate limit in calls/second (ADR-0032) — 0 = unlimited (default, opt-in).
         /// Enforced in the generated dispatch before the handler runs; over-limit calls are dropped (empty response)
         /// and counted. Set from game bootstrap; a generous normal-gameplay ceiling keeps floods (macros/cheats) out.
         /// </summary>
         public int ServerRpcRateLimitPerSecond { get; set; }
+
+        /// <summary>
+        /// Grace period for session preservation (ADR-0034) in seconds — how long a disconnected connection's
+        /// objects and ownership survive before the reassignment policy adopts them. 0 disables (immediate).
+        /// </summary>
+        public double SessionGraceSeconds { get; set; }
 
         /// <summary>
         /// Client connected event — fired on the main thread after Welcome, ownership assignment, and catch-up
@@ -144,6 +160,9 @@ namespace UniNet.Core.Hosting
                 internal set => System.Threading.Volatile.Write(ref _rttUs, (int)(value * 1000.0));
             }
             private int _rttUs = -1000;   // microseconds backing store — the -1 ms sentinel encodes as -1000
+
+            /// <summary>Session token issued in the Welcome (ADR-0034) — identifies the connection for grace-session reattach.</summary>
+            public ulong SessionToken { get; internal set; }
 
             /// <summary>The connection's send channel (the generated server hub — generated code type-casts it for sends).</summary>
             public IUniNetSystemChannel Channel { get; }
@@ -319,11 +338,13 @@ namespace UniNet.Core.Hosting
             {
                 var conn = new ServerConnection(_nextConnId++, channel);
                 channel.UniNetConnId = conn.ConnId;
+                conn.SessionToken = IssueSessionToken();   // ADR-0034 — grace-session reattach identity
                 _connections.Add(conn);
                 var connId = conn.ConnId;
+                var sessionToken = conn.SessionToken;
                 UniNetEnvironment.QueueOnMain(() =>
                 {
-                    channel.SendWelcome(connId, ExpectedProtocolVersion);   // ADR-0028 — the server's version rides the Welcome
+                    channel.SendWelcome(connId, ExpectedProtocolVersion, sessionToken);   // ADR-0028 version + ADR-0034 token ride the Welcome
                     ReassignOwnership();
                     SendCatchup(conn);
                     RaiseLifecycle(ClientConnected, connId);   // after catch-up — spawns raised here never race the catch-up
@@ -358,7 +379,10 @@ namespace UniNet.Core.Hosting
                             {
                                 // Always runs regardless of subscriber exceptions — server invariant that keeps dead connections from
                                 // staying owners (letting a rethrown exception skip the rest of this lambda would lose OwnerOnly delta receivers)
-                                ReassignOwnership();
+                                if (SessionGraceSeconds > 0)
+                                    SaveGraceSession(conn.ConnId, conn.SessionToken);
+                                else
+                                    ReassignOwnership();
                                 _playerObjects.Remove(conn.ConnId);   // ADR-0031 — the mapping dies with the connection, AFTER the event (ClientDisconnected handlers can still read GetPlayerObject for custom cleanup — loot drops etc.)
                                 _rpcWindows.TryRemove(conn.ConnId, out _);   // ADR-0032 — rate state dies with the connection
                             }
@@ -473,6 +497,87 @@ namespace UniNet.Core.Hosting
             foreach (var kv in _playerObjects)
                 if (kv.Value == netId) return kv.Key;
             return 0;
+        }
+
+        /// <summary>Saves a grace session for a disconnecting connection (ADR-0034, main thread).</summary>
+        private void SaveGraceSession(long connId, ulong sessionToken)
+        {
+            var token = sessionToken;
+            if (token == 0) { ReassignOwnership(); return; }
+
+            var owned = new List<ulong>();
+            foreach (var (netId, entry) in SnapshotObjects())
+                if (entry.OwnerConnId == connId)
+                    owned.Add(netId);
+            var playerObj = _playerObjects.TryGetValue(connId, out var po) ? po : 0;
+
+            _graceSessions[token] = new GraceSession
+            {
+                Token = token,
+                OldConnId = connId,
+                ExpiresAt = UniNetTime.LocalClock() + SessionGraceSeconds,
+                OwnedNetIds = owned,
+                PlayerObjectNetId = playerObj,
+            };
+        }
+
+        /// <summary>
+        /// Reattaches a grace session to a new connection (ADR-0034, main thread — called by the generated resume handler).
+        /// Returns true when the session matched and ownership was transferred.
+        /// </summary>
+        public bool ResumeSession(ulong token, long newConnId)
+        {
+            if (!_graceSessions.TryGetValue(token, out var session)) return false;
+            if (UniNetTime.LocalClock() > session.ExpiresAt) { _graceSessions.Remove(token); return false; }
+
+            _graceSessions.Remove(token);
+            foreach (var netId in session.OwnedNetIds)
+            {
+                var entry = GetEntry(netId);
+                if (entry == null) continue;
+                entry.OwnerConnId = newConnId;
+                foreach (var conn in SnapshotConnections())
+                    if (!conn.Disconnected)
+                        conn.Channel.SendOwnerUpdate(netId, newConnId);
+            }
+            if (session.PlayerObjectNetId != 0)
+                _playerObjects[newConnId] = session.PlayerObjectNetId;
+            return true;
+        }
+
+        /// <summary>Sweeps expired grace sessions (ADR-0034 — call from the tick; expiry releases objects to reassignment).</summary>
+        public void SweepGraceSessions(double time)
+        {
+            if (time < _nextGraceSweep) return;
+            _nextGraceSweep = time + 0.5;
+            if (_graceSessions.Count == 0) return;
+            List<ulong>? expired = null;
+            foreach (var kv in _graceSessions)
+                if (time > kv.Value.ExpiresAt)
+                    (expired ??= new List<ulong>()).Add(kv.Key);
+            if (expired != null)
+            {
+                foreach (var tk in expired) _graceSessions.Remove(tk);
+                ReassignOwnership();
+            }
+        }
+
+        /// <summary>Whether a connId is held by an active grace session (ADR-0034 — ReassignOwnership skips these).</summary>
+        private bool IsInGraceSession(long connId)
+        {
+            foreach (var kv in _graceSessions)
+                if (kv.Value.OldConnId == connId) return true;
+            return false;
+        }
+
+        /// <summary>Grace session state (ADR-0034).</summary>
+        private sealed class GraceSession
+        {
+            public ulong Token;
+            public long OldConnId;
+            public double ExpiresAt;
+            public List<ulong> OwnedNetIds = new();
+            public ulong PlayerObjectNetId;
         }
 
         /// <summary>
@@ -601,7 +706,8 @@ namespace UniNet.Core.Hosting
             int rr = 0;
             foreach (var (netId, entry) in sorted)
             {
-                if (entry.OwnerConnId != 0 && live.Contains(entry.OwnerConnId)) continue;   // 살아 있는 소유자는 그대로
+                if (entry.OwnerConnId != 0 && live.Contains(entry.OwnerConnId)) continue;
+                if (entry.OwnerConnId != 0 && IsInGraceSession(entry.OwnerConnId)) continue;   // ADR-0034 — grace-held   // 살아 있는 소유자는 그대로
 
                 long owner = connections[rr++ % connections.Count].ConnId;
                 if (owner == entry.OwnerConnId) continue;

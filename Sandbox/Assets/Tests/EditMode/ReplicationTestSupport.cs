@@ -38,7 +38,7 @@ namespace UniNet.Tests
             Owners.Clear();
         }
 
-        public void SendWelcome(long connId, string serverVersion) { }
+        public void SendWelcome(long connId, string serverVersion, ulong sessionToken) { }
         public void SendOwnerUpdate(ulong netId, long ownerConnId) => Owners.Add((netId, ownerConnId));
         public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload)
         {
