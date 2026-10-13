@@ -23,6 +23,7 @@
 - [[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]] — MonoBehaviour RPC 3종 + [Replicated]/RepNotify + 동적 스폰/파괴·조건부 (P1 전체 + P2 전체, 구현됨)
 - [[features/connection-lifecycle|connection-lifecycle]] — 연결 수명주기 이벤트: 서버 접속/해제 이벤트·클라 해제 콜백·상태 조회 (구현됨)
 - [[features/replication-p3-policy|replication-p3-policy]] — 리플리케이션 고급 정책: 가시성·우선순위·휴면·전송 주기·채널 예산 (P3, 구현됨)
+- [[features/replication-batching-delivery|replication-batching-delivery]] — 복제 배칭과 오브젝트별 전송 신뢰성: 틱별 신뢰성별 배치(wire 13)·Unreliable 스트림·정지 재전송 (구현됨 — ADR-0039)
 - [[features/replication-p4-hooks|replication-p4-hooks]] — P4 훅: UniNetTime·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성 (구현됨)
 - [[features/movement-prediction|movement-prediction]] — 이동 예측: 게임 정의 입력·상태 구조체·고정 스텝 CSP&R·점프/대시/구르기/텔레포트 (구현됨 — ADR-0013·0037·0038)
 - [[features/custom-netserialize|custom-netserialize]] — 커스텀 필드 직렬화: [Replicated(Serializer)] 정적 Write/Read 계약·양자화 (구현됨 — 제너레이터 0.1.9, ADR-0020)

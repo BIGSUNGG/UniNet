@@ -255,6 +255,22 @@ namespace UniNet.Tests
                     Replicates.Add((netId, payload));
             }
 
+            public void SendReplicateBatch(byte[] blob, RpcDeliveryMode mode)
+            {
+                var r = new global::MessageProtocol.Serialize.MessageBufferReader(blob);
+                int count = r.ReadUInt16();
+                for (int i = 0; i < count; i++)
+                {
+                    ulong netId = r.ReadUInt64();
+                    r.ReadByte();   // subId
+                    r.ReadInt32();  // methodId
+                    int len = r.ReadInt32();
+                    var payload = len > 0 ? r.ReadBytes(len).ToArray() : System.Array.Empty<byte>();
+                    if (payload.Length > 0)
+                        Replicates.Add((netId, payload));
+                }
+            }
+
             public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states) { }
             public void SendDestroy(ulong netId) { }
             public void SendTimeSync(double serverTime) { }

@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.2.2";
+        public const string Version = "0.3.0";   // 0.3.0 — batched replication (wire 13) + per-object delivery policy
     }
 }

@@ -14,6 +14,9 @@ namespace UniNet.Core.Hosting
         /// <summary>Per-object update rate in Hz (UE NetUpdateFrequency equivalent). 0 = every tick, unlimited (default). Delta comparison is skipped until 1/Hz has elapsed since the last send.</summary>
         float NetworkUpdateFrequencyHz { get; }
 
+        /// <summary>Wire reliability for this object's replication deltas (default ReliableOrdered). Unreliable deltas are sent ordered-but-loss-tolerant (Sequenced — a lost delta is skipped, the next one still arrives); a lost FINAL delta is recovered by the server's quiescence resend (~0.25 s after the object stops changing).</summary>
+        Delivery NetworkReplicationDelivery { get; }
+
         /// <summary>Distance-cull radius in world units (UE NetCullDistance equivalent). 0 = no distance culling (default). Viewer positions are provided via the server's SetViewerPosition.</summary>
         float NetworkCullDistance { get; }
 

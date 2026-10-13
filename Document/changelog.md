@@ -5,6 +5,20 @@
 
 ## [2026-10-13]
 
+### Added (복제 배칭과 오브젝트별 전송 신뢰성 분리 — /goal "1~3까지 진행")
+
+- **오브젝트별 복제 신뢰성 정책** ([[0039-복제-배칭과-신뢰성-분리]]·[[features/replication-batching-delivery]]) — `NetworkBehaviour.NetworkReplicationDelivery` (`Delivery.ReliableOrdered` 기본 / `Unreliable`). `Unreliable`은 와이어에서 Sequenced(유실 허용·순서 보장)로 전송 — `NetworkTransform`이 기본 적용
+- **복제 틱 배칭 (wire 13)** — 커넥션별·틱별 신뢰/비신뢰 각 1개 배치(최대 2메시지). 생성 허브에 `SendReplicateBatch`·배치 수신자 추가, `UniNetBatchRegistry`(methodId→applier)로 어떤 어셈블리가 수신해도 전체 타입 적용. 배치 상한 1000B (Sequenced 단편화 불가 보호)
+- **정지 시 신뢰 재전송** — Unreliable 오브젝트가 0.25s 이상 조용해지면 풀 상태를 신뢰 배치로 1회 재전송 (마지막 델타 유실로 클라가 영구 정지하는 구멍 봉합). **휴면 플러시 신뢰 강제** — `FlushNetworkDormancy` 깨어난 첫 델타는 신뢰로
+- **Arena** — 플레이어 복제 주기 30Hz (NetworkTransform·ArenaPlayer 슬롯 모두) — 60Hz 시뮬 스텝 2개가 델타 1개로 병합. 서버→클라 메시지 수 이동 시 ~240/s → 커넥션당 틱당 최대 2개로 절감
+- **테스트** — EditMode `ReplicationDeliveryBatchTests` 7종 (배치 묶음·신뢰성 라우팅·정지 재전송·플러시 강제·배치 상한 분할). 기존 테스트 채널에 배치 언팩 추가. EditMode 131/131·PlayMode 27/27
+- **문서** — ADR-0039·features/replication-batching-delivery·README·skills/uninet/SKILL.md·00-INDEX·arena-shooter
+
+### Changed (파괴적 — 와이어 포맷)
+
+- **`UniNetInfo.Version` 0.3.0** — 와이어 포맷 변경(배치 메시지 + 신뢰성 라우팅). 구버전 혼속은 ADR-0028 핸드셰이크가 VersionMismatch로 거부. `package.json` 동기
+- 복제 틱 전송 경로가 개별 `SendReplicate`에서 신뢰성별 배치(`SendReplicateBatch`)로 전환 — `IUniNetSystemChannel` 구현체 7곳(테스트 채널) 동반 갱신. 스폰·캐치업·OwnerUpdate 등 이벤트 경로는 기존 신뢰 개별 전송 유지
+
 ### Added (상태 기반 이동 예측 일반화 — /goal "이동 동기화 확장성")
 
 - **`MoveSimulation<TInput, TState>` 엔진** ([[0038-상태-기반-이동-예측-일반화]]·[[features/movement-prediction|movement-prediction]]) — 게임 정의 입력·상태 구조체 + 순수 스텝 규칙(ADR-0020 코덱 계약) 기반 고정 스텝(기본 60Hz) 시뮬레이션. 서버 입력 큐(용량 8·단조 검증·불량 페이로드 기각)·소유 클라 히스토리 링(128)·롤백(서버 상태 blob 복원 → 미승인 입력 재생)

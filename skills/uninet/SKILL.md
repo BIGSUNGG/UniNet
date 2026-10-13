@@ -21,10 +21,10 @@ UniNet is a **server-authoritative** networking framework for Unity, targeting t
 Add one line to your project's `Packages/manifest.json`:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.1.1"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.3.0"
 ```
 
-- `#v0.1.1` pins a release tag (omit to track the default branch).
+- `#v0.3.0` pins a release tag (omit to track the default branch).
 - All dependencies are bundled — no NuGet feed, no extra config. Private repos work if your editor account can `git clone`.
 
 ### Mental model
@@ -271,6 +271,7 @@ public sealed partial class Bullet : NetworkBehaviour
     {
         NetworkUpdateFrequencyHz = 30f;   // cap sends at 30 Hz; missed ticks coalesce to the latest value
         NetworkCullDistance = 24f;        // no sends beyond this radius from the viewer
+        NetworkReplicationDelivery = Delivery.Unreliable;   // loss-tolerant ordered stream — no per-packet ACKs (v0.3.0)
     }
 
     public override bool IsNetworkRelevant(long viewerConnId)   // optional per-viewer relevancy override
@@ -303,6 +304,7 @@ Tuning notes:
 
 - **Scheduling order** — candidates and deferred sends are merged, then sent in `priority × (1 + waitSeconds / 0.1)` order (UE `GetNetPriority` formula). Starved objects eventually go through — you do not need custom fairness logic.
 - **Budgets** — a type over its channel budget is deferred, not dropped; a single delta larger than the whole budget forces through so one huge object cannot stall.
+- **Batching & delivery (v0.3.0)** — a tick sends at most two replication messages per connection (one reliable + one unreliable batch, wire 13), regardless of how many objects changed. `NetworkReplicationDelivery = Delivery.Unreliable` rides the lossy-but-ordered stream (no ACKs); if the final delta of a quiet stretch is lost, the server re-sends the object's full state once on the reliable batch ~0.25 s later, so a stopped object never strands. `NetworkTransform` defaults to Unreliable; dormancy flushes are always forced reliable.
 - **Dormancy** skips comparison (cheapest idle state); flush is a single batched send. Use it for dead/idle objects, not for pausing gameplay state you expect to change soon.
 - **Relevancy transitions** — leaving relevancy stops deltas but does **not** despawn on the client (it keeps the last state); re-entering restores a baseline via full state. Design your game around frozen-at-last-state off-screen objects.
 - **Grid visibility** spatially pre-filters objects with a cull distance set (quantization error ≤ `cellSize`), ANDed with their own `NetworkCullDistance`. Objects with **no cull distance stay always relevant in every mode** — the grid never culls them. For large worlds with many distance-culled objects, this is the scalable path (RepGraph-style).

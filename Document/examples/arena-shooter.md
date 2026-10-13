@@ -88,7 +88,8 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 뷰어 위치(SetViewerPosition) | 사용 안 함 — 소규모 아레나는 컬 거리 설정 오브젝트가 없어 뷰어 주입이 데드 웨이트였음 (ADR-0026에서 제거) | — |
 | 관련성 훅(IsNetRelevantFor) | 라이브러리 기능 — 아레나는 미사용 (커스텀 훅은 테스트 픽스처 FilteredRelay가 검증) | — |
 | 우선순위(NetPriority) | 플레이어 상태를 우선순위 2로 — 대역폭 부족 시 다른 오브젝트(기본 1)보다 먼저 전송 | ArenaPlayer `InitServerState` |
-| 전송 주기(NetUpdateFrequency) | 사용 안 함 — P4 히트스캔 전환으로 총알이 제거된 뒤 주기 설정 오브젝트가 없음 (주기 계약 자체는 UpdateFrequencyTests가 검증) | — |
+| 전송 주기(NetUpdateFrequency) | 플레이어 30Hz — NetworkTransform·ArenaPlayer 슬롯 모두 (`ArenaConfig.PlayerReplicationHz`). 60Hz 시뮬 스텝 2개가 델타 1개로 병합 | ArenaPlayer `Awake`·`InitServerState` |
+| 복제 배칭·전송 신뢰성(ADR-0039) | 라이브러리 자동 — NetworkTransform이 Unreliable(Sequenced) 스트림, 틱별 신뢰성별 배치, 정지 재전송 | 라이브러리 (게임은 자동 활용) |
 | 휴면(Dormancy) | 사망 확정 델타 전송 후 리스폰까지 휴면(비교·전송 중단) → 리스폰 시 `FlushNetworkDormancy`로 상태 일괄 전파 | ArenaPlayer `ServerTick`·`Respawn` |
 | 채널 우선순위 큐(유형별 예산) | 플레이어 유형 틱 예산 512B — 유형별 대역폭 관리 예시 (P4 전환으로 총알이 제거되어 대상이 플레이어) | ArenaBootstrap (Start) |
 | 전역 틱 예산 | 기본 0(무제한) 유지 — 데모는 유형별 예산만 시연 | — |

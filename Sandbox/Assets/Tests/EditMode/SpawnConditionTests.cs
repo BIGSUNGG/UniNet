@@ -265,6 +265,18 @@ namespace UniNet.Tests
             public void SendWelcome(long connId, string serverVersion, ulong sessionToken) => WelcomeConnId = connId;
             public void SendOwnerUpdate(ulong netId, long ownerConnId) => OwnerUpdates.Add((netId, ownerConnId));
             public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) => Replicates++;
+
+            public void SendReplicateBatch(byte[] blob, DRPC.RpcDeliveryMode mode)
+            {
+                var r = new global::MessageProtocol.Serialize.MessageBufferReader(blob);
+                int count = r.ReadUInt16();
+                for (int i = 0; i < count; i++)
+                {
+                    r.ReadUInt64(); r.ReadByte(); r.ReadInt32();
+                    int len = r.ReadInt32();
+                    if (len > 0) { r.ReadBytes(len); Replicates++; }
+                }
+            }
             public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)
                 => Spawns.Add((netId, subCount, typeKeys, states));
             public void SendDestroy(ulong netId) => Destroys.Add(netId);

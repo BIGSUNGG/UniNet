@@ -91,6 +91,10 @@ namespace UniNet.Unity
 
         private void Awake()
         {
+            // Position/ack stream rides the unreliable (Sequenced) batch — a lost delta is superseded by the next
+            // one 16 ms later; a lost final state is recovered by the server's quiescence resend.
+            NetworkReplicationDelivery = Delivery.Unreliable;
+
             var p = transform.position;
             _px = p.x;
             _py = p.y;

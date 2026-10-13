@@ -16,6 +16,13 @@ public interface IUniNetSystemChannel
     void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload);
 
     /// <summary>
+    /// Sends one batched replication message — a count-prefixed blob of (netId, subId, methodId, length, payload)
+    /// entries built by the server tick. At most two batches per connection per tick: the reliable one
+    /// (ReliableOrdered) and the unreliable one (Sequenced — ordered, loss-tolerant movement streams).
+    /// </summary>
+    void SendReplicateBatch(byte[] blob, DRPC.RpcDeliveryMode mode);
+
+    /// <summary>
     /// Sends a dynamic object spawn — the seven transform values place it initially; the prefab id (ADR-0024
     /// stamped NetworkSpawnable GUID hash) tells the client which prefab to instantiate; the sub count plus
     /// per-sub typeKey/state verify composition and seed every NetworkBehaviour's full state

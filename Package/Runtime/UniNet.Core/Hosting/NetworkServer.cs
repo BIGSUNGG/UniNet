@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
+using MessageProtocol.Serialize;
 
 namespace UniNet.Core.Hosting
 {
@@ -31,6 +32,11 @@ namespace UniNet.Core.Hosting
         private readonly List<DeferredDelta> _pending = new();
         private bool[] _relevanceScratch = Array.Empty<bool>();
         private long _seq;
+
+        // Batched replication — per-connection accumulation buffers (parallel to the tick's connection snapshot;
+        // index-stable for the duration of one TickReplication call). Cleared and reused every tick.
+        private BatchBuffer[] _batchRel = Array.Empty<BatchBuffer>();
+        private BatchBuffer[] _batchSeq = Array.Empty<BatchBuffer>();
 
         // P4 — grid spatial-partition visibility (RepGraph style) state. Main thread only.
         private bool _gridEnabled;
@@ -143,6 +149,15 @@ namespace UniNet.Core.Hosting
 
             /// <summary>Earliest time the next send is allowed (NetUpdateFrequency scheduling — on TickReplication's time axis).</summary>
             public double NextReplicateTime;
+
+            /// <summary>Server time of the last tick this sub sent a delta (-1 = never). Quiescence resend measures quiet time from this.</summary>
+            public double LastChangeTime = -1;
+
+            /// <summary>Whether the one-shot quiescence resend already went out for the current quiet stretch (unreliable subs only).</summary>
+            public bool QuiescenceResent;
+
+            /// <summary>Forces the next delta onto the reliable batch (dormancy flush — a lost unreliable flush would strand stale state).</summary>
+            public bool NextSendReliable;
 
             public SubObjectEntry(object instance) => Instance = instance;
         }
@@ -827,6 +842,8 @@ namespace UniNet.Core.Hosting
             var connections = SnapshotConnections();   // capture once per tick (avoids per-object copies)
             if (connections.Count == 0) return;
 
+            EnsureBatchLists(connections.Count);
+
             bool timed = !double.IsNaN(time);
             int budget = timed ? ReplicationBudgetPerTickBytes : 0;   // immediate mode skips the budget policy too (P2-compatible contract)
             int budgetLeft = budget > 0 ? budget : int.MaxValue;
@@ -871,8 +888,39 @@ namespace UniNet.Core.Hosting
                         if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;   // fault backoff — one period
                         continue;
                     }
-                    if (IsEmpty(toOwner) && IsEmpty(toOthers)) continue;
+                    if (IsEmpty(toOwner) && IsEmpty(toOthers))
+                    {
+                        // Unreliable streams heal an in-motion loss with the next delta — but a lost FINAL delta strands
+                        // the remote (nothing follows it). Once an unreliable sub has been quiet past the resend delay,
+                        // re-send its full state once on the reliable batch. Reliable subs never need this.
+                        bool unreliableSub = (policy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
+                        if (timed && unreliableSub && !sub.QuiescenceResent && sub.LastChangeTime >= 0
+                            && time - sub.LastChangeTime >= QuiescenceResendDelaySeconds)
+                        {
+                            sub.QuiescenceResent = true;
+                            _pending.Add(new DeferredDelta
+                            {
+                                NetId = netId,
+                                SubId = subId,
+                                MethodId = handler.MethodId,
+                                Owner = TryWriteFull(handler, sub.Instance, true),
+                                Others = TryWriteFull(handler, sub.Instance, false),
+                                SenderType = sub.Instance.GetType(),
+                                Priority = policy?.NetworkPriority ?? 1f,
+                                EnqueuedAt = time,
+                                RelevantMask = relevantMask,
+                                Seq = _seq++,
+                                ForceReliable = true,
+                            });
+                        }
+                        continue;
+                    }
                     if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;
+
+                    if (timed) sub.LastChangeTime = time;
+                    sub.QuiescenceResent = false;
+                    bool flushReliable = sub.NextSendReliable;
+                    sub.NextSendReliable = false;
 
                     _pending.Add(new DeferredDelta
                     {
@@ -886,6 +934,7 @@ namespace UniNet.Core.Hosting
                         EnqueuedAt = timed ? time : 0,
                         RelevantMask = relevantMask,
                         Seq = _seq++,
+                        ForceReliable = flushReliable,
                     });
                 }
             }
@@ -934,6 +983,8 @@ namespace UniNet.Core.Hosting
                 }
 
                 int spent = 0;
+                bool unreliable = !item.ForceReliable
+                    && (entryPolicy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
                 for (int i = 0; i < connections.Count; i++)
                 {
                     var conn = connections[i];
@@ -944,13 +995,73 @@ namespace UniNet.Core.Hosting
                     if (!relevant) continue;
                     var payload = conn.ConnId == entry.OwnerConnId ? item.Owner : item.Others;
                     if (IsEmpty(payload)) continue;
-                    conn.Channel.SendReplicate(item.NetId, item.SubId, item.MethodId, payload);
+
+                    var batch = unreliable ? _batchSeq[i] : _batchRel[i];
+                    var candidate = new ReplicateEntry(item.NetId, item.SubId, item.MethodId, payload);
+                    if (batch.Count > 0 && batch.Bytes + candidate.WireBytes > MaxReplicateBatchBytes)
+                        FlushBatch(batch, conn.Channel, unreliable);   // ponytail: fixed ~MTU cap (Sequenced cannot fragment); per-connection splitting if deltas ever grow
+                    batch.Add(candidate);
                     spent += payload.Length;
                 }
                 budgetLeft = Math.Max(0, budgetLeft - spent);
                 if (_typeBudgetLeft.ContainsKey(item.SenderType))
                     _typeBudgetLeft[item.SenderType] = Math.Max(0, _typeBudgetLeft[item.SenderType] - spent);
             }
+
+            // Tail flush — at most two batch messages per connection this tick (one reliable, one unreliable)
+            for (int i = 0; i < connections.Count; i++)
+            {
+                FlushBatch(_batchRel[i], connections[i].Channel, unreliable: false);
+                FlushBatch(_batchSeq[i], connections[i].Channel, unreliable: true);
+            }
+        }
+
+        private void EnsureBatchLists(int count)
+        {
+            if (_batchRel.Length < count)
+            {
+                _batchRel = new BatchBuffer[count];
+                _batchSeq = new BatchBuffer[count];
+            }
+            for (int i = 0; i < count; i++)
+            {
+                _batchRel[i] ??= new BatchBuffer();
+                _batchSeq[i] ??= new BatchBuffer();
+                _batchRel[i].Clear();
+                _batchSeq[i].Clear();
+            }
+        }
+
+        /// <summary>Wire size cap per batch message — stays well under a single UDP datagram (Sequenced delivery cannot fragment; batched deltas are tiny, so this bound is never hit in practice).</summary>
+        internal const int MaxReplicateBatchBytes = 1000;
+
+        /// <summary>How long an unreliable sub must stay quiet after its last delta before the one-shot full-state resend fires (seconds).</summary>
+        internal const double QuiescenceResendDelaySeconds = 0.25;
+
+        private void FlushBatch(BatchBuffer batch, IUniNetSystemChannel channel, bool unreliable)
+        {
+            if (batch.Count == 0) return;
+            var w = MessageBufferWriter.Create();
+            w.WriteUInt16((ushort)batch.Count);
+            foreach (var e in batch.Entries)
+            {
+                w.WriteUInt64(e.NetId);
+                w.WriteByte(e.SubId);
+                w.WriteInt32(e.MethodId);
+                w.WriteInt32(e.Payload.Length);
+                w.WriteBytes(e.Payload);
+            }
+            batch.Clear();
+            channel.SendReplicateBatch(w.ToArray(), unreliable ? DRPC.RpcDeliveryMode.Sequenced : DRPC.RpcDeliveryMode.ReliableOrdered);
+        }
+
+        /// <summary>Forces the next send of every sub of one object onto the reliable batch — dormancy flush rides reliable (a lost unreliable flush would strand stale state until the quiescence resend).</summary>
+        public void MarkNextSendReliable(ulong netId)
+        {
+            var entry = GetEntry(netId);
+            if (entry == null) return;
+            foreach (var sub in entry.Subs)
+                sub.NextSendReliable = true;
         }
 
         private static bool IsEmpty(byte[] payload) => payload == null || payload.Length == 0;
@@ -1175,6 +1286,45 @@ namespace UniNet.Core.Hosting
             public double EnqueuedAt;
             public ulong RelevantMask;
             public long Seq;
+            public bool ForceReliable;   // dormancy flush + quiescence resend — must not ride the lossy stream
+        }
+
+        /// <summary>One (netId, subId, methodId, payload) slot in a per-connection replication batch.</summary>
+        private readonly struct ReplicateEntry
+        {
+            public ReplicateEntry(ulong netId, byte subId, int methodId, byte[] payload)
+            {
+                NetId = netId; SubId = subId; MethodId = methodId; Payload = payload;
+            }
+
+            public ulong NetId { get; }
+            public byte SubId { get; }
+            public int MethodId { get; }
+            public byte[] Payload { get; }
+
+            /// <summary>Bytes this entry occupies in the batch blob — payload + netId(8) + subId(1) + methodId(4) + length(4).</summary>
+            public int WireBytes => Payload.Length + 17;
+        }
+
+        /// <summary>Per-connection accumulation buffer for one tick's replication batch (entries + running wire size).</summary>
+        private sealed class BatchBuffer
+        {
+            public readonly List<ReplicateEntry> Entries = new();
+            public int Bytes;
+
+            public int Count => Entries.Count;
+
+            public void Add(ReplicateEntry e)
+            {
+                Entries.Add(e);
+                Bytes += e.WireBytes;
+            }
+
+            public void Clear()
+            {
+                Entries.Clear();
+                Bytes = 0;
+            }
         }
 
         /// <summary>Builds the sub table — slot order = component order, including attaching replication handlers and initializing snapshots.</summary>

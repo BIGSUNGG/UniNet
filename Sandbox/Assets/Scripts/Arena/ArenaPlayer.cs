@@ -75,6 +75,7 @@ namespace Arena
             // component (ADR-0038). Server authority and client prediction share the same rule; jump/dash state rides
             // inside the simulation, so rollback restores it exactly.
             _nt = GetComponent<NetworkTransform>();
+            _nt.NetworkUpdateFrequencyHz = ArenaConfig.PlayerReplicationHz;   // 30 Hz — two 60 Hz sim steps merge into one position delta
             _sim = new MoveSimulation<ArenaMovement.MoveInput, ArenaMovement.MoveState>(
                 ArenaMovement.Step, ArenaMovement.WriteInput, ArenaMovement.ReadInput,
                 ArenaMovement.WriteState, ArenaMovement.ReadState, ArenaConfig.MoveSimHz);
@@ -92,6 +93,7 @@ namespace Arena
 
             // P3-② priority — under bandwidth pressure, player state is sent before lower-priority types (default 1)
             NetworkPriority = ArenaConfig.PlayerNetworkPriority;
+            NetworkUpdateFrequencyHz = ArenaConfig.PlayerReplicationHz;   // 30 Hz — game state (HP·ammo·score) does not need per-tick delivery either
 
             // P4-② lag compensation — the server records this object's position history (rewind target for fire checks)
             NetworkRewindHistory = true;

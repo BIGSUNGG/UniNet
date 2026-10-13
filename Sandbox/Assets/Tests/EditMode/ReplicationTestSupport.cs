@@ -24,6 +24,7 @@ namespace UniNet.Tests
     {
         public long UniNetConnId { get; set; }
         internal readonly List<(ulong netId, byte subId, int methodId, byte[] payload)> Replicates = new();
+        internal readonly List<(RpcDeliveryMode mode, List<(ulong netId, byte subId, int methodId, byte[] payload)> entries)> Batches = new();
         internal readonly List<ulong> Spawns = new();
         internal readonly List<ulong> Destroys = new();
         internal readonly List<(ulong netId, long owner)> Owners = new();
@@ -34,6 +35,7 @@ namespace UniNet.Tests
         public void Clear()
         {
             Replicates.Clear();
+            Batches.Clear();
             Spawns.Clear();
             Destroys.Clear();
             Owners.Clear();
@@ -48,6 +50,25 @@ namespace UniNet.Tests
         {
             if (payload != null && payload.Length > 0)
                 Replicates.Add((netId, subId, methodId, payload));
+        }
+
+        public void SendReplicateBatch(byte[] blob, RpcDeliveryMode mode)
+        {
+            var r = new global::MessageProtocol.Serialize.MessageBufferReader(blob);
+            int count = r.ReadUInt16();
+            var entries = new List<(ulong netId, byte subId, int methodId, byte[] payload)>(count);
+            for (int i = 0; i < count; i++)
+            {
+                ulong netId = r.ReadUInt64();
+                byte subId = r.ReadByte();
+                int methodId = r.ReadInt32();
+                int len = r.ReadInt32();
+                byte[] payload = len > 0 ? r.ReadBytes(len).ToArray() : System.Array.Empty<byte>();
+                entries.Add((netId, subId, methodId, payload));
+                if (payload.Length > 0)
+                    Replicates.Add((netId, subId, methodId, payload));   // merged view — pre-batching assertions keep passing
+            }
+            Batches.Add((mode, entries));
         }
 
         public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw,

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UniNet.Core;
 using UniNet.Core.Hosting;
 using UnityEngine;
 
@@ -65,20 +66,33 @@ namespace UniNet.Unity
         /// <summary>Per-object send rate in Hz (UE NetUpdateFrequency equivalent). 0 = unlimited, every tick (default).</summary>
         public float NetworkUpdateFrequencyHz { get; set; }
 
+        /// <summary>
+        /// Wire reliability for this object's replication deltas — ReliableOrdered (default) or Unreliable
+        /// (ordered, loss-tolerant Sequenced on the wire). Unreliable suits movement streams: a lost mid-motion delta
+        /// is superseded by the next one, and a lost final state is recovered by the server's quiescence resend
+        /// (~0.25 s after the object stops changing). Set it on the component that owns the stream (e.g. NetworkTransform).
+        /// </summary>
+        public Delivery NetworkReplicationDelivery { get; set; } = Delivery.ReliableOrdered;
+
         /// <summary>Relevancy cull distance (world-unit radius, UE NetCullDistance equivalent). 0 = disabled (default). Requires viewer positions supplied via the server's SetViewerPosition.</summary>
         public float NetworkCullDistance { get; set; }
 
         /// <summary>Dormancy — while true, the server stops delta-checking and sending this object (simplified UE NetDormancy). Call FlushNetworkDormancy to wake it.</summary>
         public bool NetworkDormant { get; set; }
 
-        /// <summary>Wakes the object — changes accumulated while dormant are sent on subsequent ticks (UE FlushNetDormancy equivalent).</summary>
-        public void FlushNetworkDormancy() => NetworkDormant = false;
+        /// <summary>Wakes the object — changes accumulated while dormant are sent on subsequent ticks (UE FlushNetDormancy equivalent). The wake delta is forced onto the reliable batch.</summary>
+        public void FlushNetworkDormancy()
+        {
+            NetworkDormant = false;
+            UniNetEnvironment.Server?.MarkNextSendReliable(NetId);   // unreliable subs only — a lost wake delta would strand stale state until the quiescence resend
+        }
 
         /// <summary>Per-connection custom relevancy (UE IsNetRelevantFor equivalent) — default: always relevant. ANDed with the distance cull.</summary>
         public virtual bool IsNetworkRelevant(long viewerConnId) => true;
 
         float IUniNetReplicationPolicy.NetworkPriority => NetworkPriority;
         float IUniNetReplicationPolicy.NetworkUpdateFrequencyHz => NetworkUpdateFrequencyHz;
+        Delivery IUniNetReplicationPolicy.NetworkReplicationDelivery => NetworkReplicationDelivery;
         float IUniNetReplicationPolicy.NetworkCullDistance => NetworkCullDistance;
         bool IUniNetReplicationPolicy.IsNetworkDormant => NetworkDormant;
         bool IUniNetReplicationPolicy.IsNetworkRelevant(long viewerConnId) => IsNetworkRelevant(viewerConnId);

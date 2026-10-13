@@ -16,8 +16,8 @@
 
 ## 설계
 
-- **`IUniNetReplicationPolicy`** (`Package/Runtime/UniNet.Core/Hosting/IUniNetReplicationPolicy.cs`) — 서버가 읽는 정책 계약 (우선순위·주기·컬거리·휴면·관련성 훅)
-- **`NetworkBehaviour`** (`Package/Runtime/UniNet.Unity/NetworkBehaviour.cs`) — 정책 구현. 사용자가 재정의하는 가상 멤버: `IsNetworkRelevant(connId)`, 설정 멤버: `NetworkPriority`·`NetworkUpdateFrequencyHz`·`NetworkCullDistance`·`NetworkDormant`·`FlushNetworkDormancy()`
+- **`IUniNetReplicationPolicy`** (`Package/Runtime/UniNet.Core/Hosting/IUniNetReplicationPolicy.cs`) — 서버가 읽는 정책 계약 (우선순위·주기·컬거리·휴면·관련성 훅·전송 신뢰성)
+- **`NetworkBehaviour`** (`Package/Runtime/UniNet.Unity/NetworkBehaviour.cs`) — 정책 구현. 사용자가 재정의하는 가상 멤버: `IsNetworkRelevant(connId)`, 설정 멤버: `NetworkPriority`·`NetworkUpdateFrequencyHz`·`NetworkCullDistance`·`NetworkDormant`·`NetworkReplicationDelivery`·`FlushNetworkDormancy()`
 - **`NetworkServer`** (`Package/Runtime/UniNet.Core/Hosting/NetworkServer.cs`) — 틱 엔진 확장: 가시성 추적(`SetViewerPosition`·연결별 관련 맵)·휴면·주기 필터 → 델타 후보 큐 → 기아 보정 우선순위 정렬 → 전역/유형별 예산 전송
 - 관련 ADR: [[0011-P3-리플리케이션-고급-정책]] · 선행: [[features/monobehaviour-rpc-replicate]]·ADR-0009·ADR-0010
 
@@ -28,6 +28,7 @@
 - **우선순위·기아**: 후보+연기분 병합 후 `priority × (1 + 대기초/0.1)` 순 전송(UE GetNetPriority 공식). 전역 예산 `ReplicationBudgetPerTickBytes`(0=무제한), 유형별 `SetReplicationChannelBudget(Type, bytes)` — 유형 초과분만 연기. 예산보다 큰 단일 델타는 강제 전송
 - **휴면**: `NetworkDormant = true` 동안 델타 비교 생략(스냅샷 동결). `FlushNetworkDormancy()`로 해제 — 누적 변경분이 한 번에 전송
 - **주기**: `NetworkUpdateFrequencyHz` Hz 미도달 틱은 비교 생략, 도달 틱에 최신 변경분 전송(최신값 승)
+- **전송 신뢰성 (v0.3.0)**: `NetworkReplicationDelivery` — 기본 `ReliableOrdered`, `Unreliable`은 Sequenced 스트림. 배칭·정지 재전송 포함 상세는 [[features/replication-batching-delivery]] ([[0039-복제-배칭과-신뢰성-분리]])
 
 ```csharp
 public sealed partial class Bullet : NetworkBehaviour

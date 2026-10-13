@@ -15,6 +15,9 @@ namespace Arena
         /// <summary>Fixed movement simulation rate (Hz, ADR-0038) — server authority and owner prediction step at this rate; input streams at one payload per step.</summary>
         public const float MoveSimHz = 60f;
 
+        /// <summary>Player replication rate (Hz) — position/state deltas sampled at this rate regardless of the 60 Hz sim rate; two sim steps merge into one send. Pair with the unreliable NetworkTransform stream (ADR-0039).</summary>
+        public const float PlayerReplicationHz = 30f;
+
         /// <summary>Player center height when grounded (jump arcs start and land here).</summary>
         public const float GroundY = 0.5f;
 

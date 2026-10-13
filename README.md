@@ -61,6 +61,7 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 - **Priority & starvation compensation** — `NetworkPriority` orders sends under bandwidth pressure using the UE `GetNetPriority` formula (priority × wait time), so starved objects eventually go through.
 - **Dormancy** — `NetworkDormant = true` skips delta comparison entirely for idle objects; `FlushNetworkDormancy()` releases it and flushes accumulated changes in one shot.
 - **Update frequency** — `NetworkUpdateFrequencyHz` caps how often an object's changes are sent (e.g. projectiles at 30 Hz); misses coalesce to the latest value.
+- **Batched replication & per-object delivery (ADR-0039)** — each tick sends at most two replication messages per connection (one reliable + one unreliable batch) instead of one message per delta, and `NetworkReplicationDelivery = Delivery.Unreliable` moves an object's stream to loss-tolerant ordered delivery (no per-packet ACKs). `NetworkTransform` uses this by default; a lost final state is recovered by an automatic one-shot reliable resend ~0.25 s after the object stops changing, and dormancy flushes are forced reliable.
 - **Budgets** — global `ReplicationBudgetPerTickBytes` plus per-type `SetReplicationChannelBudget(type, bytes)` so a flood of bullets cannot starve other object types. Oversized single deltas force through.
 
 ### Prediction & timing

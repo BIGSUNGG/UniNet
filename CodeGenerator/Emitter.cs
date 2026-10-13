@@ -168,6 +168,12 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            FireAndForget(SendRPC(methodId, pr, global::DRPC.RpcDeliveryMode.ReliableOrdered));");
             sb.AppendLine("        }");
             sb.AppendLine();
+            sb.AppendLine("        public void SendReplicateBatch(byte[] blob, global::DRPC.RpcDeliveryMode mode)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            {Env}.Server?.TrafficStats.OnSent(blob.Length);   // ADR-0029 — one counted message per batch");
+            sb.AppendLine("            FireAndForget(SendRPC(13, blob, mode));   // wire 13 — batched replication (reliable + unreliable batches per tick)");
+            sb.AppendLine("        }");
+            sb.AppendLine();
             sb.AppendLine("        public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)");
             sb.AppendLine("        {");
             sb.AppendLine($"            var w = {Writer}.Create();");
@@ -564,6 +570,51 @@ namespace UniNet.CodeGenerator
                 sb.AppendLine();
             }
 
+            // wire 13 — batched replication receiver: routes (netId, subId, methodId, payload) entries through the
+            // global applier registry, so any assembly's copy can apply every registered type
+            sb.AppendLine("        internal static " + TaskOfBytes + " __ReplicateBatch_Requested(long senderConnId, byte[] data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            try");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var r = new {Reader}(data);");
+            sb.AppendLine("                int count = r.ReadUInt16();");
+            sb.AppendLine("                var netIds = new ulong[count];");
+            sb.AppendLine("                var subIds = new byte[count];");
+            sb.AppendLine("                var methodIds = new int[count];");
+            sb.AppendLine("                var payloads = new byte[count][];");
+            sb.AppendLine("                for (int i = 0; i < count; i++)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    netIds[i] = r.ReadUInt64();");
+            sb.AppendLine("                    subIds[i] = r.ReadByte();");
+            sb.AppendLine("                    methodIds[i] = r.ReadInt32();");
+            sb.AppendLine("                    int len = r.ReadInt32();");
+            sb.AppendLine("                    payloads[i] = len > 0 ? r.ReadBytes(len).ToArray() : global::System.Array.Empty<byte>();");
+            sb.AppendLine("                }");
+            sb.AppendLine($"                {Env}.QueueOnMain(() =>");
+            sb.AppendLine("                {");
+            sb.AppendLine($"                    var client = {Env}.Client;");
+            sb.AppendLine("                    for (int i = 0; i < count; i++)");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        try");
+            sb.AppendLine("                        {");
+            sb.AppendLine("                            var o = client?.Get(netIds[i], subIds[i]);");
+            sb.AppendLine("                            if (o == null || payloads[i].Length == 0 || !global::UniNet.Core.Hosting.UniNetBatchRegistry.TryGet(methodIds[i], out var apply)) continue;");
+            sb.AppendLine("                            var rr = new " + Reader + "(payloads[i]);");
+            sb.AppendLine("                            apply(o, ref rr);");
+            sb.AppendLine("                        }");
+            sb.AppendLine("                        catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }   // version mismatch — protects the main-thread pump and the rest of the batch");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                });");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
+            sb.AppendLine("            catch (global::System.Exception ex)   // malformed/short payload — isolated per connection");
+            sb.AppendLine("            {");
+            sb.AppendLine("                UnityEngine.Debug.LogException(ex);");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
             sb.AppendLine("        public void UniNetSend(int methodId, byte[] payload, global::DRPC.RpcDeliveryMode mode)");
             sb.AppendLine($"            => FireAndForget({Env}.Client?.TrafficStats is {{ }} __st ? __CountedSend(methodId, payload, mode, __st) : SendRPC(methodId, payload, mode));   // ADR-0029");
             sb.AppendLine("        private global::System.Threading.Tasks.Task __CountedSend(int methodId, byte[] payload, global::DRPC.RpcDeliveryMode mode, global::UniNet.Core.Hosting.UniNetTrafficCounters stats)");
@@ -607,9 +658,12 @@ namespace UniNet.CodeGenerator
                 {
                     sb.AppendLine($"            {Dispatch}.RegisterClient({Fnv.MethodId(m.FullName + ".__Replicate")}, UniNetClientHub.__Replicate_{SafeNameOf(m)}_Requested, global::DRPC.RpcDeliveryMode.ReliableOrdered);");
                     sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetTypeRegistry.Register(typeof({TypeDisplay2(m)}), new __{SafeNameOf(m)}Replication());");
+                    sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetBatchRegistry.Register({Fnv.MethodId(m.FullName + ".__Replicate")}, (global::System.Object o, ref {Reader} r) => {TypeDisplay2(m)}.__UniNetApplyIn(({TypeDisplay2(m)})o, ref r));   // batched replication (wire 13)");
                 }
                 sb.AppendLine($"            global::UniNet.Core.Hosting.UniNetSpawnRegistry.Register(typeof({TypeDisplay2(m)}), global::UniNet.Core.Hosting.Fnv1a.Hash64(\"{m.FullName}\"));   // sub-slot verification key (ADR-0024 — prefab-identity spawning, no factory)");
             }
+
+            sb.AppendLine($"            {Dispatch}.RegisterClient(13, UniNetClientHub.__ReplicateBatch_Requested, global::DRPC.RpcDeliveryMode.ReliableOrdered);   // wire 13 — batched replication (idempotent across assemblies)");
 
             sb.AppendLine("        }");
             sb.AppendLine("    }");
