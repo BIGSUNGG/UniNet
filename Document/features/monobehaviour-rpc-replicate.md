@@ -106,7 +106,7 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 ```
 
 - **무한정자 호출** — 파일 상단에 `using static UniNet.Unity.Net;`를 두면 `NetworkInstantiate(...)`·`NetworkDestroy(...)`를 일반 Instantiate/Destroy처럼 한정자 없이 쓸 수 있다 (`Net` 정적 클래스 — UniNetManager 전달 전용. 사용례: ArenaBootstrap)
-- **복제는 직렬화 복사** — `Object.Instantiate`는 public·[SerializeField] 필드만 복사한다. private [Replicated] 초기화(InitialOnly 기준선 등)는 **configure 콜백**으로 세팅한다 — 콜백은 복제 직후·전파 직전에 클론으로 실행된다 (ADR-0017): `NetworkInstantiate(original, clone => clone.GetComponent<Player>().InitServerState("Alpha", 123))`. 델리게이트·서버 동작 플래그(MovementRule·NetworkCullDistance 등 비전파 상태)는 스폰 후 클론에 주입해도 무관하다 (기준선에 실리지 않음)
+- **복제는 직렬화 복사** — `Object.Instantiate`는 public·[SerializeField] 필드만 복사한다. private [Replicated] 초기화(InitialOnly 기준선 등)는 **configure 콜백**으로 세팅한다 — 콜백은 복제 직후·전파 직전에 클론으로 실행된다 (ADR-0017): `NetworkInstantiate(original, clone => clone.GetComponent<Player>().InitServerState("Alpha", 123))`. `MoveSimulation` 주입(`Simulation`)·서버 동작 플래그(NetworkCullDistance 등 비전파 상태)는 스폰 후 클론에 주입해도 무관하다 (기준선에 실리지 않음)
 
 - **클라 생성 = 동일 프리팹 인스턴스화** (ADR-0024): 스폰 메시지의 프리팹 ID를 베이크 테이블(`Assets/Resources/UniNet/UniNetPrefabTable.asset` — 포스트프로세서가 마킹 프리팹에서 자동 생성)로 해석해 클라가 자기 프리팹 사본을 Instantiate한다. **양단 프리팹 에셋 존재 필수**(Fusion과 동일 전제). 클라 프리팹의 컴포넌트 구성이 서버와 다르면 자동 복원 대신 **거부**(슬롯 불일치 에러). 한 타입에 프리팹 N개 허용(구 typeKey 1:1 카탈로그·RegisterPrefab·자동 복원 폐기)
 - **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화

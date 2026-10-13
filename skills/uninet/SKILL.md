@@ -174,7 +174,6 @@ UniNetManager.DestroyObjectsOwnedBy(connId);                    // departure cle
 server.ServerRpcRateLimitPerSecond = 120;                          // per-connection flood guard (ADR-0032) — 0 = unlimited; drops counted in RateLimitedServerRpcDrops
 server.SessionGraceSeconds = 10;  // reconnect grace (ADR-0034) — preserve ownership for 10 s; 0 = off
 server.LoadScene("BattleScene");                               // scene transition (ADR-0035) — clients auto-load + report; gate event:
-nt.FullReconciliation = true;                                   // full CSP&R (ADR-0037) — rollback + re-sim instead of soft/snap
 // Editor debugging: Window → UniNet → Network Debugger — live connections, traffic, objects, ownership (ADR-0036)
 server.AllClientsSceneLoaded += scene => { /* all clients ready — start gameplay */ };
 // On disconnect: UniNetManager.ReconnectAsync(address, port) — auto-sends resume, ownership restored
@@ -361,32 +360,46 @@ Primitives are provided by the library; the game assembles them.
 
 **`UniNetTime`** — server-authoritative monotonic clock. The server's clock is the authority; clients sync every second (EMA offset, α = 0.25) with an anti-regression clamp. Query `UniNetTime.Now` anywhere — safe for gameplay math on both sides.
 
-**`NetworkTransform`** — built-in component covering position replication, owner-side prediction, and remote interpolation. You provide only the movement rule; server and prediction share the same function, so prediction cannot drift from authority.
+**`NetworkTransform`** — built-in component covering position replication, owner-side prediction, and remote interpolation. You inject a `MoveSimulation<TInput, TState>` with your own input/state structs and a pure step rule; server and prediction share the same function and the same fixed dt, so stateful movement (jump arcs, dash windows, cooldowns) reconciles exactly via rollback + re-simulation (ADR-0038).
 
 ```csharp
+public struct MoveInput { public sbyte Dx, Dz; public bool Jump, Dash; }
+public struct MoveState { public float Vy, DashTimer, DashCooldown; }
+
+public static class CharacterMovement   // game-side static codecs + step rule (ADR-0020 serializer contract shape)
+{
+    public static void Step(ref MoveState st, ref float x, ref float y, ref float z, in MoveInput i, float dt) { /* pure: state+pos+input+dt only */ }
+    public static void WriteInput(ref MessageProtocol.Serialize.MessageBufferWriter w, in MoveInput i) { /* ... */ }
+    public static MoveInput ReadInput(ref MessageProtocol.Serialize.MessageBufferReader r) { /* ... */ }
+    public static void WriteState(ref MessageProtocol.Serialize.MessageBufferWriter w, in MoveState s) { /* ... */ }
+    public static MoveState ReadState(ref MessageProtocol.Serialize.MessageBufferReader r) { /* ... */ }
+}
+
 public sealed partial class Character : NetworkBehaviour
 {
     private NetworkTransform _nt;
+    private MoveSimulation<MoveInput, MoveState> _sim;
 
     private void Awake()
     {
         _nt = GetComponent<NetworkTransform>();
-        _nt.MovementRule = (ref float x, ref float y, ref float z,
-                            float ix, float iy, float iz, float dt) =>
-        {
-            x += ix * 5f * dt;    // your movement — shared verbatim by server & prediction
-        };
+        _sim = new MoveSimulation<MoveInput, MoveState>(
+            CharacterMovement.Step, CharacterMovement.WriteInput, CharacterMovement.ReadInput,
+            CharacterMovement.WriteState, CharacterMovement.ReadState, stepsPerSecond: 60f);
+        _nt.Simulation = _sim;    // null = position-replication-only
     }
 
     private void HandleInput()
     {
-        _nt.SubmitMove(inputX, inputY, 0);      // owner client: apply immediately (predict) + send
-        _nt.SimulationEnabled = IsAlive();      // gate: pauses/resumes server & prediction together
+        _sim.SetInput(new MoveInput { Dx = dx, Dz = dz, Jump = jumpHeld, Dash = dashHeld });
+        _nt.SimulationEnabled = IsAlive();   // gate: pauses/resumes server & prediction together
     }
 }
 ```
 
-Knobs: `InterpolationDelay` (default 0.12 s — remote objects render at `Now − delay`, absorbing jitter), `SnapThreshold` (0.5 — hard snap on reconciliation), `SoftRate` (0.15 — soft-correction rate), `PredictOwner` (toggle owner prediction). Reconciliation blends: hard snap beyond `SnapThreshold`, exponential soft correction otherwise.
+The owner streams sequenced inputs every fixed step; the server echoes the acknowledged (position, state) pair; the client rolls back to it and re-simulates unacknowledged inputs when divergence exceeds `RollbackThresholdSq`. Teleport/respawn: server `SetNetworkPosition` (state reset + prediction re-anchor). Rolls are dashes with different state fields — same mechanism.
+
+Knobs: `InterpolationDelay` (default 0.12 s — remote objects render at `Now − delay`, absorbing jitter), `RollbackThresholdSq` (0.01 — rollback trigger), `SnapThreshold` (0.5 — teleport re-anchor detection).
 
 **`SnapshotBuffer<T>`** — the public client-side interpolation buffer (`Add(time, value)` + `TrySample(renderTime)`). `NetworkTransform`'s remote rendering runs on it; use it directly for your own replicated values that need jitter-free rendering — sample at `Now − InterpolationDelay` so network jitter never reaches the screen.
 

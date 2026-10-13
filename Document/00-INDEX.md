@@ -24,6 +24,7 @@
 - [[features/connection-lifecycle|connection-lifecycle]] — 연결 수명주기 이벤트: 서버 접속/해제 이벤트·클라 해제 콜백·상태 조회 (구현됨)
 - [[features/replication-p3-policy|replication-p3-policy]] — 리플리케이션 고급 정책: 가시성·우선순위·휴면·전송 주기·채널 예산 (P3, 구현됨)
 - [[features/replication-p4-hooks|replication-p4-hooks]] — P4 훅: UniNetTime·SnapshotBuffer·PositionHistory 리와인드·그리드 가시성 (구현됨)
+- [[features/movement-prediction|movement-prediction]] — 이동 예측: 게임 정의 입력·상태 구조체·고정 스텝 CSP&R·점프/대시/구르기/텔레포트 (구현됨 — ADR-0013·0037·0038)
 - [[features/custom-netserialize|custom-netserialize]] — 커스텀 필드 직렬화: [Replicated(Serializer)] 정적 Write/Read 계약·양자화 (구현됨 — 제너레이터 0.1.9, ADR-0020)
 - [[features/network-statistics|network-statistics]] — 네트워크 통계: 트래픽 카운터(페이로드 바이트)·RTT 프로브·큐 깊이 (구현됨 — 제너레이터 0.2.4, ADR-0029)
 - [[features/fastarray-delta|fastarray-delta]] — 배열/리스트 요소 델타 동기화: 옵 인코딩·섀도 diff (구현됨 — 제너레이터 0.2.1, ADR-0020)
@@ -79,6 +80,7 @@
 - [[0035-씬-전환-동기화]] — LoadScene 브로드캐스트(와이어 11)·클라 보고(와이어 12)·AllClientsSceneLoaded 준비 게이트
 - [[0036-에디터-디버깅-툴]] — UniNetDebuggerWindow 연결·RTT·통계·오브젝트·소유자 표시
 - [[0037-예측-full-CSPnR-내장]] — NetworkTransform.FullReconciliation(옵트인) 롤백+재시뮬 예측 리컨사일
+- [[0038-상태-기반-이동-예측-일반화]] — MoveSimulation<TInput,TState> 게임 정의 입력·상태·고정 스텝·상태 에코 롤백(무상태 계약 대체)
 
 ### deployment — 배포
 
@@ -91,6 +93,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-13 — **상태 기반 이동 예측 일반화** (ADR-0038 — MoveSimulation<TInput,TState> 게임 정의 입력·상태 구조체·고정 스텝 시뮬·상태 에코 롤백. 점프·대시·텔레포트 Arena 실구현. 무상태 MovementRule/SubmitMove 파괴적 대체. EditMode 118/118·PlayMode 27/27)
 - 2026-10-12 — **하트비트 타임아웃 튜닝 노출** (ADR-0033 — DisconnectTimeoutMs 옵션·상류 DS_RPC 3.6.1 전달 추가(사용자 선택 A)·기반 스택 DRPC 3.6.1·Communication 2.7.1·MessageProtocol 3.2.1 갱신. EditMode 102/102·PlayMode 25/25)
 - 2026-10-12 — **RPC 레이트리밋** (ADR-0032 — ServerRpcRateLimitPerSecond 고정 창 게이트·초과 드롭 집계. 제너레이터 0.2.5. EditMode 100/100·PlayMode 25/25)
 - 2026-10-12 — **플레이어 오브젝트·연결 매핑** (ADR-0031 — SetPlayerObject/GetPlayerObject/GetPlayerConnection·DestroyObjectsOwnedBy 퇴장 정리. Arena 전환. EditMode 97/97·PlayMode 24/24)

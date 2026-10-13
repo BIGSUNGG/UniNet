@@ -27,7 +27,7 @@ UE Network Framework의 상호작용 축을 **훅(유저 코드 확장점)** 형
 
 - **시간 동기화**: 드라이버가 1초 주기로 서버 시각을 전 연결에 전파. 클라는 EMA(α=0.25)로 오프셋 갱신, 수신은 메인 큐 우회(Unity 시계 메인 전용). 서버·호스트는 자기 시계가 곧 권위라 오프셋 미적용. `Now`는 단조 보장
 - **인터폴레이션**: 리모트 오브젝트를 `Now − InterpolationDelay` 시점으로 렌더 — 네트워크 지터가 화면에 직접 노출되지 않는다 (적용 시점 제어)
-- **예측**: 게임이 이동 규칙을 단일 공급원(예: ArenaMovement.Step)으로 추출해 서버·클라가 공유 → 소유 클라는 입력 즉시 적용, 서버 상태 수신 시 ReconcileAxis(스냅/소프트)
+- **예측**: `NetworkTransform` + 게임 주입 `MoveSimulation<TInput,TState>`(상태 기반 고정 스텝 CSP&R) — 상세는 [[features/movement-prediction|movement-prediction]]·[[0038-상태-기반-이동-예측-일반화]]로 분리
 - **래그 컴펜세이션**: `NetworkRewindHistory` 대상을 서버가 매 틱 기록 → 발사 ServerRpc에 발신자 조준 시각을 실어 보내면 서버가 `GetHistoryPosition(클램프된 hitTime)`으로 대상을 리와인드해 판정
 - **그리드 가시성**: 셀 멤버십 공간 예비 필터(양자화 오차 cellSize 이하) — **cull>0 오브젝트에만 적용**되며 자체 컬 거리와 AND. cull=0 오브젝트는 어떤 모드에서도 항상 관련 (P3 계약 일관 — [[0026-그리드-가시성-cull0-계약-정합]]). 관련성 훅·P3 전이 계약(첫 평가 조용한 시드, 재진입 기준선 복구) 유지
 
@@ -54,3 +54,4 @@ server.SetViewerPosition(connId, x, y, z);
 ## 변경 이력
 
 - 2026-09-20 — 최초 작성 (P4 훅 — ADR-0012)
+- 2026-10-13 — 예측 항목을 상태 기반 일반화(ADR-0038)로 갱신·[[features/movement-prediction|movement-prediction]]으로 분리 위임

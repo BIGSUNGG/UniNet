@@ -20,7 +20,7 @@ namespace Arena
     ///   _colorSeed    : InitialOnly — sent once at spawn; later changes are not replicated
     ///
     /// RPC coverage:
-    /// - Two ServerRpcs (aim, fire) + _Validate trust-boundary checks — move input goes through the NetworkTransform component's SubmitMove
+    /// - Two ServerRpcs (aim, fire) + _Validate trust-boundary checks — move input streams through the NetworkTransform simulation (ADR-0038)
     /// - MulticastRpc — tracer and hit FX (unreliable), death (reliable) — runs locally on everyone including the server
     /// - ClientRpc — kill feed (only server calls are broadcast)
     ///
@@ -52,6 +52,7 @@ namespace Arena
 
         // ---- Server-only state (never replicated) ----
         private NetworkTransform _nt;   // P4 — movement prediction component (position replication, prediction, reconciliation, interpolation)
+        private MoveSimulation<ArenaMovement.MoveInput, ArenaMovement.MoveState> _sim;   // ADR-0038 — game input/state + fixed-step simulation
         private float _nextFireAllowed;
         private float _nextAmmoRegen;
         private float _respawnAt;
@@ -59,11 +60,8 @@ namespace Arena
 
         // ---- Local (client) state ----
         private Transform _body;
-        private sbyte _lastDx;   // last sent input for dedup (the component manages prediction input)
-        private sbyte _lastDy;
         private float _lastSentAim;
         private bool _aimSent;
-        private float _lastSentDirTick = -1;
 
         /// <summary>
         /// Whether local keyboard/mouse input is processed. Turn off when tests or the two-process verifier
@@ -73,10 +71,14 @@ namespace Arena
 
         private void Awake()
         {
-            // P4 — inject the game's movement rule into the prediction component (server authority and prediction share the same rule)
+            // P4 — inject the game's movement simulation (input/state structs + pure step rule) into the prediction
+            // component (ADR-0038). Server authority and client prediction share the same rule; jump/dash state rides
+            // inside the simulation, so rollback restores it exactly.
             _nt = GetComponent<NetworkTransform>();
-            _nt.MovementRule = ArenaMovement.StepNet;
-            _nt.FullReconciliation = true;   // ADR-0037 — rollback + re-simulation (full CSP&R)
+            _sim = new MoveSimulation<ArenaMovement.MoveInput, ArenaMovement.MoveState>(
+                ArenaMovement.Step, ArenaMovement.WriteInput, ArenaMovement.ReadInput,
+                ArenaMovement.WriteState, ArenaMovement.ReadState, ArenaConfig.MoveSimHz);
+            _nt.Simulation = _sim;
             BuildVisuals();
         }
 
@@ -112,8 +114,14 @@ namespace Arena
 
         // ---- Input submission wrappers (tests and the two-process verifier submit input on behalf of the local player — RPCs stay private) ----
 
-        /// <summary>Submits local move input (client → server) — delegates to the P4 NetworkTransform component (prediction and sending built in).</summary>
-        internal void SubmitMoveInput(sbyte dx, sbyte dy) => _nt.SubmitMove(dx, dy, 0);
+        /// <summary>Sets the local move input (client → server stream) — the simulation keeps applying it every fixed step until changed (tests and the two-process verifier drive players this way).</summary>
+        internal void SubmitMoveInput(sbyte dx, sbyte dz) => SubmitMoveInput(new ArenaMovement.MoveInput { Dx = dx, Dz = dz });
+
+        /// <summary>Sets the full move input — jump/dash buttons included (ADR-0038 input struct).</summary>
+        internal void SubmitMoveInput(in ArenaMovement.MoveInput input) => _sim.SetInput(input);
+
+        /// <summary>Requests a teleport to a random spawn point (demonstrates the ADR-0038 teleport re-anchor — state resets, prediction re-anchors).</summary>
+        internal void TryTeleport() => RpcTeleport();
 
         /// <summary>Submits the local aim angle (client → server).</summary>
         internal void SubmitAimInput(float yaw) => RpcSubmitAim(yaw);
@@ -170,7 +178,7 @@ namespace Arena
                 return;
             }
 
-            // movement runs on the NetworkTransform component's server tick (ArenaMovement.Step injected via MovementRule)
+            // movement runs on the NetworkTransform component's fixed server step (ArenaMovement.Step injected via Simulation)
 
             // ammo regen (OwnerOnly delta — only the owning client receives it)
             if (_ammo < ArenaConfig.MaxAmmo && Time.time >= _nextAmmoRegen)
@@ -221,6 +229,7 @@ namespace Arena
             _ammo = ArenaConfig.MaxAmmo;
             var (x, z) = ArenaConfig.SpawnPoints[UnityEngine.Random.Range(0, ArenaConfig.SpawnPoints.Length)];
             _nt.SetNetworkPosition(new Vector3(x, 0.5f, z));   // P4 — set the network position (replicates to all clients next tick)
+            _nt.SimulationEnabled = true;   // P4 — server-side gate re-enable (OnHpChanged only fires on clients — review round 1)
             FlushNetworkDormancy();   // P3-③ — wake from dormancy; the full respawn state (HP, ammo, position) propagates in one burst next tick
         }
 
@@ -228,20 +237,19 @@ namespace Arena
 
         private void HandleLocalInput()
         {
-            // Movement — 8-directional. Send on change and every 0.25s while held (the server keeps the last input).
-            // P4 — SubmitMove applies prediction immediately and sends to the server (component)
-            sbyte dx = (sbyte)((Input.GetKey(KeyCode.D) ? 1 : 0) - (Input.GetKey(KeyCode.A) ? 1 : 0));
-            sbyte dy = (sbyte)((Input.GetKey(KeyCode.W) ? 1 : 0) - (Input.GetKey(KeyCode.S) ? 1 : 0));
-            bool changed = dx != _lastDx || dy != _lastDy;
-            if (changed)
-                _lastSentDirTick = Time.time;
-            if (changed || ((dx != 0 || dy != 0) && Time.time - _lastSentDirTick > 0.25f))
+            // Movement (ADR-0038) — set the typed input every frame; the component streams it to the server at the fixed
+            // simulation rate. Jump/dash buttons ride the same input struct (edges are detected inside the rule via state).
+            _sim.SetInput(new ArenaMovement.MoveInput
             {
-                _lastDx = dx;
-                _lastDy = dy;
-                _lastSentDirTick = Time.time;
-                _nt.SubmitMove(dx, dy, 0);
-            }
+                Dx = (sbyte)((Input.GetKey(KeyCode.D) ? 1 : 0) - (Input.GetKey(KeyCode.A) ? 1 : 0)),
+                Dz = (sbyte)((Input.GetKey(KeyCode.W) ? 1 : 0) - (Input.GetKey(KeyCode.S) ? 1 : 0)),
+                Jump = Input.GetKey(KeyCode.Space),
+                Dash = Input.GetKey(KeyCode.LeftShift),
+            });
+
+            // Teleport — T snaps to a random spawn point (state reset + prediction re-anchor demo)
+            if (Input.GetKeyDown(KeyCode.T))
+                TryTeleport();
 
             // Aim — mouse direction. Send only on ≥3° change (SkipOwner: sent to others only)
             var mouseWorld = MouseWorld();
@@ -346,6 +354,10 @@ namespace Arena
         [ServerRpc(Validate = true)]
         private partial void RpcFire(float dirX, float dirY, double hitTime);
 
+        /// <summary>Client → server teleport request (ADR-0038 teleport demo) — the server judges everything; the requester only triggers it.</summary>
+        [ServerRpc(Validate = true)]
+        private partial void RpcTeleport();
+
         /// <summary>Server → everyone hitscan tracer. Loss-tolerant (unreliable) — the next shot's tracer naturally replaces it.</summary>
         [MulticastRpc(Delivery.Unreliable)]
         private partial void RpcPlayTracer(float fromX, float fromZ, float toX, float toZ, int colorSeed);
@@ -376,6 +388,14 @@ namespace Arena
             => Task.FromResult(IsFinite01(dirX) && IsFinite01(dirY)
                                && !double.IsNaN(hitTime) && !double.IsInfinity(hitTime)
                                && hitTime <= UniNetTime.Now + 1.0);   // reject future aim times (trust boundary — the server clamps the past)
+
+        private Task<bool> RpcTeleport_Validate() => Task.FromResult(true);
+
+        private void RpcTeleport_Implementation()
+        {
+            var (x, z) = ArenaConfig.SpawnPoints[UnityEngine.Random.Range(0, ArenaConfig.SpawnPoints.Length)];
+            _nt.SetNetworkPosition(new Vector3(x, ArenaConfig.GroundY, z));   // ADR-0038 — teleport: state reset + owner re-anchor
+        }
 
         private void RpcFire_Implementation(float dirX, float dirY, double hitTime)
         {

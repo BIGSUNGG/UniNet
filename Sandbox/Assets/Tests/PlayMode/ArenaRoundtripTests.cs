@@ -123,6 +123,56 @@ namespace UniNet.Tests
             return go.GetComponent<ArenaPlayer>();
         }
 
+        [UnityTest]
+        public IEnumerator 호스트_점프_대시_텔레포트_상태_시뮬레이션()
+        {
+            var hostTask = UniNetManager.HostAsync(Port);
+            while (!hostTask.IsCompleted) yield return null;
+            Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
+
+            var alpha = CreatePlayer("Alpha", 123, new Vector3(0f, ArenaConfig.GroundY, 0f));
+            alpha.LocalInputEnabled = false;
+            yield return WaitUntil(() => alpha.IsOwner, 5, "Alpha 소유권");
+
+            // Jump — hold the button: the vertical velocity state must carry a full arc and land exactly
+            alpha.SubmitMoveInput(new ArenaMovement.MoveInput { Jump = true });
+            yield return WaitUntil(() => alpha.transform.position.y > ArenaConfig.GroundY + 0.3f, 5, "점프 상승 (속도 상태)");
+            alpha.SubmitMoveInput(default);
+            yield return WaitForSim(() => alpha.transform.position.y <= ArenaConfig.GroundY + 0.01f, 3f, 1000, "점프 착지 (궤적 완주)");
+
+            // Dash — a burst window at 4x speed, then a cooldown that blocks an immediate re-dash
+            float x0 = alpha.transform.position.x;
+            alpha.SubmitMoveInput(new ArenaMovement.MoveInput { Dx = 1, Dash = true });
+            yield return new WaitForSecondsRealtime(0.12f);
+            float dashed = alpha.transform.position.x - x0;
+            alpha.SubmitMoveInput(new ArenaMovement.MoveInput { Dx = 1 });   // keep running at normal speed
+            yield return new WaitForSecondsRealtime(0.12f);
+            float ran = alpha.transform.position.x - x0 - dashed;
+            alpha.SubmitMoveInput(default);
+            Assert.Greater(dashed, ran * 1.5f, "대시 버스트 — 같은 시간 대비 고속");
+
+            // Dash cooldown — an immediate second dash must NOT burst again
+            float x1 = alpha.transform.position.x;
+            alpha.SubmitMoveInput(new ArenaMovement.MoveInput { Dx = 1, Dash = true });
+            yield return new WaitForSecondsRealtime(0.12f);
+            float reDash = alpha.transform.position.x - x1;
+            alpha.SubmitMoveInput(default);
+            Assert.Less(reDash, dashed * 0.6f, "대시 쿨다운 — 재발동 억제 (쿨다운 상태)");
+
+            // Teleport — server SetNetworkPosition resets state and re-anchors the prediction
+            alpha.TryTeleport();
+            yield return WaitUntil(() => NearAnySpawn(alpha.transform.position), 5, "텔레포트 스폰 이동");
+            yield return WaitForSim(() => alpha.transform.position.y <= ArenaConfig.GroundY + 0.01f, 3f, 1000, "텔레포트 후 상태 리셋 (지면)");
+        }
+
+        private static bool NearAnySpawn(Vector3 pos)
+        {
+            foreach (var (x, z) in ArenaConfig.SpawnPoints)
+                if (Mathf.Abs(pos.x - x) < 0.1f && Mathf.Abs(pos.z - z) < 0.1f)
+                    return true;
+            return false;
+        }
+
         private static IEnumerator WaitUntil(Func<bool> condition, float timeout, string what)
         {
             float deadline = Time.realtimeSinceStartup + timeout;

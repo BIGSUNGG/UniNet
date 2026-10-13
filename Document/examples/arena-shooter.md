@@ -9,7 +9,7 @@
 UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아레나** 예시 게임. 에셋 없이 Unity 기본 도형(Plane·Cube·Sphere)과 간단한 FX만으로 캐릭터·맵·이펙트를 구성한다. 서버 권위 모델을 그대로 따른다 — 입력은 ServerRpc로 서버에 제출하고, 시뮬레이션(이동·충돌·발사·피해)은 서버만 수행하며, 결과가 조건부 리플리케이션으로 각 클라에 동기화된다.
 
 - **맵**: 36×36 바닥 + 4면 경계 벽 + 중앙 기둥 4개 (규격은 `ArenaConfig` 단일 진실 공급원 — 씬 비주얼과 서버 판정이 같은 값을 쓴다)
-- **플레이어**: 접속 수만큼 서버가 동적 스폰. WASD 이동, 마우스 조준, 좌클릭 발사. 탄약 8발(자동 재생), HP 100, 사망 시 2초 후 랜덤 스폰 지점 리스폰
+- **플레이어**: 접속 수만큼 서버가 동적 스폰. WASD 이동, Space 점프, Shift 대시(쿨다운 2s), T 텔레포트(랜덤 스폰), 마우스 조준, 좌클릭 발사. 탄약 8발(자동 재생), HP 100, 사망 시 2초 후 랜덤 스폰 지점 리스폰
 - **발사(히트스캔)**: 좌클릭 즉시 판정 — 서버가 발신자 조준 시각으로 위치를 리와인드해(P4 래그컴펜세이션) 명중을 확정하고, 전원에게 발사자 색 트레이서 FX를 로컬 재생. 명중 시 25 피해(4발마다 치명타 2배)
 - **승부**: 킬 수를 점수로 집계 — HUD 점수 팝업 + 킬피드
 
@@ -33,7 +33,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 2. **MPPM 창 열기** — `Window > Multiplayer > Multiplayer Play Mode`. 이 저장소의 로컬 구성(`Library/VP/SystemData.json` — 커밋 불가 로컬 상태)에는 가상 플레이어가 이미 구성되어 있다. 새 머신/새 클론에서는 창에서 **가상 플레이어 2개를 추가**한다 (태그 없이 두면 자동으로 클라이언트 역할)
 3. **메인 에디터 Play** — `[Arena] 부트스트랩 시작 role=Server port=7777` 로그가 뜬다. 메인 에디터는 서버(관전 시점)로 동작한다
 4. **가상 플레이어 2개 Play** — MPPM 창의 가상 플레이어 카드별 Play 버튼으로 클론 에디터 2개를 띄우고, 각 클론에서 Play를 누른다. `[Arena] 부트스트랩 시작 role=Client`가 뜨고 서버(메인)에 접속한다. 접속 순서대로 서버가 플레이어를 스폰하고, 각 클라는 `IsOwner`인 내 아바타를 조작한다
-5. **조작** — WASD 이동 · 마우스 조준 · 좌클릭 발사
+5. **조작** — WASD 이동 · Space 점프 · Shift 대시 · T 텔레포트 · 마우스 조준 · 좌클릭 발사
 
 > 툴바 참고 — 에디터 툴바의 인스턴스 런처(MPPM 아이콘)는 MPPM 설치 후 에디터 세션을 **재시작**해야 표시되는 케이스가 있다. 표시되지 않아도 MPPM 창의 카드별 Play 버튼으로 동일하게 실행된다.
 
@@ -55,8 +55,8 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 
 | 기능 | 게임 내 사용 | 위치 |
 | --- | --- | --- |
-| ServerRpc | `RpcSubmitMove` / `RpcSubmitAim` / `RpcFire` — 이동·조준·발사 요청 | ArenaPlayer |
-| ServerRpc 검증 후크(`_Validate`) | 이동 8방향 클램프·조각 각도 유효성·발사 단위벡터 검증 | ArenaPlayer |
+| ServerRpc | 이동 입력은 NetworkTransform 시뮬레이션(RpcSubmitMove 스트림) · `RpcSubmitAim` / `RpcFire` / `RpcTeleport` — 조준·발사·텔레포트 요청 | ArenaPlayer·NetworkTransform |
+| ServerRpc 검증 후크(`_Validate`) | 이동 입력 envelope 용량 상한(NetworkTransform 시뮬레이션)·조준 각도 유효성·발사 단위벡터·hitTime 미래 시각 거부 | ArenaPlayer·NetworkTransform |
 | ClientRpc | `RpcShowKillFeed` — 킬피드 전파 (서버는 미실행) | ArenaPlayer |
 | MulticastRpc | `RpcPlayTracer`·`RpcPlayHitFx`(비신뢰) / `RpcPlayDeathFx`(신뢰) — 전원 로컬 FX | ArenaPlayer |
 | 신뢰성 지정(Delivery) | FX 비신뢰(유실 허용)·사망/킬피드 신뢰 — 유실 허용 이벤트와 필수 이벤트 구분 | ArenaPlayer |
@@ -98,11 +98,11 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 기능 | 게임 내 사용 | 위치 |
 | --- | --- | --- |
 | TimeSync 시간 동기화 | 드라이버 1초 주기 브로드캐스트 — 클라가 서버 시각 역을 유지 | 라이브러리 (UniNetTime — 게임은 자동 활용) |
-| 클라 이동 예측 | 소유 클라가 입력을 즉시 적용해 이동, 서버 상태 수신 시 ReconcileAxis로 조정 | ArenaPlayer.Update + ArenaMovement |
-| 인터폴레이션 버퍼 | 리모트 플레이어를 Now − 0.12s 시점으로 렌더 (지터 흡수·적용 시점 제어) | ArenaPlayer (SnapshotBuffer) |
+| 클라 이동 예측 | 게임 정의 입력·상태 구조체(MoveSimulation) 고정 스텝(60Hz) 시뮬 — ack 수신 시 롤백+상태 복원+미승인 입력 재시뮬 (ADR-0038) | ArenaPlayer + ArenaMovement + NetworkTransform |
+| 인터폴레이션 버퍼 | 리모트 플레이어를 Now − 0.12s 시점으로 렌더 (지터 흡수·적용 시점 제어) | NetworkTransform (SnapshotBuffer) |
 | 히트스캔 + 래그 컴펜세이션 | 발사 시 발신자 조준 시각(hitTime) 전송 — 서버가 대상을 리와인드(클램프 [Now−1s, Now])해 선분 판정 | ArenaPlayer.RpcFire |
 | 리와인드 히스토리 | 플레이어 위치를 서버 틱마다 기록 (옵트인) | ArenaPlayer (NetworkRewindHistory) |
-| 이동 규칙 단일 공급원 | 서버 권위 시뮬레이션과 클라 예측이 ArenaMovement.Step 공유 (예측 오차 상수화 방지) | ArenaMovement |
+| 이동 규칙 단일 공급원 | 서버 권위 시뮬레이션과 클라 예측이 ArenaMovement.Step(상태 기반) 공유 — 점프 속도·대시 쿨다운이 상태로 롤백에서 정확 복원 | ArenaMovement |
 
 ## 자동 검증
 
@@ -139,7 +139,7 @@ Unity.exe -batchmode -quit -projectPath C:\Projects\DS\tmp-arena-client -execute
 
 ## 알려진 한계 (라이브러리 후속 과제)
 
-- **이동 보간** — 리모트는 SnapshotBuffer 인터폴레이션(0.12s 지연), 소유 클라는 예측+ReconcileAxis(스냅/소프트). 입력 ack 기반 재적용 큐는 미구현 (P4 훅 단순형 계약)
+- **이동 보간** — 리모트는 SnapshotBuffer 인터폴레이션(0.12s 지연), 소유 클라는 고정 스텝 예측+롤백 재시뮬(ADR-0038 상태 복원). 구 스냅/소프트 조정·무상태 규칙은 ADR-0038로 대체됨
 - **위치 리플리케이션 순회** — 서버 틱 기반 전체 오브젝트 순회(라이브러리 현재 구조). 그리드 가시성(P4)으로 판정은 양자화 가속되지만 순회 자체는 유지 — 오브젝트 수가 매우 커지면 버킷 역방향 조회로 확장 가능
 - **관전 시 로컬 입력 없음** — 서버 역할 화면은 통계·전체 시점만 표시한다
 

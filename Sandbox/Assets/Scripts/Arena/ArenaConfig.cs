@@ -12,6 +12,27 @@ namespace Arena
         /// <summary>Player movement speed (units/second).</summary>
         public const float MoveSpeed = 5f;
 
+        /// <summary>Fixed movement simulation rate (Hz, ADR-0038) — server authority and owner prediction step at this rate; input streams at one payload per step.</summary>
+        public const float MoveSimHz = 60f;
+
+        /// <summary>Player center height when grounded (jump arcs start and land here).</summary>
+        public const float GroundY = 0.5f;
+
+        /// <summary>Jump launch speed (units/second, vertical).</summary>
+        public const float JumpSpeed = 5f;
+
+        /// <summary>Gravity acceleration (units/second², downward).</summary>
+        public const float Gravity = 20f;
+
+        /// <summary>Dash duration (seconds) — fixed-direction burst while active.</summary>
+        public const float DashSeconds = 0.18f;
+
+        /// <summary>Dash cooldown (seconds) after a dash ends.</summary>
+        public const float DashCooldownSeconds = 2f;
+
+        /// <summary>Dash speed multiplier applied to MoveSpeed during the dash window.</summary>
+        public const float DashSpeedMult = 4f;
+
         /// <summary>Player collision radius (pillar and boundary avoidance checks).</summary>
         public const float PlayerRadius = 0.5f;
 
@@ -34,9 +55,8 @@ namespace Arena
         /// different demo builds reject each other with a VersionMismatch kick; bump this when the demo's wire content changes.</summary>
         public const string ProtocolVersion = "arena-1";
 
-        /// <summary>Per-connection ServerRpc rate limit (ADR-0032) — a generous normal-gameplay ceiling (player moves + fires
-        /// peak around 20/s) that still keeps macro floods out. 0 = unlimited.</summary>
-        public const int ServerRpcRateLimitPerSecond = 120;
+        /// <summary>Per-connection ServerRpc rate limit (ADR-0032) - a generous normal-gameplay ceiling (the movement input stream peaks at MoveSimHz=60/s plus aim and fire) that still keeps macro floods out. 0 = unlimited.</summary>
+        public const int ServerRpcRateLimitPerSecond = 200;
 
         /// <summary>Crit check — 2x damage when seed % CritEvery == 0.</summary>
         public const int CritEvery = 4;

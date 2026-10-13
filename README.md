@@ -66,7 +66,7 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 ### Prediction & timing
 
 - **`UniNetTime`** — server-authoritative monotonic clock, auto-synced to clients every second (EMA offset, anti-regression clamp). Query `UniNetTime.Now` anywhere.
-- **`NetworkTransform`** — a built-in component covering position replication, owner-side client prediction, and remote interpolation. You inject only the movement rule (`MovementRule` lambda, shared verbatim by server and prediction), submit inputs with `SubmitMove`, and gate simulation with `SimulationEnabled`.
+- **`NetworkTransform`** — a built-in component covering position replication, owner-side client prediction, and remote interpolation. You inject a `MoveSimulation<TInput, TState>` with your own input/state structs and a pure step rule (shared verbatim by the server and prediction), feed input every frame with `SetInput`, and gate simulation with `SimulationEnabled`. Stateful movement — jumps (gravity/velocity), dashes & rolls (timed windows, cooldowns), teleports — reconciles exactly via rollback + re-simulation (ADR-0038).
 - **`SnapshotBuffer<T>`** — client interpolation buffer; render remote objects at `Now − InterpolationDelay` (default 0.12 s) so network jitter never reaches the screen.
 - **Lag compensation** — opt in with `NetworkRewindHistory = true`; the server records position history, and hit-scan logic queries `GetHistoryPosition(serverTime)` against the shooter's (clamped) aim time.
 - **Grid visibility** — `SetVisibilityGrid(cellSize, radius)` spatially pre-filters objects with a cull distance set for large worlds (RepGraph-style); objects without `NetworkCullDistance` stay always relevant in every mode.
@@ -80,7 +80,7 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 - **Explicit ownership transfer (ADR-0030)** — `server.SetOwner(netId, connId)` moves a live object's ownership to another connection (pickups, vehicles, capture) and propagates to every client over the existing OwnerUpdate wire. `connId 0` releases the object (the reassignment pass adopts it); explicit ownership survives joins/leaves.
 - **Player-object mapping & departure cleanup (ADR-0031)** — `server.SetPlayerObject(connId, netId)` declares a connection's avatar (auto-cleared on detach — readable inside the disconnect handler); `GetPlayerObject`/`GetPlayerConnection` answer "whose avatar is this" without game-side dictionaries. `UniNetManager.DestroyObjectsOwnedBy(connId)` destroys the leaver's dynamic objects precisely from server entries — network wire + local GameObjects, no scene scans, safe in the disconnect event (fires before ownership reassignment). The Core `server.DestroyObjectsOwnedBy` is network-side only (engine-free layer).
 - **Per-connection ServerRpc rate limit (ADR-0032)** — `server.ServerRpcRateLimitPerSecond` caps a connection's ServerRpc calls (0 = unlimited, default). The generated dispatch gates BEFORE the handler runs: legitimate-owner floods (macros) are dropped with a throttled warning and counted (`RateLimitedServerRpcDrops`). Set a generous multiple of normal gameplay peaks.
-- **Full CSP&R prediction (ADR-0037)** — set `networkTransform.FullReconciliation = true` to enable rollback + re-simulation reconciliation: the client sequences inputs, the server echoes the last processed sequence, and on mismatch the client rolls back to the server state and re-simulates unacknowledged inputs (Fusion-grade prediction). Default is the existing soft/snap correction.
+- **Full CSP&R prediction (ADR-0038)** — the injected `MoveSimulation` drives a fixed-step (default 60 Hz) input stream: the client sequences inputs, the server adopts and echoes the acknowledged (position, state) pair, and on mismatch the client restores the server state (velocity, cooldowns included) and re-simulates unacknowledged inputs. See `Document/features/movement-prediction.md`.
 - **Editor Network Debugger (ADR-0036)** — Window → UniNet → Network Debugger shows live connections (RTT, player, ready), traffic counters, registered objects with owners, and server config during Play Mode. Read-only.
 - **Scene transition sync (ADR-0035)** — `server.LoadScene(sceneName)` tells every client to load a scene (wire 11); clients auto-load and report back (wire 12). `server.AllClientsSceneLoaded` fires when every live connection is ready — the lobby-to-battlegate coordination primitive.
 - **Reconnect session preservation (ADR-0034)** — set `server.SessionGraceSeconds` (e.g. 10) to preserve a disconnected player's objects and ownership for that duration. The client's session token rides the Welcome; on reconnect the generated hub automatically sends a resume request — ownership is reattached to the new connection. `UniNetManager.ReconnectAsync(address, port)` carries the token for a seamless rejoin.
@@ -269,27 +269,44 @@ server.ReplicationBudgetPerTickBytes = 8192;               // global per-tick bu
 ### NetworkTransform — built-in movement prediction & interpolation
 
 ```csharp
+public struct MoveInput { public sbyte Dx, Dz; public bool Jump, Dash; }
+public struct MoveState { public float Vy, DashTimer, DashCooldown; public sbyte DashDx, DashDz; }
+
+public static class CharacterMovement
+{
+    // pure step rule — (state, position, input, fixed dt) only; no Time.*, no randomness.
+    // Edge triggers (jump start, dash start) are detected here via the state.
+    public static void Step(ref MoveState st, ref float x, ref float y, ref float z, in MoveInput i, float dt) { /* ... */ }
+    public static void WriteInput(ref MessageProtocol.Serialize.MessageBufferWriter w, in MoveInput i) { /* ... */ }
+    public static MoveInput ReadInput(ref MessageProtocol.Serialize.MessageBufferReader r) { /* ... */ }
+    public static void WriteState(ref MessageProtocol.Serialize.MessageBufferWriter w, in MoveState s) { /* ... */ }
+    public static MoveState ReadState(ref MessageProtocol.Serialize.MessageBufferReader r) { /* ... */ }
+}
+
 public sealed partial class Character : NetworkBehaviour
 {
     private NetworkTransform _nt;
+    private MoveSimulation<MoveInput, MoveState> _sim;
 
     private void Awake()
     {
-        _nt = GetComponent<NetworkTransform>();           // add a NetworkTransform alongside this behaviour
-        _nt.MovementRule = (ref float x, ref float y, ref float z,
-                            float ix, float iy, float iz, float dt) =>
-        {
-            x += ix * 5f * dt;                            // your movement rule — shared by server & prediction
-        };
+        _nt = GetComponent<NetworkTransform>();   // add a NetworkTransform alongside this behaviour
+        _sim = new MoveSimulation<MoveInput, MoveState>(
+            CharacterMovement.Step, CharacterMovement.WriteInput, CharacterMovement.ReadInput,
+            CharacterMovement.WriteState, CharacterMovement.ReadState, stepsPerSecond: 60f);
+        _nt.Simulation = _sim;
     }
 
     private void HandleInput()
     {
-        _nt.SubmitMove(inputX, inputY, 0);                // owner client: apply immediately (predict) + send
-        _nt.SimulationEnabled = IsAlive();                // gate — pauses/resumes server & prediction together
+        _sim.SetInput(new MoveInput { Dx = dx, Dz = dz, Jump = jumpHeld, Dash = dashHeld });
+        _nt.SimulationEnabled = IsAlive();        // gate — pauses/resumes server & prediction together
     }
 }
-// Remote clients: NetworkTransform receives positions and renders at Now − InterpolationDelay (0.12 s default).
+// The client streams sequenced inputs at the fixed step rate; the server echoes the acknowledged
+// (position, movement-state) pair and the client rolls back + re-simulates on divergence — so
+// gravity arcs, dash windows, and cooldowns reconcile exactly. Teleports use SetNetworkPosition
+// (state reset + prediction re-anchor). Remote clients render at Now − InterpolationDelay (0.12 s default).
 ```
 
 ### Lag compensation (rewind)

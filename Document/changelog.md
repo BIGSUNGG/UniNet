@@ -3,6 +3,22 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-10-13]
+
+### Added (상태 기반 이동 예측 일반화 — /goal "이동 동기화 확장성")
+
+- **`MoveSimulation<TInput, TState>` 엔진** ([[0038-상태-기반-이동-예측-일반화]]·[[features/movement-prediction|movement-prediction]]) — 게임 정의 입력·상태 구조체 + 순수 스텝 규칙(ADR-0020 코덱 계약) 기반 고정 스텝(기본 60Hz) 시뮬레이션. 서버 입력 큐(용량 8·단조 검증·불량 페이로드 기각)·소유 클라 히스토리 링(128)·롤백(서버 상태 blob 복원 → 미승인 입력 재생)
+- **점프·대시·구르기·텔레포트 지원** — 속도·쿨다운 같은 이동 상태가 롤백에서 정확 복원(무상태 재생 반례 단언 테스트). 텔레포트는 `SetNetworkPosition` 상태 리셋+재앵커
+- **와이어** — 입력 blob `[Message] UniNetBlobEnvelope`(UniNet.Unity 소속 — MP 소스젠 애널라이저 스코프)로 `RpcSubmitMove(seq, envelope)` 스트림·상태 blob은 OwnerOnly 복제(인스턴스 교체=전체 치환). 제너레이터 무변경
+- **Arena** — 점프(Space)·대시(Shift, 쿨다운)·텔레포트(T) 실구현. 이동 입력 스트림 전환(기존 변경시 전송→고정 스텝 스트림)
+- **테스트** — EditMode `MoveSimulationTests` 7종 + `NetworkTransformComponentTests` 재작성 4종, PlayMode Arena `호스트_점프_대시_텔레포트_상태_시뮬레이션` + `NetworkTransformPlayTests` 재작성 3종. EditMode 118/118·PlayMode 27/27
+- **문서** — ADR-0038·features/movement-prediction(ADR-0013·0037 문서 갭 해소)·README·skills/uninet/SKILL.md·00-INDEX·arena-shooter
+
+### Removed (파괴적 — 무상태 이동 계약 철회)
+
+- `NetworkTransform.MovementStep`/`MovementRule`/`SubmitMove`/`PredictOwner`/`SoftRate`/`FullReconciliation` — `MoveSimulation` 주입 계약으로 대체(소비자 Arena·테스트 전부 동반 마이그레이션). 재시뮬 dt `Time.deltaTime` 근사도 고정 스텝으로 해소(ADR-0037 부담 사항 종결)
+- 구 테스트 `FullReconciliationTests`·`FullReconciliationRollbackTests` — 엔진 테스트로 계승·삭제
+
 ## [2026-10-12]
 
 ### Added (예측 full CSP&R 내장 — /list 항목 12)
