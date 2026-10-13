@@ -19,6 +19,13 @@
 - `NetworkTransform.MovementStep`/`MovementRule`/`SubmitMove`/`PredictOwner`/`SoftRate`/`FullReconciliation` — `MoveSimulation` 주입 계약으로 대체(소비자 Arena·테스트 전부 동반 마이그레이션). 재시뮬 dt `Time.deltaTime` 근사도 고정 스텝으로 해소(ADR-0037 부담 사항 종결)
 - 구 테스트 `FullReconciliationTests`·`FullReconciliationRollbackTests` — 엔진 테스트로 계승·삭제
 
+### Fixed (리모트 렌더링 — 텔레포트 슬라이드·한 박자 지연)
+
+- **원인 ① 텔레포트가 미끄러짐** — SnapshotBuffer.TrySample이 인접 두 샘플을 선형 보간하므로 텔레포트 샘플이 들어오면 이전 위치↔목적지를 샘플 간격(~16ms)에 걸쳐 통과하며 렌더 → 수정: 축별 마지막 샘플 대비 점프가 max(SnapThreshold, 3×변위EMA) 초과면 해당 축 버퍼 클리어 후 새 샘플 단독 홀드(불연속은 스냅으로 렌더, 보간 통과 없음). 변위 EMA 항은 고속 이동의 병합 샘플(한 델타에 2스텝 분) 오판 방지 — 리뷰 라운드 1
+- **원인 ② 한 박자 느림** — 리모트 렌더가 Now − InterpolationDelay(0.12s 고정)로 그려져 밀집 스트림에서도 항상 최대 지연 적용 → 수정: InterpolationDelay를 최대치로 재정의하고 도착 간격 EMA 기반 적응 지연(3×갭, 하한 0.03s, 상한=InterpolationDelay) — 60Hz 스트림에서 유효 지연 ~0.05s로 수축. 도착 추적은 3축 전체 노티파이가 박자(수직 전용 이동 포함), 동일 델타 내 중복 발화는 억제 — 리뷰 라운드 1
+- **원인 ③(추가 발견) 복제전용 리모트 미인터폴레이션** — Simulation==null 리모트가 원시 권위 좌표를 렌더(구 코드는 항상 인터폴레이션) → Update 분기 재구성으로 리모트는 항상 인터폴레이션
+- **테스트** — EditMode `NetworkTransformRemoteRenderTests` 6종(텔레포트 스냅+재개·적응 지연 수축/최대치 유지·복제전용 리모트 보간·고속 병합 샘플 비오판·수직 전용 지연 수축). EditMode 124/124·PlayMode 27/27
+
 ## [2026-10-12]
 
 ### Added (예측 full CSP&R 내장 — /list 항목 12)

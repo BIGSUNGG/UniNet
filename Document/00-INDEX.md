@@ -93,7 +93,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
-- 2026-10-13 — **상태 기반 이동 예측 일반화** (ADR-0038 — MoveSimulation<TInput,TState> 게임 정의 입력·상태 구조체·고정 스텝 시뮬·상태 에코 롤백. 점프·대시·텔레포트 Arena 실구현. 무상태 MovementRule/SubmitMove 파괴적 대체. EditMode 118/118·PlayMode 27/27)
+- 2026-10-13 — **상태 기반 이동 예측 일반화** (ADR-0038 — MoveSimulation<TInput,TState> 게임 정의 입력·상태 구조체·고정 스텝 시뮬·상태 에코 롤백. 점프·대시·텔레포트 Arena 실구현. 무상태 MovementRule/SubmitMove 파괴적 대체. 리모트 렌더 개선(텔레포트 스냅·적응 지연) 동반. EditMode 124/124·PlayMode 27/27)
 - 2026-10-12 — **하트비트 타임아웃 튜닝 노출** (ADR-0033 — DisconnectTimeoutMs 옵션·상류 DS_RPC 3.6.1 전달 추가(사용자 선택 A)·기반 스택 DRPC 3.6.1·Communication 2.7.1·MessageProtocol 3.2.1 갱신. EditMode 102/102·PlayMode 25/25)
 - 2026-10-12 — **RPC 레이트리밋** (ADR-0032 — ServerRpcRateLimitPerSecond 고정 창 게이트·초과 드롭 집계. 제너레이터 0.2.5. EditMode 100/100·PlayMode 25/25)
 - 2026-10-12 — **플레이어 오브젝트·연결 매핑** (ADR-0031 — SetPlayerObject/GetPlayerObject/GetPlayerConnection·DestroyObjectsOwnedBy 퇴장 정리. Arena 전환. EditMode 97/97·PlayMode 24/24)

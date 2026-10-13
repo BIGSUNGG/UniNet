@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using UniNet.Core;
 using UniNet.Core.Hosting;
@@ -24,7 +25,11 @@ namespace UniNet.Unity
         /// <summary>Simulation gate — when false, neither the server nor the predictor steps (death, cutscenes). Controlled by your game.</summary>
         public bool SimulationEnabled = true;
 
-        /// <summary>Remote render delay (seconds) — remotes interpolate this far behind server time (smooths over step gaps).</summary>
+        /// <summary>
+        /// Maximum remote render delay (seconds) — remotes render at most this far behind the received stream.
+        /// The effective delay shrinks adaptively when snapshots arrive densely and steadily (a 60 Hz stream renders
+        /// ~3 arrival gaps behind instead of the full delay), so remote motion tracks closer to live without stutter.
+        /// </summary>
         public float InterpolationDelay = 0.12f;
 
         /// <summary>
@@ -34,7 +39,7 @@ namespace UniNet.Unity
         /// </summary>
         public float RollbackThresholdSq = 0.01f;
 
-        /// <summary>Teleport detection — with no pending inputs, a server position jump (squared distance) beyond this snaps the prediction to it (respawn, teleport).</summary>
+        /// <summary>Teleport detection — a position jump (per axis, per snapshot) beyond this is a discontinuity: the owner re-anchors its prediction, remotes clear the interpolation buffer so the jump never renders as a slide.</summary>
         public float SnapThreshold = 0.5f;
 
         /// <summary>Fixed-step catch-up cap per frame — bounds recovery after a stall (the accumulator is clamped when hit).</summary>
@@ -65,6 +70,23 @@ namespace UniNet.Unity
         private readonly SnapshotBuffer<float> _bufY = new(32, LerpF);
         private readonly SnapshotBuffer<float> _bufZ = new(32, LerpF);
 
+        // ---- remote rendering (ADR-0038 review follow-up) ----
+        private bool _hasSeen;                 // any remote sample buffered yet
+        private float _seenX, _seenY, _seenZ;  // last buffered remote sample — per-axis teleport discontinuity detection
+        private float _dispEmaX, _dispEmaY, _dispEmaZ;   // per-axis sample-to-sample displacement — the discontinuity tolerance follows the object's motion scale
+        private double _lastSampleAt;          // arrival time of the last paced sample (UniNetTime domain)
+        private double _arrivalGapEma = 0.05;  // smoothed inter-sample arrival gap (seconds)
+        private const double ArrivalGapEmaAlpha = 0.1;
+        private const double AdaptiveDelayMinSeconds = 0.03;
+        private const double AdaptiveGapMultiplier = 3.0;
+        private const double SameDeltaArrivalSeconds = 0.002;   // X/Y/Z notifies of one delta land µs apart — not a stream gap
+        private const float DisplacementEmaAlpha = 0.1f;
+        private const float DisplacementEmaMultiplier = 3f;
+
+        /// <summary>Current remote render delay — <see cref="InterpolationDelay"/> capped, shrunk to ~3 arrival gaps for a dense steady stream (test/debug observer).</summary>
+        internal double EffectiveInterpolationDelay
+            => Math.Min(InterpolationDelay, Math.Max(AdaptiveDelayMinSeconds, _arrivalGapEma * AdaptiveGapMultiplier));
+
         private static float LerpF(float a, float b, double t) => a + (b - a) * (float)t;
 
         private void Awake()
@@ -93,27 +115,71 @@ namespace UniNet.Unity
         private void Update()
         {
             var sim = Simulation;
-            if (sim == null)
-            {
-                if (IsServer || !IsOwner || !IsClient)
-                    transform.position = new Vector3(_px, _py, _pz);   // replication-only contract — render the authoritative position
-                else if (IsClient)
-                    InterpolateRemote();
-                return;
-            }
+            bool isAuthority = IsServer;
+            bool isPredictor = !IsServer && IsOwner && IsClient;
 
-            if (!SimulationEnabled)
+            if (isAuthority || isPredictor)
             {
-                _accumulator = 0f;   // frozen — do not accumulate stall debt while disabled
-                if (IsOwner && IsClient && !IsServer)
-                    transform.position = new Vector3(_px, _py, _pz);   // gated owner (death) renders the authoritative position
-                else if (!IsServer && IsClient)
-                    InterpolateRemote();
+                if (sim == null)
+                {
+                    // replication-only contract (ADR-0013) — nothing to step; render branches below apply the position
+                }
+                else if (!SimulationEnabled)
+                {
+                    _accumulator = 0f;   // frozen — do not accumulate stall debt while disabled
+                }
                 else
-                    transform.position = new Vector3(_px, _py, _pz);
-                return;
+                {
+                    StepSimulation(sim);
+                }
             }
 
+            if (isAuthority)
+            {
+                transform.position = new Vector3(_px, _py, _pz);
+            }
+            else if (isPredictor)
+            {
+                if (sim == null || !SimulationEnabled)
+                {
+                    transform.position = new Vector3(_px, _py, _pz);   // owner without a simulation / gated (death) — render the authoritative position
+                    return;
+                }
+
+                // Teleport re-anchor (ADR-0037 lineage) — no pending inputs + server position jumped: the ack path
+                // never fires (no further adoptions while the sender is idle/gated), so adopt the server state here.
+                if (sim.PendingCount == 0)
+                {
+                    float ddx = _predX - _px, ddy = _predY - _py, ddz = _predZ - _pz;
+                    if (ddx * ddx + ddy * ddy + ddz * ddz > SnapThreshold * SnapThreshold)
+                    {
+                        sim.OnTeleport();
+                        _predX = _px; _predY = _py; _predZ = _pz;
+                        _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
+                    }
+                }
+
+                // Render between the last two predicted steps — smooth at any frame rate while the simulation stays fixed-rate
+                float interval = sim.StepIntervalSeconds;
+                float frac = interval > 0f ? Mathf.Clamp01(_accumulator / interval) : 1f;
+                transform.position = new Vector3(
+                    Mathf.Lerp(_prevPredX, _predX, frac),
+                    Mathf.Lerp(_prevPredY, _predY, frac),
+                    Mathf.Lerp(_prevPredZ, _predZ, frac));
+            }
+            else if (IsClient)
+            {
+                InterpolateRemote();   // remote — always interpolated, with or without a simulation
+            }
+            else
+            {
+                transform.position = new Vector3(_px, _py, _pz);   // unregistered/stale instance — follow the authoritative position
+            }
+        }
+
+        /// <summary>Fixed-step driver — server authority and owner prediction advance by whole simulation steps (spiral-of-death guarded).</summary>
+        private void StepSimulation(INetworkMoveSimulation sim)
+        {
             float interval = sim.StepIntervalSeconds;
             _accumulator += Time.deltaTime;
             int steps = 0;
@@ -131,7 +197,7 @@ namespace UniNet.Unity
                         _ackState = new UniNetBlobEnvelope { Data = sim.WriteState() };   // fresh instance — reference change is the delta trigger
                     }
                 }
-                else if (IsOwner && IsClient)
+                else
                 {
                     _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
                     uint seq = ++_clientSeq;
@@ -142,38 +208,12 @@ namespace UniNet.Unity
             }
             if (steps == MaxStepsPerFrame)
                 _accumulator = Mathf.Min(_accumulator, interval * 0.5f);   // spiral-of-death guard — shed accumulated debt after a stall
-
-            if (IsServer)
-                transform.position = new Vector3(_px, _py, _pz);
-            else if (IsOwner && IsClient)
-            {
-                // Teleport re-anchor (ADR-0037 lineage) — no pending inputs + server position jumped: the ack path
-                // never fires (no further adoptions while the sender is idle/gated), so adopt the server state here.
-                if (sim.PendingCount == 0)
-                {
-                    float ddx = _predX - _px, ddy = _predY - _py, ddz = _predZ - _pz;
-                    if (ddx * ddx + ddy * ddy + ddz * ddz > SnapThreshold * SnapThreshold)
-                    {
-                        sim.OnTeleport();
-                        _predX = _px; _predY = _py; _predZ = _pz;
-                        _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
-                    }
-                }
-                // Render between the last two predicted steps — smooth at any frame rate while the simulation stays fixed-rate
-                float frac = interval > 0f ? Mathf.Clamp01(_accumulator / interval) : 1f;
-                transform.position = new Vector3(
-                    Mathf.Lerp(_prevPredX, _predX, frac),
-                    Mathf.Lerp(_prevPredY, _predY, frac),
-                    Mathf.Lerp(_prevPredZ, _predZ, frac));
-            }
-            else if (IsClient)
-                InterpolateRemote();
         }
 
-        /// <summary>Remote — render a past moment from the interpolation buffer (delay controls when updates are applied). Keep the current position while the buffer is empty.</summary>
+        /// <summary>Remote — render a past moment from the interpolation buffer at the adaptive delay. Keep the current position while the buffer is empty.</summary>
         private void InterpolateRemote()
         {
-            double renderTime = UniNetTime.Now - InterpolationDelay;
+            double renderTime = UniNetTime.Now - EffectiveInterpolationDelay;
             if (_bufX.TrySample(renderTime, out var x) && _bufY.TrySample(renderTime, out var y) && _bufZ.TrySample(renderTime, out var z))
                 transform.position = new Vector3(x, y, z);
         }
@@ -182,21 +222,63 @@ namespace UniNet.Unity
         private void OnNetXChanged(float prev)
         {
             if (IsServer || IsOwner) return;   // authority keeps its own; the owner reconciles on ack (ADR-0038)
-            _bufX.Add(UniNetTime.Now, _px);
+            TrackArrival(UniNetTime.Now);
+            AddRemoteSample(ref _seenX, ref _dispEmaX, _px, _bufX);
         }
 
         /// <summary>Networked Y received — same handling as the X axis.</summary>
         private void OnNetYChanged(float prev)
         {
             if (IsServer || IsOwner) return;
-            _bufY.Add(UniNetTime.Now, _py);
+            TrackArrival(UniNetTime.Now);
+            AddRemoteSample(ref _seenY, ref _dispEmaY, _py, _bufY);
         }
 
         /// <summary>Networked Z received — same handling as the X axis.</summary>
         private void OnNetZChanged(float prev)
         {
             if (IsServer || IsOwner) return;
-            _bufZ.Add(UniNetTime.Now, _pz);
+            TrackArrival(UniNetTime.Now);
+            AddRemoteSample(ref _seenZ, ref _dispEmaZ, _pz, _bufZ);
+        }
+
+        /// <summary>Smooths the inter-delta arrival gap. Any axis may pace the stream (a falling or in-place-jumping
+        /// object only changes Y) — the three notifies of one delta land µs apart and are suppressed as duplicates.</summary>
+        private void TrackArrival(double now)
+        {
+            if (_lastSampleAt > 0)
+            {
+                double gap = now - _lastSampleAt;
+                if (gap < SameDeltaArrivalSeconds) return;   // same-delta duplicate (X/Y/Z of one apply pass)
+                _arrivalGapEma += (gap - _arrivalGapEma) * ArrivalGapEmaAlpha;
+            }
+            _lastSampleAt = now;
+        }
+
+        /// <summary>
+        /// Buffers one remote axis sample. A jump beyond max(SnapThreshold, 3× the axis's displacement EMA) is a
+        /// teleport: the axis buffer is cleared so the renderer never lerps through the gap (the fresh single sample
+        /// holds immediately — a discontinuity renders as a snap, not a slide). The motion-scaled term keeps fast
+        /// movement honest: a 20 u/s dash with two sim ticks merged into one delta (0.67u) stays below 3× its normal
+        /// per-sample displacement (~0.33u) and interpolates normally. Deliberately per-axis (a notify fires before
+        /// the delta's other axes are applied, so the full vector is unavailable here) — unlike the owner re-anchor,
+        /// which judges the 3D distance; sub-threshold diagonal jumps may still render as a short slide.
+        /// </summary>
+        private void AddRemoteSample(ref float seen, ref float dispEma, float value, SnapshotBuffer<float> buffer)
+        {
+            float delta = _hasSeen ? Mathf.Abs(value - seen) : 0f;
+            bool teleport = _hasSeen && delta > Mathf.Max(SnapThreshold, dispEma * DisplacementEmaMultiplier);
+            if (teleport)
+            {
+                buffer.Clear();   // the teleport sample itself does not pollute the motion-scale EMA
+            }
+            else if (_hasSeen)
+            {
+                dispEma += (delta - dispEma) * DisplacementEmaAlpha;
+            }
+            buffer.Add(UniNetTime.Now, value);
+            seen = value;
+            _hasSeen = true;
         }
 
         /// <summary>
