@@ -82,6 +82,8 @@
 - [[0036-에디터-디버깅-툴]] — UniNetDebuggerWindow 연결·RTT·통계·오브젝트·소유자 표시
 - [[0037-예측-full-CSPnR-내장]] — NetworkTransform.FullReconciliation(옵트인) 롤백+재시뮬 예측 리컨사일
 - [[0038-상태-기반-이동-예측-일반화]] — MoveSimulation<TInput,TState> 게임 정의 입력·상태·고정 스텝·상태 에코 롤백(무상태 계약 대체)
+- [[0039-복제-배칭과-신뢰성-분리]] — 틱별 신뢰성별 배치(wire 13)·오브젝트별 전송 신뢰성(Unreliable=Sequenced)·정지 재전송·휴면 플러시 신뢰 강제
+- [[0040-복제-주기-기본값-30Hz]] — NetworkUpdateFrequencyHz 기본 0(무제한)→30. 0 설정으로 매 틱 옵트인
 
 ### deployment — 배포
 
@@ -93,6 +95,9 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-13 — **복제 주기 기본값 30Hz** (ADR-0040 — NetworkUpdateFrequencyHz 기본 0→30, 0=옵트인. 기존 UpdateFrequencyTests 갱신+기본값 테스트 추가. EditMode 132/132)
+- 2026-10-13 — **복제 배칭과 신뢰성 분리** (ADR-0039 — 틱별 신뢰성별 배치 wire 13·오브젝트별 Delivery(Unreliable=Sequenced)·정지 재전송·휴면 플러시 신뢰 강제. Arena 30Hz. UniNet 0.3.0(와이어 변경). EditMode 131/131·PlayMode 27/27)
 
 - 2026-10-13 — **상태 기반 이동 예측 일반화** (ADR-0038 — MoveSimulation<TInput,TState> 게임 정의 입력·상태 구조체·고정 스텝 시뮬·상태 에코 롤백. 점프·대시·텔레포트 Arena 실구현. 무상태 MovementRule/SubmitMove 파괴적 대체. 리모트 렌더 개선(텔레포트 스냅·적응 지연) 동반. EditMode 124/124·PlayMode 27/27)
 - 2026-10-12 — **하트비트 타임아웃 튜닝 노출** (ADR-0033 — DisconnectTimeoutMs 옵션·상류 DS_RPC 3.6.1 전달 추가(사용자 선택 A)·기반 스택 DRPC 3.6.1·Communication 2.7.1·MessageProtocol 3.2.1 갱신. EditMode 102/102·PlayMode 25/25)

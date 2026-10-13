@@ -5,6 +5,12 @@
 
 ## [2026-10-13]
 
+### Added (복제 주기 기본값 30Hz — /goal 후속, ADR-0040)
+
+- **`NetworkUpdateFrequencyHz` 기본값 0 → 30** ([[0040-복제-주기-기본값-30Hz]]) — 정책을 설정하지 않는 프로젝트도 틱 레이트 전체 복제 대신 30Hz 스트리밍(스텝 병합)을 기본으로. `0` 설정으로 매 틱 전송 옵트인. 즉시 모드(P2 호환 경로)는 주기 무시 계약 유지. Arena의 명시적 30Hz는 기본값과 일치(데모 문서화 목적 유지)
+- **테스트** — `UpdateFrequencyTests`에 기본값 30Hz 검증 추가(미도달 틱 보류·도달 틱 최신값), 주기 0 옵트인 테스트 명시적 설정으로 전환. EditMode 132/132
+- **문서** — ADR-0040·features/replication-p3-policy·README·skills/uninet/SKILL.md
+
 ### Added (복제 배칭과 오브젝트별 전송 신뢰성 분리 — /goal "1~3까지 진행")
 
 - **오브젝트별 복제 신뢰성 정책** ([[0039-복제-배칭과-신뢰성-분리]]·[[features/replication-batching-delivery]]) — `NetworkBehaviour.NetworkReplicationDelivery` (`Delivery.ReliableOrdered` 기본 / `Unreliable`). `Unreliable`은 와이어에서 Sequenced(유실 허용·순서 보장)로 전송 — `NetworkTransform`이 기본 적용

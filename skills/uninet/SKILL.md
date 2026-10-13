@@ -269,7 +269,7 @@ public sealed partial class Bullet : NetworkBehaviour
 {
     public void Init()
     {
-        NetworkUpdateFrequencyHz = 30f;   // cap sends at 30 Hz; missed ticks coalesce to the latest value
+        NetworkUpdateFrequencyHz = 30f;   // default is already 30 Hz (ADR-0040) — set lower to save bandwidth or 0 for every-tick sends
         NetworkCullDistance = 24f;        // no sends beyond this radius from the viewer
         NetworkReplicationDelivery = Delivery.Unreliable;   // loss-tolerant ordered stream — no per-packet ACKs (v0.3.0)
     }
@@ -303,6 +303,7 @@ server.ClearVisibilityGrid();                              // back to distance-b
 Tuning notes:
 
 - **Scheduling order** — candidates and deferred sends are merged, then sent in `priority × (1 + waitSeconds / 0.1)` order (UE `GetNetPriority` formula). Starved objects eventually go through — you do not need custom fairness logic.
+- **Update frequency default** — objects replicate at 30 Hz out of the box (misses coalesce to the latest value); `NetworkUpdateFrequencyHz = 0` opts back in to every-tick sends. Immediate mode (`TickReplication(objects)` without a clock) ignores the rate, preserving the P2-compatible contract.
 - **Budgets** — a type over its channel budget is deferred, not dropped; a single delta larger than the whole budget forces through so one huge object cannot stall.
 - **Batching & delivery (v0.3.0)** — a tick sends at most two replication messages per connection (one reliable + one unreliable batch, wire 13), regardless of how many objects changed. `NetworkReplicationDelivery = Delivery.Unreliable` rides the lossy-but-ordered stream (no ACKs); if the final delta of a quiet stretch is lost, the server re-sends the object's full state once on the reliable batch ~0.25 s later, so a stopped object never strands. `NetworkTransform` defaults to Unreliable; dormancy flushes are always forced reliable.
 - **Dormancy** skips comparison (cheapest idle state); flush is a single batched send. Use it for dead/idle objects, not for pausing gameplay state you expect to change soon.

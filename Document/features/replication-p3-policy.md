@@ -27,7 +27,7 @@
 - **가시성**: 판정 = `IsNetworkRelevant(connId)` AND 거리(`SetViewerPosition` 필요 — 미설정 연결은 컬 무효). 씬 오브젝트 첫 평가는 조용한 시드(P2 계약 유지), 재진입·동적 첫 평가는 스폰/전체 상태로 기준선 복구. 비관련 전환 시 델타만 중단(클라는 마지막 상태 유지 — 전파 파괴 미지원)
 - **우선순위·기아**: 후보+연기분 병합 후 `priority × (1 + 대기초/0.1)` 순 전송(UE GetNetPriority 공식). 전역 예산 `ReplicationBudgetPerTickBytes`(0=무제한), 유형별 `SetReplicationChannelBudget(Type, bytes)` — 유형 초과분만 연기. 예산보다 큰 단일 델타는 강제 전송
 - **휴면**: `NetworkDormant = true` 동안 델타 비교 생략(스냅샷 동결). `FlushNetworkDormancy()`로 해제 — 누적 변경분이 한 번에 전송
-- **주기**: `NetworkUpdateFrequencyHz` Hz 미도달 틱은 비교 생략, 도달 틱에 최신 변경분 전송(최신값 승)
+- **주기**: `NetworkUpdateFrequencyHz` — 기본 30Hz (ADR-0040 — 무제한 기본값이 메시지 수 과다를 만들지 않도록). 미도달 틱은 비교 생략, 도달 틱에 최신 변경분 전송(최신값 승). `0` 설정으로 매 틱 전송 옵트인
 - **전송 신뢰성 (v0.3.0)**: `NetworkReplicationDelivery` — 기본 `ReliableOrdered`, `Unreliable`은 Sequenced 스트림. 배칭·정지 재전송 포함 상세는 [[features/replication-batching-delivery]] ([[0039-복제-배칭과-신뢰성-분리]])
 
 ```csharp

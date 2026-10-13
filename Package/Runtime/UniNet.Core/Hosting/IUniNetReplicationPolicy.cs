@@ -11,7 +11,7 @@ namespace UniNet.Core.Hosting
         /// <summary>Replication priority (UE NetPriority equivalent, default 1). When the bandwidth budget runs short, higher values are sent first and starvation boost raises the value the longer an object waits.</summary>
         float NetworkPriority { get; }
 
-        /// <summary>Per-object update rate in Hz (UE NetUpdateFrequency equivalent). 0 = every tick, unlimited (default). Delta comparison is skipped until 1/Hz has elapsed since the last send.</summary>
+        /// <summary>Per-object update rate in Hz (UE NetUpdateFrequency equivalent). Default 30 — misses coalesce to the latest value (ADR-0040). 0 = opt back in to every-tick sends.</summary>
         float NetworkUpdateFrequencyHz { get; }
 
         /// <summary>Wire reliability for this object's replication deltas (default ReliableOrdered). Unreliable deltas are sent ordered-but-loss-tolerant (Sequenced — a lost delta is skipped, the next one still arrives); a lost FINAL delta is recovered by the server's quiescence resend (~0.25 s after the object stops changing).</summary>

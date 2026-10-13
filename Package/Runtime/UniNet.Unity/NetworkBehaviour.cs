@@ -63,8 +63,12 @@ namespace UniNet.Unity
         /// <summary>Replication priority (UE NetPriority equivalent, default 1). When the bandwidth budget runs out, higher values are sent first.</summary>
         public float NetworkPriority { get; set; } = 1f;
 
-        /// <summary>Per-object send rate in Hz (UE NetUpdateFrequency equivalent). 0 = unlimited, every tick (default).</summary>
-        public float NetworkUpdateFrequencyHz { get; set; }
+        /// <summary>
+        /// Per-object send rate in Hz (UE NetUpdateFrequency equivalent). Default 30 — a sane streaming cadence that
+        /// merges several sim steps into one delta (ADR-0040: an unlimited default made every object replicate at
+        /// full tick rate, flooding message counts). Set 0 to opt back in to every-tick sends.
+        /// </summary>
+        public float NetworkUpdateFrequencyHz { get; set; } = 30f;
 
         /// <summary>
         /// Wire reliability for this object's replication deltas — ReliableOrdered (default) or Unreliable

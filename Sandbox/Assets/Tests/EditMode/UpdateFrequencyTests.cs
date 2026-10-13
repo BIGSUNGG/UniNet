@@ -56,10 +56,33 @@ namespace UniNet.Tests
         }
 
         [Test]
-        public void 주기_0은_매_틱_전송을_유지한다()
+        public void 기본_주기는_30Hz다()
         {
             var server = new NetworkServer();
-            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "freq-3");   // Hz defaults to 0
+            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "freq-4");   // Hz defaults to 30 (ADR-0040)
+            Assert.AreEqual(30f, player.NetworkUpdateFrequencyHz, "라이브러리 기본값 — 무제한 전송이 메시지 수 과다를 만들지 않도록 30Hz로 제한");
+
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+            ch.Clear();
+
+            player.Score = 5;
+            server.TickReplication(server.SnapshotObjects(), 1.0);
+            player.Score = 6;
+            server.TickReplication(server.SnapshotObjects(), 1.02);   // 20ms < 1/30 주기 — 미도달, 변경분 유지
+            Assert.AreEqual(1, ch.Replicates.Count, "기본 30Hz — 주기 미도달 틱은 전송하지 않는다");
+
+            server.TickReplication(server.SnapshotObjects(), 1.05);   // 도달 — 최신 변경분 전송
+            Assert.AreEqual(2, ch.Replicates.Count);
+        }
+
+        [Test]
+        public void 주기_0으로_설정하면_매_틱_전송한다()
+        {
+            var server = new NetworkServer();
+            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "freq-3");
+            player.NetworkUpdateFrequencyHz = 0f;   // opt back in to every-tick sends (default is 30, ADR-0040)
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
@@ -70,7 +93,7 @@ namespace UniNet.Tests
             server.TickReplication(server.SnapshotObjects(), 1.0);
             player.Score = 6;
             server.TickReplication(server.SnapshotObjects(), 1.1);
-            Assert.AreEqual(2, ch.Replicates.Count, "주기 0 (기본) — 매 틱 비교·전송");
+            Assert.AreEqual(2, ch.Replicates.Count, "주기 0 (옵트인) — 매 틱 비교·전송");
         }
 
         private static void CheckLatestScore(RecordingChannel ch, int expected)
