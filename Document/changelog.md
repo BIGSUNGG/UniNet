@@ -5,6 +5,13 @@
 
 ## [2026-10-12]
 
+### Added (예측 full CSP&R 내장 — /list 항목 12)
+
+- **NetworkTransform.FullReconciliation** ([[0037-예측-full-CSPnR-내장]]) — 옵트인(true 시) 소유 클라 리컨사일이 소프트/스냅 대신 롤백+재시뮬레이션: 입력 시퀀싱(seq++)·서버 에코(_ackSeq OwnerOnly Replicated)·입력 히스토리 링버퍼(128)·불일치 시 서버 위치로 롤백 후 미승인 입력 재시뮬·승인분 히스토리 폐기. 기존 소프트/스냅은 기본값(false) 유지
+- **테스트** — EditMode `FullReconciliationTests` 2종(리컨사일 축 스냅/소프트 경계·롤백 임계 제곱 거리 판정) + `FullReconciliationRollbackTests` 2종(리플렉션 OnAckSeqChanged 롤백 경로·텔레포트 재앵커). e2e는 Arena PlayMode(FullReconciliation=true 전환)
+- **Arena 전환** — ArenaPlayer._nt.FullReconciliation = true 설정 (롤백+재시뮬로 이동 예측 전환)
+- **문서** — ADR-0037·README·skills/uninet/SKILL.md·00-INDEX
+
 ### Added (에디터 디버깅 툴 — /list 항목 11)
 
 - **UniNetDebuggerWindow** ([[0036-에디터-디버깅-툴]]) — Window → UniNet → Network Debugger. Play Mode 세션 실시간 표시: 연결 목록(connId·RTT·플레이어·씬 준비·레이트 드롭·세션 토큰)·트래픽 통계(ADR-0029)·등록 오브젝트(netId·타입·소유자·동적)·서버 설정·클라 상태. 읽기 전용·자동 리프레시

@@ -76,6 +76,7 @@ namespace Arena
             // P4 — inject the game's movement rule into the prediction component (server authority and prediction share the same rule)
             _nt = GetComponent<NetworkTransform>();
             _nt.MovementRule = ArenaMovement.StepNet;
+            _nt.FullReconciliation = true;   // ADR-0037 — rollback + re-simulation (full CSP&R)
             BuildVisuals();
         }
 

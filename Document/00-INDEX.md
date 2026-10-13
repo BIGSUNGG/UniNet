@@ -78,6 +78,7 @@
 - [[0034-재접속-세션-보존-재부착]] — SessionGraceSeconds 유예 세션·Welcome 토큰·ResumeRequest(와이어 10) 재부착·ReconnectAsync
 - [[0035-씬-전환-동기화]] — LoadScene 브로드캐스트(와이어 11)·클라 보고(와이어 12)·AllClientsSceneLoaded 준비 게이트
 - [[0036-에디터-디버깅-툴]] — UniNetDebuggerWindow 연결·RTT·통계·오브젝트·소유자 표시
+- [[0037-예측-full-CSPnR-내장]] — NetworkTransform.FullReconciliation(옵트인) 롤백+재시뮬 예측 리컨사일
 
 ### deployment — 배포
 
