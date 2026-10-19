@@ -36,6 +36,7 @@
 
 ### research/ — 비교·조사 문서
 
+- [[research/commercial-netcode-audit|commercial-netcode-audit]] — 상용 셀프호스팅 넷코드 내부 전수 점검·런타임 44개 파일 대응표·기능 문제 대장 (진행 중, 최초 내부 완료 후 타사 비교 착수). 기능별 원시 증거·검증·배포 연결은 `research/commercial-netcode-evidence.json`
 - [[research/network-framework-comparison|network-framework-comparison]] — UniNet vs UE NF·Photon Fusion 2·NGO·N4E·FishNet·Mirror 기능 비교 + 유무·장단점 정리 (2026-09 조사)
 
 ### upstream-blockers — 상류 의존 과제

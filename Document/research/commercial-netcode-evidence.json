@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "status": "in_progress",
+  "scope": {
+    "unity": "6",
+    "runtimeApi": "netstandard2.1",
+    "validatedPlatforms": ["Windows server", "Windows client"],
+    "authority": "server-authoritative self-hosted netcode",
+    "excluded": ["account/database/matchmaking/cloud service implementation", "non-Windows execution guarantee", "unconditional union of other networking paradigms"]
+  },
+  "baseline": {
+    "commit": "1cee018baf7d20a7ea01480f37eaafe013f04b83",
+    "packageVersion": "0.3.0",
+    "stateAndUserFileHashes": ".pi-subagents/artifacts/commercial-netcode/baseline/baseline.json",
+    "originalTestToolEvents": ".pi-subagents/artifacts/commercial-netcode/baseline/validation-events.jsonl",
+    "tokenPredictabilityProbe": ".pi-subagents/artifacts/commercial-netcode/baseline/security-token-probe.jsonl",
+    "runtimeCoverageCount": 44,
+    "coverageReport": "Document/research/commercial-netcode-audit.md",
+    "firstInternalZeroOpenCheckpoint": null,
+    "newCompetitorComparisonStarted": false
+  },
+  "maintenance": [
+    {
+      "id": "QA-001",
+      "status": "closed",
+      "kind": "test-isolation-only",
+      "commit": "d69739816e9f1d47678ac6d8060a2f4c0055cdf6",
+      "changedFiles": ["Sandbox/Assets/Tests/EditMode/MoveSimulationTests.cs", "Document/changelog.md"],
+      "worker": {
+        "model": "zai/glm-5.3",
+        "resolvedModelWithThinking": "zai/glm-5.3:high",
+        "initialRunId": "1690c8bf",
+        "completedRunId": "7f89c2eb",
+        "metadata": ".pi-subagents/artifacts/7f89c2eb_worker_meta.json",
+        "transcript": ".pi-subagents/artifacts/7f89c2eb_worker_transcript.jsonl",
+        "output": ".pi-subagents/artifacts/7f89c2eb_worker_output.md"
+      },
+      "reviewer": {
+        "model": "zai/glm-5.3-flash",
+        "initialRunId": "21c02b2e",
+        "completedRunId": "226be8e4",
+        "verdict": "CLEAN",
+        "metadata": ".pi-subagents/artifacts/226be8e4_reviewer_meta.json",
+        "transcript": ".pi-subagents/artifacts/226be8e4_reviewer_transcript.jsonl",
+        "output": ".pi-subagents/artifacts/226be8e4_reviewer_output.md",
+        "note": "Second response corrected the verdict envelope only; it did not change source or review conclusions."
+      },
+      "regressionTest": "UniNet.Tests.MoveSimulationTests.잘못된_페이로드는_버려지고_예외가_새지_않는다",
+      "validation": [
+        {"kind": "targeted EditMode", "jobId": "9e1859170206428f92a552cb6f87ecb0", "total": 1, "passed": 1, "failed": 0, "skipped": 0},
+        {"kind": "full EditMode", "jobId": "b9c3a0b1963749ee9ec965e6b9a4b758", "total": 132, "passed": 132, "failed": 0, "skipped": 0},
+        {"kind": "full PlayMode", "jobId": "daab8138afee4c8ab3545c9e2433c804", "total": 27, "passed": 27, "failed": 0, "skipped": 0}
+      ],
+      "releaseVersion": null,
+      "arenaExampleRequired": false,
+      "consumerDocsRequired": false,
+      "exemptionReason": "Runtime code, public API, diagnostics and runtime log contracts were not changed. Only the test now captures and asserts its expected fault and restores the global logger. No functional release or new Arena example is claimed."
+    }
+  ],
+  "functionalChanges": [],
+  "finalValidation": {
+    "status": "not_started",
+    "releasedCodeRef": null,
+    "editModeXml": "Builds/commercial-netcode-validation/EditMode.xml",
+    "playModeXml": "Builds/commercial-netcode-validation/PlayMode.xml",
+    "arenaResults": "Builds/commercial-netcode-validation/Arena-results.json",
+    "publicUpmInstall": null,
+    "remoteReleaseReconciliation": null
+  }
+}

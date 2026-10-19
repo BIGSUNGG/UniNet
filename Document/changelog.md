@@ -5,6 +5,10 @@
 
 ## [2026-10-19]
 
+### Added (상용 넷코드 내부 점검 — 진행 중)
+
+- **상용 셀프호스팅 넷코드 점검 대장** — [[research/commercial-netcode-audit]]에 런타임 C# 44개 파일의 조사 대응표, 코드로 확인된 문제와 추가 재현 후보, 기준 테스트 결과, 최초 내부 완료 후 타사 비교라는 순서를 기록. `research/commercial-netcode-evidence.json`에 지정 모델의 실제 실행 메타데이터·테스트 원시 결과·기능별 배포를 연결하는 증거대장 신설. 아직 기능 미해결 항목이 남아 있으며 완료 또는 배포를 주장하지 않음
+
 ### Fixed (테스트 격리 보수 — 런타임 무변경)
 
 - **EditMode `MoveSimulationTests.잘못된_페이로드는_버려지고_예외가_새지_않는다` 전수 실행 실패 수리** — 불량 페이로드 격리 계약(입력 폐기·예외 격리·오류 관측)은 엔진이 예외를 `UniNetEnvironment.LogFault`로 관측시키는 설계인데, `LogFault`는 프로세스 전역이라 이전 테스트가 `UniNetManager` 정적 초기화자(= `Debug.LogException` 배선)를 실행한 뒤면 테스트 러너가 그 예외 로그 자체를 실패로 처리(`Unhandled log message: '[Exception] EndOfStreamException...'`). 테스트가 이전 `LogFault` delegate를 보존→임시 capture로 교체→`finally` 복원하고, 잘린 입력에서 `EndOfStreamException` 관측 1건·null 페이로드 무관측·`LastAdoptedSeq==0`을 명시 단언하도록 수정 — 동작 계약을 숨기지 않고 검증. 런타임·공개 API·기능 문서 무변경 (테스트만 변경)
