@@ -3,6 +3,12 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-10-19]
+
+### Fixed (테스트 격리 보수 — 런타임 무변경)
+
+- **EditMode `MoveSimulationTests.잘못된_페이로드는_버려지고_예외가_새지_않는다` 전수 실행 실패 수리** — 불량 페이로드 격리 계약(입력 폐기·예외 격리·오류 관측)은 엔진이 예외를 `UniNetEnvironment.LogFault`로 관측시키는 설계인데, `LogFault`는 프로세스 전역이라 이전 테스트가 `UniNetManager` 정적 초기화자(= `Debug.LogException` 배선)를 실행한 뒤면 테스트 러너가 그 예외 로그 자체를 실패로 처리(`Unhandled log message: '[Exception] EndOfStreamException...'`). 테스트가 이전 `LogFault` delegate를 보존→임시 capture로 교체→`finally` 복원하고, 잘린 입력에서 `EndOfStreamException` 관측 1건·null 페이로드 무관측·`LastAdoptedSeq==0`을 명시 단언하도록 수정 — 동작 계약을 숨기지 않고 검증. 런타임·공개 API·기능 문서 무변경 (테스트만 변경)
+
 ## [2026-10-13]
 
 ### Added (복제 주기 기본값 30Hz — /goal 후속, ADR-0040)

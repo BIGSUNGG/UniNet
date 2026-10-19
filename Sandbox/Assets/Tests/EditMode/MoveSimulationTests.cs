@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using MessageProtocol.Serialize;
 using NUnit.Framework;
 using UniNet.Core.Hosting;
@@ -272,8 +274,25 @@ namespace UniNet.Tests
             w.WriteSByte(7);
             byte[] garbage = w.ToArray();
 
-            Assert.DoesNotThrow(() => isim.AdoptInput(1, garbage), "파싱 실패는 무시");
-            Assert.DoesNotThrow(() => isim.AdoptInput(2, null), "null 페이로드 무시");
+            // LogFault is process-global: UniNetManager's static ctor wires it to Debug.LogException, and the Unity
+            // test runner fails any test that logs an exception. Swap in a capture so the containment contract —
+            // dropped, not adopted, not thrown, but OBSERVED — is asserted instead of tripping the runner.
+            // Restored in finally so later tests keep the engine logger.
+            var faults = new List<Exception>();
+            Action<Exception> previous = UniNetEnvironment.LogFault;
+            UniNetEnvironment.LogFault = faults.Add;
+            try
+            {
+                Assert.DoesNotThrow(() => isim.AdoptInput(1, garbage), "잘린 페이로드 — 파싱 실패는 무시");
+                Assert.DoesNotThrow(() => isim.AdoptInput(2, null), "null 페이로드 무시");
+            }
+            finally
+            {
+                UniNetEnvironment.LogFault = previous;
+            }
+
+            Assert.AreEqual(1, faults.Count, "관측은 잘린 페이로드 1건뿐 — null은 관측 없음");
+            Assert.IsInstanceOf<EndOfStreamException>(faults[0], "관측된 장애는 EndOfStreamException (버퍼 끝 초과 읽기)");
 
             float x = 0f, y = 0f, z = 0f;
             isim.TickServer(ref x, ref y, ref z);
