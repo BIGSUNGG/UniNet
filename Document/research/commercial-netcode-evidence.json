@@ -91,7 +91,7 @@
   "functionalChanges": [
     {
       "id": "SEC-001",
-      "status": "validated_pending_release",
+      "status": "closed",
       "kind": "security-fix",
       "adr": "Document/decisions/0041-세션-토큰-암호학적-난수-전환.md",
       "featureDocument": "Document/features/connection-lifecycle.md",
@@ -140,7 +140,8 @@
         {"kind": "full EditMode", "jobId": "b3af36a5ae554620ab7f71c4e3d920b2", "total": 138, "passed": 138, "failed": 0, "skipped": 0},
         {"kind": "full PlayMode", "jobId": "12ff2e92346b46d8b97ba90bef5d2a74", "total": 27, "passed": 27, "failed": 0, "skipped": 0},
         {"kind": "CodeGenerator Release build", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-codegen-build-r2.log", "warning": "NU5128 analyzer-only package layout warning; no compiler errors"},
-        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.4.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation.log"}
+        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.4.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation.log", "precommitLog": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation-precommit.log"},
+        {"kind": "fresh Unity install from committed local Git URL", "command": "timeout 600 bash Package/tools/verify-install.sh", "exitCode": 0, "commit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21", "sampleCompiled": true, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local.log", "unityLog": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-unity.log", "packageLock": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-packages-lock.json", "note": "This is the existing local-Git installation gate, not the final public-UPM-tag gate tracked by INSTALL-001."}
       ],
       "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
       "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/sec001-validated-input-blobs.json",
@@ -177,7 +178,22 @@
         "README.md",
         "skills/uninet/SKILL.md"
       ],
-      "release": {"status": "not_published", "version": "0.4.0", "tag": "v0.4.0", "implementationCommit": null, "url": null, "ciRun": null}
+      "release": {
+        "status": "published",
+        "version": "0.4.0",
+        "tag": "v0.4.0",
+        "implementationCommit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21",
+        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.0",
+        "publishedAt": "2026-10-20T00:21:51Z",
+        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39347170086",
+        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39347170322",
+        "ciConclusion": "success",
+        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-ci-runs.json",
+        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-release.json",
+        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-remote-tag.txt",
+        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-remote-package.json",
+        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-commit-scope.json"
+      }
     }
   ],
   "finalValidation": {

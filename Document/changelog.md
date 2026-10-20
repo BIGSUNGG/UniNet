@@ -3,6 +3,12 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-10-20]
+
+### Changed (SEC-001 개별 배포 확인)
+
+- **v0.4.0 게시 완료** — 구현 `ca13ee7`, [GitHub Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.0), main/tag CI success·원격 태그와 패키지 0.4.0 일치 확인. 지정 모델 소스/추가 문서 리뷰 CLEAN, 회귀 10/10·EditMode 138/138·PlayMode 27/27·Arena 실제 RUDP 마커 진단·정적 검증에 더해 커밋된 로컬 Git URL의 신규 Unity 설치/샘플 컴파일 PASS. SEC-001 CLOSED로 전환하고 증거대장에 커밋·릴리스·CI·설치 원시 로그 연결. 최종 공개 태그 설치와 전용 서버+별도 클라 2개 검증은 아직 미완이다. 기존 Arena/BlackMaterial 사용자 자산은 커밋에서 제외하고 바이트 해시 보존 확인.
+
 ## [2026-10-19]
 
 ### Added (세션 토큰 암호학적 난수 전환 — SEC-001, 패키지 0.4.0)
