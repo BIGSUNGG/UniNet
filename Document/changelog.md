@@ -5,6 +5,17 @@
 
 ## [2026-10-20]
 
+### Fixed (후발 접속 소유권 기준선 — OWN-001, 패키지 0.4.1)
+
+- **캐치업·가시성 진입 경로의 객체별 소유권 기준선** (OWN-001 ·[[research/commercial-netcode-audit|commercial-netcode-audit]]·[[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]]·[[features/replication-p3-policy|replication-p3-policy]]) — `SendCatchup`은 상태/스폰만 보내 소유권 통보가 없었고, `ReassignOwnership`은 살아 있는 기존 소유자를 KEEP하므로 후발 클라의 소유자 캐시가 0으로 남아 `IsOwner`·소유자 분기가 왜곡됐다. 씬 가시성 재진입 경로에도 통보가 없었다(동적 재진입은 0이 아닐 때만 스폰 뒤 전송)
+- **근본 수정** — 두 진입 경로가 동일한 `SendBaseline`(소유권 통보 → 스폰/전체 상태 순서)을 공유. 초기 `BroadcastSpawn`도 동일 순서로 정렬(상태→통보 2순회를 단일 순회의 통보→스폰으로 — 상태 적용과 owner 수신 사이 프레임이 끼면 초기 스폰 Notify의 owner 관측이 틀어지는 형제 경로). 기존 OwnerUpdate 와이어(2번)·`NetworkClient.ApplyOwner` 캐시 재사용으로 **와이어/생성기 무변경**. 소유자 0도 명시적 기준선으로 스테일 메타데이터를 덮는다. 관련성 필터는 그대로 — 비관련 객체는 기준선에서 제외되고 전 연결 브로드캐스트 없음. 수신 순서 검증: OwnerUpdate 수신기는 디스패치 스레드에서 즉시 캐시 갱신, 스폰/리플리케이션 적용은 메인 큐이므로 상태 적용·RepNotify 시점에 소유자가 이미 정확
+- **테스트** — `OwnerBaselineTests` 8종 신규(초기 스폰 순서·씬/동적 후발 KEEP·가시성 재진입 씬+동적·소유자 0 스테일 덮기·다중 서브 객체별 기준선·실제 생성 수신기 재생으로 캐시/IsOwner/RepNotify 순서). `RecordingChannel`에 교차 메시지 순서 로그 추가. Arena 진단 `Diag/OWN-001 후발 소유권 기준선`(실서버/클라 RUDP·사이드 포트·단일 프로세스 마커 기반 — 유예 KEEP 경로 재현, 다중 프로세스는 별도 단계. 재진입 관측은 타임드 틱 + 진단용 스테일 캐시 주입 → 실제 와이어 복원). 수정 전 실패 확인: 부모 사전 재현(`.pi-subagents/artifacts/commercial-netcode/own001-pre-fix-probe.json` — 후발 `Owners.Count=0`)
+- **패키지 0.4.1** — wire 무변경으로 생성기 재빌드 불필요. 기본 ProtocolVersion 핸드셰이크는 패키지 버전 비교이므로 양단 함께 업데이트(0.4.0↔0.4.1 불일치 거부). 감사 OWN-001은 부모 실기·CLEAN·배포 전까지 OPEN 유지
+
+### Changed (Windows 전용 서버 빌드 모듈 설치)
+
+- 사용자 승인 후 공식 Unity Hub CLI로 현재 Unity 6000.0.83f1의 `windows-server` 모듈 설치. Hub 선택 상태·서버 variation 12개·Win64 Mono 실행 파일/DLL 실체와 해시 확인, 지정 GLM-5.3-Flash 환경 리뷰 CLEAN. 에디터 종료·씬 저장 없이 기존 Arena/BlackMaterial 자산 해시 보존. 설치 원시 로그/전후 상태/리뷰는 증거대장의 `environmentChanges` 참조. 모듈 설치는 전용 서버 빌드·다중 프로세스 통신 검증 완료를 뜻하지 않는다.
+
 ### Changed (SEC-001 개별 배포 확인)
 
 - **v0.4.0 게시 완료** — 구현 `ca13ee7`, [GitHub Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.0), main/tag CI success·원격 태그와 패키지 0.4.0 일치 확인. 지정 모델 소스/추가 문서 리뷰 CLEAN, 회귀 10/10·EditMode 138/138·PlayMode 27/27·Arena 실제 RUDP 마커 진단·정적 검증에 더해 커밋된 로컬 Git URL의 신규 Unity 설치/샘플 컴파일 PASS. SEC-001 CLOSED로 전환하고 증거대장에 커밋·릴리스·CI·설치 원시 로그 연결. 최종 공개 태그 설치와 전용 서버+별도 클라 2개 검증은 아직 미완이다. 기존 Arena/BlackMaterial 사용자 자산은 커밋에서 제외하고 바이트 해시 보존 확인.

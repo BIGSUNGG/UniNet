@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨 (P1 전체 + P2 전체 + 다중 컴포넌트 + spawnable 프리팹 스폰 — [[0008-구현-아키텍처]]·[[0009-동적-스폰-조건부-리플리케이션]]·[[0010-2층-식별자-다중-컴포넌트]]·[[0024-Fusion식-spawnable-프리팹-스폰-시스템]] 참조)
 - **최초 작성**: 2026-09-14
-- **마지막 갱신**: 2026-10-06
+- **마지막 갱신**: 2026-10-20
 
 ## 개요
 
@@ -110,7 +110,7 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 
 - **클라 생성 = 동일 프리팹 인스턴스화** (ADR-0024): 스폰 메시지의 프리팹 ID를 베이크 테이블(`Assets/Resources/UniNet/UniNetPrefabTable.asset` — 포스트프로세서가 마킹 프리팹에서 자동 생성)로 해석해 클라가 자기 프리팹 사본을 Instantiate한다. **양단 프리팹 에셋 존재 필수**(Fusion과 동일 전제). 클라 프리팹의 컴포넌트 구성이 서버와 다르면 자동 복원 대신 **거부**(슬롯 불일치 에러). 한 타입에 프리팹 N개 허용(구 typeKey 1:1 카탈로그·RegisterPrefab·자동 복원 폐기)
 - **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화
-- **후발 접속 캐치업** — 연결 확정 시 기존 동적 오브젝트(스폰+전체 상태)·씬 오브젝트(전체 상태) 일괄 합류
+- **후발 접속 캐치업** — 연결 확정 시 기존 동적 오브젝트(스폰+전체 상태)·씬 오브젝트(전체 상태) 일괄 합류. **객체별 소유권 기준선이 상태/스폰보다 먼저** 도착한다(기존 OwnerUpdate 와이어 재사용, 소유자 0도 명시적 기준선 — OWN-001): 후발 클라의 `IsOwner`·소유자 캐시가 캐치업 시점부터 정확하다. 초기 동적 스폰 브로드캐스트도 동일 순서(소유권 → 스폰 상태)로 전송한다
 - **호스트** — 서버 인스턴스를 클라 등록으로 재사용(이중 생성 없음). 일반 `Destroy`로 사라진 등록 오브젝트도 드라이버가 감지해 파괴 전파(고스트 방지)
 
 ## 조건부 리플리케이션 (ReplicateCondition)
@@ -181,6 +181,9 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 
 ## 테스트 / 검증
 
+- **2026-10-20 OWN-001 검증** — `OwnerBaselineTests` 8/8(후발·씬/동적 재진입·초기 스폰의 owner-before-state·0 기준선·다중 서브·실제 생성 수신기/Notify), EditMode 전수 146/146·PlayMode 전수 27/27·Arena 실제 RUDP 진단 PASS. Arena는 유예 소유자 KEEP 후 fresh 합류와 스테일 캐시 fault injection 후 재진입 와이어 복원을 확인한 단일 프로세스 마커 진단이며, 최종 3프로세스 검증은 아니다. 원시 증거·배포 상태는 `Document/research/commercial-netcode-evidence.json` 참조.
+- 아래 항목은 각 기능 도입 당시 세부 검증 기록이다.
+
 - EditMode 유닛 20종: `Sandbox/Assets/Tests/EditMode/` — FNV 안정성·옵션 매핑·소유권 정책·델타/RepNotify 이전값 + MessageSupportTests(다형성 보존·메시지 필드 델타/이전 참조) + SpawnConditionTests 7종(그룹별 마스크·수신자 적용·InitialOnly·동적 netId·스폰 브로드캐스트·파괴·후발 캐치업)
 - PlayMode 호스트 왕복 3종: `Sandbox/Assets/Tests/PlayMode/HostRoundtripTests.cs` — 루프백 RUDP 전 경로 + 동적 스폰/파괴·조건부 + 다중 컴포넌트 (`[UNINET-VERIFY]` 마커 3종)
 - PlayMode 수명주기 3종: `Sandbox/Assets/Tests/PlayMode/LifecycleStopTests.cs` — 리슨→Stop→동일 포트 재리슨·클라 정지/재접속·호스트 재시작 (Stop API 회귀 방지)
@@ -189,6 +192,7 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 
 ## 변경 이력
 
+- 2026-10-20 — OWN-001: 후발 캐치업·씬/동적 가시성 재진입·초기 동적 스폰에서 객체 소유권(0 포함)을 상태/스폰보다 먼저 전달. 기존 와이어 2와 동기 캐시 재사용, 조건부 필드 reseed·이동 예측 재설정은 별도 문제로 유지. 회귀 8종·전수 146/27·Arena RUDP 진단 검증.
 - 2026-09-14 — 최초 작성 (구현 완료와 함께)
 - 2026-09-15 — [Message] 타입 매개변수·필드 지원 추가 (다형성 공식 계약 — MessageSupportTests·호스트 왕복 검증)
 - 2026-09-16 — P2 완결 — 동적 스폰/파괴(Spawn/NetworkDestroy)·조건부(ReplicateCondition 3종)·후발 접속 캐치업 추가 (ADR-0009)

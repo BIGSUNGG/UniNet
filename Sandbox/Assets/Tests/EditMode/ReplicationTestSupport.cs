@@ -23,6 +23,7 @@ namespace UniNet.Tests
     internal sealed class RecordingChannel : IUniNetSystemChannel
     {
         public long UniNetConnId { get; set; }
+        internal readonly List<string> Order = new();   // cross-message send order — OWN-001 baseline assertions (owner before state/spawn)
         internal readonly List<(ulong netId, byte subId, int methodId, byte[] payload)> Replicates = new();
         internal readonly List<(RpcDeliveryMode mode, List<(ulong netId, byte subId, int methodId, byte[] payload)> entries)> Batches = new();
         internal readonly List<ulong> Spawns = new();
@@ -34,6 +35,7 @@ namespace UniNet.Tests
 
         public void Clear()
         {
+            Order.Clear();
             Replicates.Clear();
             Batches.Clear();
             Spawns.Clear();
@@ -45,11 +47,18 @@ namespace UniNet.Tests
         }
 
         public void SendWelcome(long connId, string serverVersion, string sessionToken) { }
-        public void SendOwnerUpdate(ulong netId, long ownerConnId) => Owners.Add((netId, ownerConnId));
+        public void SendOwnerUpdate(ulong netId, long ownerConnId)
+        {
+            Owners.Add((netId, ownerConnId));
+            Order.Add($"owner:{netId}:{ownerConnId}");
+        }
         public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload)
         {
             if (payload != null && payload.Length > 0)
+            {
                 Replicates.Add((netId, subId, methodId, payload));
+                Order.Add($"replicate:{netId}:{subId}");
+            }
         }
 
         public void SendReplicateBatch(byte[] blob, RpcDeliveryMode mode)
@@ -72,7 +81,11 @@ namespace UniNet.Tests
         }
 
         public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw,
-            ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states) => Spawns.Add(netId);
+            ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)
+        {
+            Spawns.Add(netId);
+            Order.Add($"spawn:{netId}");
+        }
         public void SendDestroy(ulong netId) => Destroys.Add(netId);
         public void SendTimeSync(double serverTime) => TimeSyncs.Add(serverTime);
         public System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNet.Core.UniNetDisconnectReason reason)

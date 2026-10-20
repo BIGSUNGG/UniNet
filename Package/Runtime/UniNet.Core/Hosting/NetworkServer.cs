@@ -299,7 +299,7 @@ namespace UniNet.Core.Hosting
             return true;
         }
 
-        /// <summary>Propagates a dynamic spawn to all connections — the spawn message (transform, sub types, full state) plus the ownership notice (main thread).</summary>
+        /// <summary>Propagates a dynamic spawn to all connections — the ownership notice (owner 0 included) BEFORE the spawn message (transform, sub types, full state), the same baseline order as catch-up/re-entry (OWN-001).</summary>
         public void BroadcastSpawn(ulong netId)
         {
             var entry = GetEntry(netId);
@@ -312,12 +312,9 @@ namespace UniNet.Core.Hosting
                 if (!IsRelevant(entry, conn, netId)) continue;   // irrelevant connection — skip the spawn (sent when it becomes relevant)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
+                conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);   // owner baseline before the state — a frame between state and notice would twist the initial spawn's Notify owner view (OWN-001)
                 SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, conn.ConnId == entry.OwnerConnId);
             }
-            if (entry.OwnerConnId != 0)
-                foreach (var conn in SnapshotConnections())
-                    if (!conn.Disconnected && IsRelevant(entry, conn, netId))
-                        conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
         }
 
         /// <summary>Returns the representative instance of a registered object by netId (object-level lookup, e.g. for ghost sweeps).</summary>
@@ -854,29 +851,39 @@ namespace UniNet.Core.Hosting
         /// <summary>Late-join catch-up — dynamic objects arrive as spawn messages; scene objects as per-sub full-state replication.</summary>
         private void SendCatchup(ServerConnection conn)
         {
-            bool isOwner;
             foreach (var (netId, entry) in SnapshotObjects())
             {
                 if (!IsRelevant(entry, conn, netId)) continue;   // irrelevant object — excluded from catch-up (sent on relevance transition)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
-                isOwner = entry.OwnerConnId == conn.ConnId;
-                if (entry.IsDynamic)
-                {
-                    GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
-                    SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, isOwner);
-                }
-                else
-                {
-                    for (byte subId = 0; subId < entry.Subs.Length; subId++)
-                    {
-                        var handler = entry.Subs[subId].Replication;
-                        if (handler == null || !handler.HasFields) continue;
-                        byte[] state = TryWriteFull(handler, entry.Subs[subId].Instance, isOwner);
-                        if (state != null && state.Length > 0)   // null when every field is filtered out by conditions — skip catch-up (also null on a serializer fault — that sub-object is skipped)
-                            conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
-                    }
-                }
+                SendBaseline(conn, netId, entry);
+            }
+        }
+
+        /// <summary>
+        /// Object entry baseline for a connection (late-join catch-up and relevancy re-entry share this exact sequence).
+        /// The ownership notice goes FIRST — including owner 0, which is an explicit baseline that overwrites stale client
+        /// metadata — so the client's owner cache is correct before any full state applies and Notify callbacks observe
+        /// the real owner (OWN-001). Reusing the existing OwnerUpdate wire: the receiver updates the cache synchronously
+        /// while replication/spawn payloads apply on the main queue, so a pre-state notice is already visible to them.
+        /// </summary>
+        private void SendBaseline(ServerConnection conn, ulong netId, ServerObjectEntry entry)
+        {
+            conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
+            bool isOwner = entry.OwnerConnId == conn.ConnId;
+            if (entry.IsDynamic)
+            {
+                GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
+                SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, isOwner);
+                return;
+            }
+            for (byte subId = 0; subId < entry.Subs.Length; subId++)
+            {
+                var handler = entry.Subs[subId].Replication;
+                if (handler == null || !handler.HasFields) continue;
+                byte[] state = TryWriteFull(handler, entry.Subs[subId].Instance, isOwner);
+                if (state != null && state.Length > 0)   // null when every field is filtered out by conditions — skip catch-up (also null on a serializer fault — that sub-object is skipped)
+                    conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
             }
         }
 
@@ -1273,27 +1280,9 @@ namespace UniNet.Core.Hosting
             return anyRelevant;
         }
 
-        /// <summary>Sends a relevancy transition — dynamic objects arrive as spawns (the client lacks them); scene objects as full-state replication (same path as catch-up, outside the budget).</summary>
+        /// <summary>Sends a relevancy transition — the same entry baseline as catch-up (ownership notice first, then spawn/full state), outside the budget.</summary>
         private void SendVisibilityState(ServerConnection conn, ulong netId, ServerObjectEntry entry)
-        {
-            bool isOwner = conn.ConnId == entry.OwnerConnId;
-            if (entry.IsDynamic)
-            {
-                GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
-                SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, isOwner);
-                if (entry.OwnerConnId != 0)
-                    conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
-                return;
-            }
-            for (byte subId = 0; subId < entry.Subs.Length; subId++)
-            {
-                var handler = entry.Subs[subId].Replication;
-                if (handler == null || !handler.HasFields) continue;
-                byte[] state = TryWriteFull(handler, entry.Subs[subId].Instance, isOwner);
-                if (state != null && state.Length > 0)
-                    conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
-            }
-        }
+            => SendBaseline(conn, netId, entry);
 
         private HashSet<ulong> GetVisibleSet(long connId)
         {

@@ -1,3 +1,14 @@
+## 0.4.1
+
+**Late-joiners learn existing ownership (OWN-001 — no wire change).** Late-join catch-up and scene-object relevancy re-entry omitted ownership notices (dynamic re-entry already sent them, but after spawn and only for nonzero owners) — a late-joining client's owner cache stayed 0 (0 = unassigned), so `IsOwner` and owner-only behavior were wrong until some later ownership change happened to broadcast.
+
+### Fixed
+
+- **Ownership baseline on every entry path.** Late-join catch-up and relevancy re-entry (scene and dynamic) now send `OwnerUpdate(netId, owner)` for each object **before** its full state/spawn baseline, reusing the existing wire 2. Owner 0 is an explicit baseline too — it overwrites stale client metadata. Relevancy filtering is unchanged: irrelevant objects are excluded from the baseline (no broadcast to all connections).
+- **Safe receiver ordering.** The generated `OwnerUpdate` receiver updates the `NetworkClient` owner cache synchronously on the dispatch thread, while replication/spawn payloads apply on the main queue — a notice sent before the state is already visible when full state applies and `Notify` callbacks check `IsOwner`.
+- **Dynamic visibility re-entry** previously sent the ownership notice only for a non-zero owner and after the spawn; it now rides the same baseline (owner first, spawn second), matching catch-up exactly. The initial dynamic spawn broadcast (`BroadcastSpawn`) follows the same order too (owner notice, 0 included, immediately before the spawn state).
+- Note: with the **default** `ProtocolVersion` the package-version handshake compares versions (ADR-0028) — update both ends together (0.4.0 ↔ 0.4.1 mismatch rejects the client). Custom `ProtocolVersion` games are unaffected. No generator change is required for this release.
+
 ## 0.4.0
 
 **Session tokens are cryptographically random (breaking — wire 1/10 change).** Predictable seed+1 tokens let a malicious client guess a neighbor's token and steal their grace-session ownership (SEC-001).

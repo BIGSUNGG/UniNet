@@ -21,10 +21,10 @@ UniNet is a **server-authoritative** networking framework for Unity, targeting t
 Add one line to your project's `Packages/manifest.json`:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.0"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.1"
 ```
 
-- `#v0.4.0` pins a release tag (omit to track the default branch).
+- `#v0.4.1` pins a release tag (omit to track the default branch).
 - All dependencies are bundled — no NuGet feed, no extra config. Private repos work if your editor account can `git clone`.
 
 ### Mental model
@@ -125,7 +125,7 @@ Every concrete type sent must carry `[Message]` (non-ID message kinds are unsupp
 
 - Server-authoritative only: clients receive; the server diffs per tick and sends only changed fields (or changed collection elements).
 - **RepNotify** — `Notify = nameof(Callback)` fires on clients whenever the field changes over the network, receiving the **previous value**. On the host, the callback fires without re-applying the value (the host keeps the authoritative original).
-- **Late-join catch-up** — a connecting client automatically receives the full state of every scene and dynamic object.
+- **Late-join catch-up** — a connecting client automatically receives the full state of every scene and dynamic object, each preceded by its ownership baseline (existing `OwnerUpdate` wire, owner 0 included — overwrites stale client metadata) so `IsOwner` and `Notify` see the real owner from the moment state applies (OWN-001); initial dynamic spawn broadcasts (`BroadcastSpawn`) send the owner notice right before the spawn state, same order. The same baseline rides relevancy re-entry (scene and dynamic); irrelevant objects are excluded from it (no all-connection broadcast).
 - The server keeps the authoritative original on the host process; client-side re-application rules never fight the server copy.
 
 ### Dynamic objects & ownership

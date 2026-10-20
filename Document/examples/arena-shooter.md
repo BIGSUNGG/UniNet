@@ -111,6 +111,8 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 
 Arena 씬 Play Mode에서 `ArenaBootstrap` 컴포넌트의 컨텍스트 메뉴 **`Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)`** — 진입 시 실행 중 데모 런타임을 명시적으로 정상 정지한 뒤(조용한 덮어쓰기 금지·재진입 가드 포함) 사이드 포트(ArenaConfig.Port+7)에 자체 서버/클라 런타임을 띄워 실제 RUDP API로 ① 피해자 접속·**비동적 마커** 소유(ClientStop의 동적 스폰 소거가 아바타를 파괴하는 기존 LIF/REC 갭 회피) ② 전제 추측·근접 변조 토큰의 재개 거부·피해자 소유권 유지 ③ 진짜 토큰 `ReconnectAsync` 재부착·플레이어 매핑 복원을 Console `[UNINET-VERIFY] SEC-001` 로그로 확인한다(토큰 원문은 미출력). **마커 기반 소유권·재개 검증이며 실제 아바타 복구 검증이 아니다** — 유예 세션 계약은 ADR-0034/0041, 아바타 전체 복구는 REC-001 과제로 남는다.
 
+동일 진입 패턴의 **`Diag/OWN-001 후발 소유권 기준선 (기존 세션 정지 후)`** — 사이드 포트(ArenaConfig.Port+8·SEC-001 진단과 상호 재진입 가드)에서 실제 RUDP로 ① 첫 클라 접속·비동적 마커 소유 시 실제 클라 캐시(`NetworkClient.GetOwner`)에 소유권 기준선 도착 ② 첫 클라 정상 해제 → 유예 소유권 유지 ③ 후발 fresh 접속의 캐치업이 기존(유예) 소유자 기준선을 실제 수신(수정 전에는 0으로 남음) ④ 타임드 틱(`TickReplication(snapshot, Time.unscaledTimeAsDouble)` — P3 정책 경로)으로 관련성 비관련→재진입 사이클 실행: 비관련 틱 뒤 **진단용 fault injection**으로 로컬 캐시에 owner 0을 주입하고(정상 게임 사용 패턴 아님), 재진입 틱이 실제 RUDP wire-2로 기존 owner를 복원해야 통과(전송 없으면 0 잔존 = 실패)함을 Console `[UNINET-VERIFY] OWN-001` 로그로 확인한다. **단일 프로세스 싱글턴 제약으로 첫 클라 해제→유예→후발 합류 경로 재현이며 살아 있는 기존 owner 검증은 EditMode 회귀·최종 다중 프로세스는 별도 단계다**(토큰 미출력·기존 데모 명시적 정상 정지·finally 정리 동일).
+
 ### PlayMode 테스트 (Test Runner)
 
 `UniNet.Tests.ArenaRoundtripTests.호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우` — 실제 루프백 RUDP로 이동 ServerRpc → 서버 시뮬 → 발사·히트스캔 명중(래그컴펜세이션) → 피해·RepNotify → 탄약(OwnerOnly) → 사망·킬 크레딧 → ClientRpc 킬피드 → 리스폰을 단언한다. 대기는 프레임 수 기반 — 에디터 스로틀링으로 `Time.deltaTime`이 실제 시간과 왜곡되는 환경에서도 강건하다.

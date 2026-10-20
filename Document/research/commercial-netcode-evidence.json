@@ -88,6 +88,23 @@
       "exemptionReason": "Runtime code, public API, diagnostics and runtime log contracts were not changed. Only the test now captures and asserts its expected fault and restores the global logger. No functional release or new Arena example is claimed."
     }
   ],
+  "environmentChanges": [
+    {
+      "id": "ENV-001",
+      "kind": "local-editor-module-installation",
+      "status": "verified",
+      "userApproved": true,
+      "unityVersion": "6000.0.83f1",
+      "module": "windows-server",
+      "officialInstaller": "Unity Hub headless install-modules",
+      "exitCode": 0,
+      "preflight": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-preflight.json",
+      "postflight": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-postflight.json",
+      "installLog": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-install.log",
+      "review": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-review.json",
+      "note": "Local Windows dedicated-server module installed without editor shutdown or scene save; actual build/run and final multi-process gates remain pending. No library functionality or package release is attributed to this installation."
+    }
+  ],
   "functionalChanges": [
     {
       "id": "SEC-001",
@@ -194,6 +211,70 @@
         "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-remote-package.json",
         "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-commit-scope.json"
       }
+    },
+    {
+      "id": "OWN-001",
+      "status": "validated_pending_release",
+      "kind": "ownership-baseline-fix",
+      "packageVersion": "0.4.1",
+      "generatorVersion": "0.2.8",
+      "wireFormatChanged": false,
+      "featureDocuments": ["Document/features/monobehaviour-rpc-replicate.md", "Document/features/replication-p3-policy.md"],
+      "worker": {
+        "model": "zai/glm-5.3",
+        "resolvedModelWithThinking": "zai/glm-5.3:high",
+        "implementationRunId": "ec75860a-1ded-4a1c-9382-81883b9d6311",
+        "metadata": ".pi-subagents/artifacts/ec75860a-1ded-4a1c-9382-81883b9d6311_worker_meta.json",
+        "transcript": ".pi-subagents/artifacts/ec75860a-1ded-4a1c-9382-81883b9d6311_worker_transcript.jsonl",
+        "fixPassMetadata": [
+          ".pi-subagents/artifacts/4d4e1ca2_worker_meta.json",
+          ".pi-subagents/artifacts/bfcbc977_worker_meta.json",
+          ".pi-subagents/artifacts/5edd7b43_worker_meta.json",
+          ".pi-subagents/artifacts/6b568963_worker_meta.json",
+          ".pi-subagents/artifacts/52121ff1_worker_meta.json"
+        ],
+        "finalOutput": ".pi-subagents/artifacts/52121ff1_worker_output.md"
+      },
+      "preFixProbe": ".pi-subagents/artifacts/commercial-netcode/own001-pre-fix-probe.json",
+      "regressionFixture": "UniNet.Tests.OwnerBaselineTests",
+      "regressionCoverage": ["live-owner scene and dynamic late join", "scene and dynamic relevance re-entry", "explicit zero owner replaces stale metadata", "object-level baseline precedes multi-sub state", "actual generated owner/replication receivers and Notify", "initial BroadcastSpawn owner-before-spawn"],
+      "validation": [
+        {"kind": "targeted EditMode", "jobId": "12835612689e438b96f73fe1d9f5b824", "total": 8, "passed": 8, "failed": 0, "skipped": 0},
+        {"kind": "full EditMode", "jobId": "cfa15005754a46ae8d356c6b57cd9558", "total": 146, "passed": 146, "failed": 0, "skipped": 0},
+        {"kind": "full PlayMode", "jobId": "13d6c4af7c1c47ea8b2ed08db11ef4f3", "total": 27, "passed": 27, "failed": 0, "skipped": 0},
+        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.4.1", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation.log"}
+      ],
+      "validationHistory": [
+        {"jobId": "d4aa4c63c6a542529d8521f1a1c84086", "total": 0, "acceptedAsPass": false, "reason": "New script was not imported by scripts-only refresh; force-all asset refresh required."},
+        {"jobId": "7ff6b5f2a16f44dfb5ad6235d6cef3b8", "total": 7, "failed": 2, "reason": "Test helper looked up system wire 2 in general dispatch dictionary; fixed by invoking actual generated private handler."},
+        {"jobId": "daab037afc02444bbdbceee3439ed1ac", "total": 146, "failed": 1, "reason": "Legacy ownership test did not count new catch-up notices; replaced with exact per-receiver, per-object and owner-value assertions, not a skip."}
+      ],
+      "arenaDiagnostic": {
+        "entry": "ArenaBootstrap context menu: Diag/OWN-001 후발 소유권 기준선 (기존 세션 정지 후)",
+        "status": "passed",
+        "successLog": "[UNINET-VERIFY] OWN-001 DIAG PASS",
+        "scope": "Actual RUDP, one real client at a time: first client disconnects, grace keeps owner, fresh late client receives old owner. Timed relevance exit/re-entry restores a deliberately stale local zero-owner cache through the actual wire. Non-dynamic marker; not simultaneous two-client or avatar recovery or final three-process validation.",
+        "assertions": ["first client baseline received", "existing grace owner preserved on late join", "stale-cache fault injection restored by actual re-entry wire", "diagnostic runtime cleaned up"],
+        "sceneSaved": false
+      },
+      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/own001-validation-events.jsonl",
+      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/own001-validation-input-blobs.json",
+      "failedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/own001-failed-input-blobs.json",
+      "review": {
+        "model": "zai/glm-5.3-flash",
+        "round": 3,
+        "verdict": "CLEAN",
+        "metadata": ".pi-subagents/artifacts/d4872728_reviewer_meta.json",
+        "transcript": ".pi-subagents/artifacts/d4872728_reviewer_transcript.jsonl",
+        "output": ".pi-subagents/artifacts/d4872728_reviewer_output.md",
+        "history": [
+          {"round": 1, "verdict": "ISSUES", "metadata": ".pi-subagents/artifacts/1066ab2f-47bd-42b0-b050-b7c4839a191e_reviewer_meta.json"},
+          {"round": 2, "verdict": "CLEAN", "metadata": ".pi-subagents/artifacts/40d65728_reviewer_meta.json", "scope": "Before the final legacy notification-count assertion adjustment"}
+        ],
+        "finalTestAndDocumentationCheck": "passed"
+      },
+      "synchronizedDocs": ["Document/features/monobehaviour-rpc-replicate.md", "Document/features/replication-p3-policy.md", "Document/changelog.md", "Document/00-INDEX.md", "Document/examples/arena-shooter.md", "Document/deployment.md", "Document/research/commercial-netcode-audit.md", "Package/CHANGELOG.md", "README.md", "skills/uninet/SKILL.md"],
+      "release": {"status": "not_published", "version": "0.4.1", "tag": "v0.4.1", "implementationCommit": null, "url": null, "ciRun": null}
     }
   ],
   "finalValidation": {

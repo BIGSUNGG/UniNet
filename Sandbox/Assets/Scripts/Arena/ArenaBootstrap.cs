@@ -279,6 +279,7 @@ namespace Arena
             if (!Application.isPlaying)   // ContextMenu also shows in Edit Mode — the documented Play-Mode precondition, enforced: nothing is started or stopped otherwise
             { Debug.LogError($"{tag} SKIP — Play Mode 전용 (씬 진입 후 플레이 상태에서 실행)"); return; }
             if (_sec001Running) { Debug.LogError($"{tag} SKIP — 진단 이미 실행 중 (재진입 차단)"); return; }
+            if (_own001Running) { Debug.LogError($"{tag} SKIP — OWN-001 진단 실행 중 (상호 충돌 방지)"); return; }
             _sec001Running = true;
             try
             {
@@ -369,7 +370,7 @@ namespace Arena
             }
         }
 
-        private static async System.Threading.Tasks.Task<bool> WaitAsync(System.Func<bool> until, float seconds, string what)
+        private static async System.Threading.Tasks.Task<bool> WaitAsync(System.Func<bool> until, float seconds, string what, string tag = "SEC-001")
         {
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(seconds);
             while (DateTime.UtcNow < deadline)
@@ -377,20 +378,137 @@ namespace Arena
                 if (until()) return true;
                 await System.Threading.Tasks.Task.Delay(50);
             }
-            Debug.LogError($"[UNINET-VERIFY] SEC-001 대기 실패 — {what}");
+            Debug.LogError($"[UNINET-VERIFY] {tag} 대기 실패 — {what}");
             return false;
         }
 
-        private static System.Threading.Tasks.Task<bool> WaitGoneAsync(long connId, float seconds, string what)
+        private static System.Threading.Tasks.Task<bool> WaitGoneAsync(long connId, float seconds, string what, string tag = "SEC-001")
         {
             var server = UniNetEnvironment.Server;
-            if (server == null) return WaitAsync(() => false, seconds, what);
+            if (server == null) return WaitAsync(() => false, seconds, what, tag);
             return WaitAsync(() =>
             {
                 foreach (var conn in server.SnapshotConnections())
                     if (conn.ConnId == connId) return false;
                 return true;
-            }, seconds, what);
+            }, seconds, what, tag);
+        }
+#endif
+
+#if UNITY_EDITOR
+        // ── OWN-001 ownership baseline — in-editor diagnostic, real server/client/RUDP APIs on a side port ────
+        // Proves over the real wire: a late-joining client receives the EXISTING owner of a scene object as its
+        // baseline (owner notice before state — grace-held in this single-process reproduction), and the scene
+        // relevancy re-entry path runs the same shared baseline over the real stack. Scope honesty: one real client
+        // per process (singleton) — the KEEP path is reproduced as first-client graceful drop → grace-held ownership
+        // → second fresh join; the live-owner variant is covered by the EditMode regressions and the final
+        // multi-process check is a separate step (this is NOT the two-client avatar verification).
+        private const int OwnDiagPort = ArenaConfig.Port + 8;
+        private static bool _own001Running;   // re-entry guard — ContextMenu double-click protection
+
+        /// <summary>Plain marker with a switchable relevancy hook — a real scene-registry object, no scene/prefab asset touched.</summary>
+        private sealed class Own001Marker : IUniNetReplicationPolicy
+        {
+            internal bool Blocked;
+            public float NetworkPriority => 1f;
+            public float NetworkUpdateFrequencyHz => 0f;
+            public UniNet.Core.Delivery NetworkReplicationDelivery => UniNet.Core.Delivery.ReliableOrdered;
+            public float NetworkCullDistance => 0f;
+            public bool IsNetworkDormant => false;
+            public bool IsNetworkRelevant(long viewerConnId) => !Blocked;
+        }
+
+        [ContextMenu("Diag/OWN-001 후발 소유권 기준선 (기존 세션 정지 후)")]
+        private async void RunOwn001BaselineDiagnostic()
+        {
+            const string tag = "[UNINET-VERIFY] OWN-001";
+            if (!Application.isPlaying)   // ContextMenu also shows in Edit Mode — the documented Play-Mode precondition, enforced: nothing is started or stopped otherwise
+            { Debug.LogError($"{tag} SKIP — Play Mode 전용 (씬 진입 후 플레이 상태에서 실행)"); return; }
+            if (_own001Running) { Debug.LogError($"{tag} SKIP — 진단 이미 실행 중 (재진입 차단)"); return; }
+            if (_sec001Running) { Debug.LogError($"{tag} SKIP — SEC-001 진단 실행 중 (상호 충돌 방지)"); return; }
+            _own001Running = true;
+            try
+            {
+                // 0) stop any ACTIVE demo session gracefully (the same stop path as OnApplicationQuit, awaited) so the
+                // diagnostic never orphans the demo listener — announced, never a silent overwrite
+                if (UniNetEnvironment.Server != null || UniNetEnvironment.Client != null)
+                {
+                    Debug.Log($"{tag} 기존 데모 런타임 정상 정지 (role={_resolvedRole}) 후 진단 시작");
+                    if (_started)
+                    {
+                        switch (_resolvedRole)
+                        {
+                            case ArenaRole.Server: await UniNetManager.ServerStopAsync(); break;
+                            case ArenaRole.Host: await UniNetManager.HostStopAsync(); break;
+                            default: UniNetManager.ClientStop(); break;
+                        }
+                    }
+                    else
+                    {
+                        UniNetManager.ClientStop();
+                        await UniNetManager.ServerStopAsync();
+                    }
+                }
+                var options = new UniNetEndpointOptions { ProtocolVersion = ArenaConfig.ProtocolVersion };
+
+                // 1) dedicated diagnostic runtime on a side port (grace 10 s) + a scene-style marker with a real relevancy hook
+                await UniNetManager.ServerAsync(OwnDiagPort, options);
+                var server = UniNetEnvironment.Server;
+                server.SessionGraceSeconds = 10;
+                var marker = new Own001Marker();
+                ulong netId = Fnv1a.Hash64("arena-own001-baseline-marker");   // deterministic side id — no scene/prefab dependency
+                server.RegisterSceneObject(netId, new object[] { marker });
+
+                // 2) first client joins — round-robin assigns the marker; the real client cache must reflect it (baseline on the real wire)
+                await UniNetManager.ClientAsync("127.0.0.1", OwnDiagPort, options);
+                if (!await WaitAsync(() => UniNetEnvironment.Client != null && UniNetEnvironment.Client.LocalConnId != 0, 5, "첫 클라 Welcome", tag)) return;
+                long victimConn = UniNetEnvironment.Client.LocalConnId;
+                if (server.GetOwner(netId) != victimConn) { Debug.LogError($"{tag} 준비 실패 — 마커 소유자≠첫 클라"); return; }
+                if (!await WaitAsync(() => UniNetEnvironment.Client.GetOwner(netId) == victimConn, 5, "첫 클라 소유권 기준선", tag)) return;
+                Debug.Log($"{tag} 첫 클라 — 실제 RUDP 캐치업에서 소유권 기준선 수신 PASS");
+
+                // 3) first client drops — grace must hold the marker's ownership (no other connection to reassign to)
+                UniNetManager.ClientStop();
+                if (!await WaitGoneAsync(victimConn, 5, "첫 클라 해제 관측", tag)) return;
+                if (server.GetOwner(netId) != victimConn) { Debug.LogError($"{tag} 유예 보존 실패"); return; }
+
+                // 4) second fresh client joins (ClientAsync resets the cache instance — the assertion below sees a fresh state):
+                //    catch-up must deliver the EXISTING (grace-held) owner as the per-object baseline — THE OWN-001 fix on the real wire
+                await UniNetManager.ClientAsync("127.0.0.1", OwnDiagPort, options);
+                if (!await WaitAsync(() => UniNetEnvironment.Client != null && UniNetEnvironment.Client.LocalConnId != 0, 5, "후발 클라 Welcome", tag)) return;
+                long lateConn = UniNetEnvironment.Client.LocalConnId;
+                if (lateConn == victimConn) { Debug.LogError($"{tag} 준비 실패 — 커넥션 아이디 충돌"); return; }
+                if (server.GetOwner(netId) != victimConn) { Debug.LogError($"{tag} FAIL — 기존 소유자 KEEP 위반"); return; }
+                if (!await WaitAsync(() => UniNetEnvironment.Client.GetOwner(netId) == victimConn, 5, "후발 소유권 기준선", tag)) return;
+                Debug.Log($"{tag} 후발 클라 — 실제 RUDP 캐치업에서 기존(유예) 소유자 기준선 수신 PASS");
+
+                // 5) scene relevancy cycle over TIMED ticks — the P3 policy/relevancy path the driver runs (the
+                //    parameterless immediate overload never evaluates it). DIAGNOSTIC FAULT INJECTION — not a normal
+                //    game usage pattern: after the blocked timed tick the LOCAL cache is deliberately corrupted to
+                //    owner 0, so the unblocked timed tick must re-deliver the baseline over the real RUDP wire for the
+                //    grace-held owner to come back (no wire send ⇒ the cache stays 0 ⇒ FAIL — a cache shortcut can
+                //    never pass; the expected owner value itself is never written by the diagnostic).
+                marker.Blocked = true;
+                server.TickReplication(server.SnapshotObjects(), Time.unscaledTimeAsDouble);
+                UniNetEnvironment.Client.ApplyOwner(netId, 0);   // injected stale cache — diagnostic-only disturbance
+                if (UniNetEnvironment.Client.GetOwner(netId) != 0) { Debug.LogError($"{tag} 준비 실패 — 스테일 주입 미반영"); return; }
+                marker.Blocked = false;
+                server.TickReplication(server.SnapshotObjects(), Time.unscaledTimeAsDouble);
+                if (!await WaitAsync(() => UniNetEnvironment.Client.GetOwner(netId) == victimConn, 5, "재진입 소유권 기준선(와이어 복원)", tag)) return;
+                Debug.Log($"[UNINET-VERIFY] OWN-001 DIAG PASS — 후발 소유권 기준선(유예 기존 owner)·씬 재진입 타임드 티에서 스테일 캐시 와이어 복원 (실제 RUDP·진단용 fault injection·단일 프로세스 마커 기반·다중 프로세스는 별도 단계)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                Debug.LogError($"{tag} 예외로 중단");
+            }
+            finally
+            {
+                UniNetManager.ClientStop();
+                UniNetManager.ServerStop();
+                _own001Running = false;
+                Debug.Log($"{tag} 진단 종료 — 런타임 정리 (데모 부트스트랩은 재플레이로 복귀)");
+            }
         }
 #endif
     }

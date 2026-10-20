@@ -34,7 +34,7 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 - `[Replicated]` fields sync server → clients; each server tick diffs the snapshot and sends only the changed fields.
 - `RepNotify` — `Notify = nameof(Callback)` fires on clients with the previous value whenever the field changes over the network.
 - **Conditional replication** — `ReplicateCondition.OwnerOnly` / `SkipOwner` / `InitialOnly` restrict who receives a field (initial full state at spawn for `InitialOnly`, nothing after).
-- Late-join catch-up — connecting clients receive the full state of every scene and dynamic object automatically.
+- Late-join catch-up — connecting clients receive the full state of every relevant scene and dynamic object automatically, each preceded by its ownership baseline (existing `OwnerUpdate` wire, owner 0 included) so `IsOwner` is correct from the moment state applies (OWN-001); initial dynamic spawn broadcasts follow the same order.
 - Host keeps the authoritative original (client-side re-application rules never fight the server copy).
 
 ### Dynamic objects & ownership
@@ -105,10 +105,10 @@ Everything above is implemented and verified (EditMode/PlayMode tests + two-proc
 Add one line to your project's `Packages/manifest.json`:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.0"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.1"
 ```
 
-`#v0.4.0` pins a version tag (omit it to track the default branch). Releases: [Releases](https://github.com/BIGSUNGG/UniNet/releases) · details: [Document/deployment.md](Document/deployment.md)
+`#v0.4.1` pins a version tag (omit it to track the default branch). Releases: [Releases](https://github.com/BIGSUNGG/UniNet/releases) · details: [Document/deployment.md](Document/deployment.md)
 
 ### 2. Declare a networked object
 

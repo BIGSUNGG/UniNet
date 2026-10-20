@@ -98,6 +98,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-20 — **후발 접속 소유권 기준선** (OWN-001 수정 구현·패키지 0.4.1 준비 — 캐치업/가시성 진입의 객체별 owner 기준선을 상태보다 먼저 전송·OwnerUpdate 와이어 재사용·와이어 무변경. 회귀 8/8·EditMode 146/146·PlayMode 27/27·Arena 실제 RUDP 진단 PASS. 최종 리뷰·개별 배포 확인 전 감사 OPEN 유지)
 - 2026-10-20 — **SEC-001 v0.4.0 개별 배포 완료** (구현 `ca13ee7`·소스/문서 CLEAN·신규 로컬 Git 설치 PASS·원격 태그/Release·main/tag CI 성공 확인. 증거대장 연결, SEC-001 CLOSED. 상용 전체 점검은 계속 진행 중)
 - 2026-10-19 — **세션 토큰 암호학적 난수 전환** (SEC-001 — ADR-0041·패키지 0.4.0 파괴적. 토큰 `ulong`→opaque Base64 44자·재개 3조건 소비·추측/오류 미소진·파싱 전 상한·디버거 마스킹. 재개 회귀 10/10·EditMode 138/138·PlayMode 27/27·Arena 진단 PASS·소스/문서 리뷰 CLEAN. 개별 배포 확인 전 OPEN 유지)
 - 2026-10-19 — **상용 넷코드 내부 점검 대장** ([[research/commercial-netcode-audit]] — 런타임 44파일 대응표·기능 문제 27건·증거대장 evidence.json. 진행 중)

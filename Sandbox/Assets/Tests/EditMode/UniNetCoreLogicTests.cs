@@ -61,9 +61,21 @@ namespace UniNet.Tests
             Assert.AreEqual(2, server.GetEntry(200).OwnerConnId, "둘째 오브젝트는 둘째 연결 소유");
             Assert.AreEqual(1, ch1.WelcomeConnId);
             Assert.AreEqual(2, ch2.WelcomeConnId);
-            // KEEP policy — surviving owners are not reassigned. First batch: 2 orphans × 2 connections = 4 notifications;
-            // second batch: both owners alive → 0.
-            Assert.AreEqual(4, ch1.OwnerUpdates.Count + ch2.OwnerUpdates.Count);
+            // KEEP policy — surviving owners are not reassigned. With both connections attached before the pump,
+            // the reassignment batch notifies 2 adoptions × 2 connections = 4, and the OWN-001 catch-up baseline adds
+            // each receiver's per-object owner notice (2 objects × 2 receivers = 4) — 8 total. Per receiver: 4 notices,
+            // and each object (100, 200) exactly twice — its adoption broadcast plus that receiver's own baseline.
+            Assert.AreEqual(8, ch1.OwnerUpdates.Count + ch2.OwnerUpdates.Count);
+            foreach (var updates in new[] { ch1.OwnerUpdates, ch2.OwnerUpdates })
+            {
+                Assert.AreEqual(4, updates.Count, "수신자별 통보 4건 (재배정 2 + 자기 기준선 2)");
+                int for100 = 0, for200 = 0;
+                foreach (var (netId, owner) in updates)
+                    if (netId == 100) { Assert.AreEqual(1L, owner, "netId 100 통보의 소유자 값"); for100++; }
+                    else { Assert.AreEqual(200UL, netId, "통보 netId는 100/200 뿐"); Assert.AreEqual(2L, owner, "netId 200 통보의 소유자 값"); for200++; }
+                Assert.AreEqual(2, for100, "이 수신자의 netId 100 — 재배정 통보 + 자기 기준선 = 2회");
+                Assert.AreEqual(2, for200, "이 수신자의 netId 200 — 재배정 통보 + 자기 기준선 = 2회");
+            }
         }
 
         [Test]
