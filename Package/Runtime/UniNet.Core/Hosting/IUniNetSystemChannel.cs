@@ -49,6 +49,14 @@ public interface IUniNetSystemChannel
     /// <summary>Tells the client to load a scene (ADR-0035, wire 11 — scene transition).</summary>
     void SendLoadScene(string sceneName);
 
+    /// <summary>
+    /// Sends the grace-session resume result (REC-001, wire 14) to THIS connection — every terminal outcome of a
+    /// ResumeRequest reports back: ok=true (Reattached) or the rejection reason, plus the remaining retryable
+    /// window in ms when the reason is SessionNotFound (the detach race may still save the session). Default
+    /// no-op: the generated server hub implements the wire send; test channels inherit the default.
+    /// </summary>
+    void SendResumeResult(bool ok, byte result, double retryableRemainingMs) { }
+
     /// <summary>Sends a generic RPC payload (assembly-agnostic send path).</summary>
     void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode);
 }

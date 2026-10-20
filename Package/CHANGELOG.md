@@ -1,3 +1,23 @@
+## 0.7.0
+
+**Resume result reporting + auto-retry (breaking — REC-001, ADR-0044).** `ReconnectAsync` returning true only ever meant "the connection established" — the server's reattach outcome was discarded, rejections were complete silence, and the fast-reconnect race (reconnecting before the server noticed the old connection died) silently spawned a fresh player every time.
+
+### Changed (breaking)
+
+- **`NetworkServer.ResumeSession` returns `GraceResumeResult` instead of `bool`** — `Reattached`, `SessionNotFound` (detach race — retryable window included), `Expired`, `UnknownToken` (guessed/consumed token, invalid connection). Direct callers: `false` → the exact reason, `true` → `GraceResumeResult.Reattached`. Every failure still consumes nothing (SEC-001 intact).
+
+### Added
+
+- **Wire 14 — resume result to the requesting connection**: `{ok, reason, retryableRemainingMs}`. Consumed and swept-expired tokens are tombstoned (bounded by the grace window) so a double-consume loser learns `UnknownToken` and a swept session reports `Expired` — neither masquerades as a retryable `SessionNotFound`. Generator 0.2.10 (server hub send + client receiver registration).
+- **Client observability**: `NetworkClient.LastResumeResult` + `NetworkClient.ResumeResultReceived` event (dispatch thread — marshal via `QueueOnMain`). Fresh connections without a token receive no wire 14.
+- **Auto-retry**: while a `SessionNotFound` retry window is armed, `NetworkClient.TickResumeRetry` (driver Update cadence) re-sends the resume request every 0.5 s until the window closes or a terminal result arrives — the detach race converges to `Reattached` instead of a silently fresh player.
+- `IUniNetSystemChannel.SendResumeResult` — default no-op (test channels unaffected); the generated server hub implements the wire send.
+
+### Migration
+
+- Update direct `ResumeSession` calls from `bool` to the enum. Game code observing reconnects should subscribe to `ResumeResultReceived` — `ReconnectAsync`'s return value is (and remains) only the connection attempt.
+- No change for standard clients; both ends should update together (default version handshake rejects mixed 0.6.x/0.7.x).
+
 ## 0.6.0
 
 **Connection approval lifecycle: game data is held until an accepted version declaration (CON-001, ADR-0043).** ADR-0028 rejected *mismatched* versions but a connection that never declared wire 7 at all was accepted unconditionally — it received ownership, catch-up, replication, and could invoke game ServerRpcs without ever proving a compatible protocol.

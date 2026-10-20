@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.6.0";   // 0.6.0 — connection approval lifecycle: game data held until an accepted version declaration (CON-001)
+        public const string Version = "0.7.0";   // 0.7.0 — resume result reporting + auto-retry (REC-001, wire 14)
     }
 }

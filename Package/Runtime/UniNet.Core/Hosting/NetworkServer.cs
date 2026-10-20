@@ -68,6 +68,12 @@ namespace UniNet.Core.Hosting
         private readonly Dictionary<string, GraceSession> _graceSessions = new();
         private double _nextGraceSweep;
 
+        // REC-001 — closed-token tombstones (token → (reason, expiry)): consumed and swept-expired tokens report
+        // UnknownToken / Expired exactly instead of masquerading as SessionNotFound (a retryable detach race), so a
+        // double-consume loser stops retrying immediately. Pruned at the original expiry in the grace sweep — bounded
+        // by the grace window, never grows unboundedly. Guarded by _gate.
+        private readonly Dictionary<string, (byte Reason, double ExpiresAt)> _closedResumeTokens = new();
+
         /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 
@@ -744,32 +750,84 @@ namespace UniNet.Core.Hosting
         /// returns false WITHOUT consuming the session, so a probing attacker can never burn a victim's grace window
         /// (ADR-0041). Expired sessions are left for SweepGraceSessions, which also reassigns their orphans.
         /// </summary>
-        public bool ResumeSession(string token, long newConnId)
+        public GraceResumeResult ResumeSession(string token, long newConnId)
         {
-            if (string.IsNullOrEmpty(token)) return false;   // nothing presented — cannot match any issued token
-            GraceSession session;
+            GraceResumeResult result;
+            double retryableMs = 0;
+            GraceSession session = null;
+            if (string.IsNullOrEmpty(token))
+            {
+                result = GraceResumeResult.UnknownToken;   // nothing presented — cannot match any issued token (defensive; the handler never sends an empty token)
+            }
+            else
+            {
+                lock (_gate)
+                {
+                    if (!_graceSessions.TryGetValue(token, out var found))
+                    {
+                        // tombstones only exist for tokens REMOVED from _graceSessions — check them HERE, first:
+                        // consumed (UnknownToken) and swept-expired (Expired) report exactly, never as a retryable NotFound
+                        if (_closedResumeTokens.TryGetValue(token, out var closed))
+                            result = (GraceResumeResult)closed.Reason;   // exact terminal outcome — NOT retryable
+                        else
+                        {
+                            result = GraceResumeResult.SessionNotFound;   // detach race (not saved yet) or a bogus token — indistinguishable server-side
+                            retryableMs = SessionGraceSeconds > 0 ? SessionGraceSeconds * 1000.0 : 0;   // the grace window may still save it — retry until then (REC-001); with grace off nothing can appear
+                        }
+                    }
+                    else if (UniNetTime.LocalClock() > found.ExpiresAt)
+                    {
+                        result = GraceResumeResult.Expired;   // expired — sweep owns removal+reassignment (terminal)
+                    }
+                    else if (!IsLiveConnection(newConnId))
+                    {
+                        result = GraceResumeResult.UnknownToken;   // invalid/dead new connId — session survives for the genuine reconnect (terminal for this attempt)
+                    }
+                    else
+                    {
+                        _graceSessions.Remove(token);   // consumed only on the verified success path
+                        _closedResumeTokens[token] = ((byte)GraceResumeResult.UnknownToken, found.ExpiresAt);   // the double-consume loser learns its outcome exactly
+                        session = found;
+                        result = GraceResumeResult.Reattached;
+                    }
+                }
+            }
+            if (session != null)
+            {
+                foreach (var netId in session.OwnedNetIds)
+                {
+                    var entry = GetEntry(netId);
+                    if (entry == null) continue;
+                    entry.OwnerConnId = newConnId;
+                    foreach (var conn in SnapshotConnections())
+                        if (!conn.Disconnected && conn.VersionApproved)
+                            conn.Channel.SendOwnerUpdate(netId, newConnId);   // CON-001 — undeclared connections receive the baseline at approval instead
+                }
+                if (session.PlayerObjectNetId != 0)
+                    _playerObjects[newConnId] = session.PlayerObjectNetId;
+            }
+            // REC-001 wire 14 — every terminal outcome reports to the requesting connection (default no-op on test channels;
+            // failures consumed nothing, SEC-001 intact)
+            ServerConnection requester = FindConnection(newConnId);
+            requester?.Channel.SendResumeResult(result == GraceResumeResult.Reattached, (byte)result, retryableMs);
+            return result;
+        }
+
+        private ServerConnection FindConnection(long connId)
+        {
+            foreach (var conn in SnapshotConnections())
+                if (conn.ConnId == connId) return conn;
+            return null;
+        }
+
+        private bool IsLiveConnection(long connId)
+        {
             lock (_gate)
             {
-                if (!_graceSessions.TryGetValue(token, out session)) return false;   // unknown/guessed token — session survives
-                if (UniNetTime.LocalClock() > session.ExpiresAt) return false;   // expired — sweep owns removal+reassignment
-                bool live = false;
                 for (int i = 0; i < _connections.Count; i++)
-                    if (_connections[i].ConnId == newConnId && !_connections[i].Disconnected) { live = true; break; }
-                if (!live) return false;   // invalid new connId — session survives for the genuine reconnect
-                _graceSessions.Remove(token);   // consumed only on the verified success path
+                    if (_connections[i].ConnId == connId && !_connections[i].Disconnected) return true;
+                return false;
             }
-            foreach (var netId in session.OwnedNetIds)
-            {
-                var entry = GetEntry(netId);
-                if (entry == null) continue;
-                entry.OwnerConnId = newConnId;
-                foreach (var conn in SnapshotConnections())
-                    if (!conn.Disconnected && conn.VersionApproved)
-                        conn.Channel.SendOwnerUpdate(netId, newConnId);   // CON-001 — undeclared connections receive the baseline at approval instead
-            }
-            if (session.PlayerObjectNetId != 0)
-                _playerObjects[newConnId] = session.PlayerObjectNetId;
-            return true;
         }
 
         /// <summary>Sweeps expired grace sessions (ADR-0034 — call from the tick; expiry releases objects to reassignment).</summary>
@@ -786,9 +844,24 @@ namespace UniNet.Core.Hosting
                         (expired ??= new List<string>()).Add(kv.Key);
                 if (expired != null)
                 {
-                    foreach (var tk in expired) _graceSessions.Remove(tk);
+                    foreach (var tk in expired)
+                    {
+                        _graceSessions.Remove(tk);
+                        // swept tombstones use a sweep-time-based window — the ORIGINAL expiry is already in the past,
+                        // so the same sweep's prune step would delete the tombstone instantly (zero lifetime).
+                        // time + SessionGraceSeconds keeps the one-grace-window bound from the sweep moment.
+                        double tombstoneUntil = time + SessionGraceSeconds;
+                        _closedResumeTokens[tk] = ((byte)GraceResumeResult.Expired, tombstoneUntil);   // REC-001 — a late resume for a swept session reports Expired exactly, not a retryable NotFound
+                    }
                     ReassignOwnership();
                 }
+                // REC-001 — prune tombstones past their original expiry (bounded memory: at most one grace window of closed tokens)
+                List<string>? spent = null;
+                foreach (var kv in _closedResumeTokens)
+                    if (time > kv.Value.ExpiresAt)
+                        (spent ??= new List<string>()).Add(kv.Key);
+                if (spent != null)
+                    foreach (var tk in spent) _closedResumeTokens.Remove(tk);
             }
         }
 

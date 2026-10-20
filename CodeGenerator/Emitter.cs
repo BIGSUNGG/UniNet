@@ -179,6 +179,17 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            FireAndForget(SendRPC(13, blob, mode));   // wire 13 — batched replication (reliable + unreliable batches per tick)");
             sb.AppendLine("        }");
             sb.AppendLine();
+            sb.AppendLine("        public void SendResumeResult(bool ok, byte result, double retryableRemainingMs)   // REC-001 — wire 14, implements IUniNetSystemChannel");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var w = {Writer}.Create();");
+            sb.AppendLine("            w.WriteBoolean(ok);");
+            sb.AppendLine("            w.WriteByte(result);");
+            sb.AppendLine("            w.WriteDouble(retryableRemainingMs);");
+            sb.AppendLine("            var p14 = w.ToArray();");
+            sb.AppendLine($"            {Env}.Server?.TrafficStats.OnSent(p14.Length);   // ADR-0029");
+            sb.AppendLine("            FireAndForget(SendRPC(14, p14, global::DRPC.RpcDeliveryMode.ReliableOrdered));   // wire 14 — resume result to THIS connection");
+            sb.AppendLine("        }");
+            sb.AppendLine();
             sb.AppendLine("        public void SendSpawn(ulong netId, float px, float py, float pz, float qx, float qy, float qz, float qw, ulong prefabId, byte subCount, ulong[] typeKeys, byte[][] states)");
             sb.AppendLine("        {");
             sb.AppendLine($"            var w = {Writer}.Create();");
@@ -621,6 +632,28 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("        }");
             sb.AppendLine();
 
+            // REC-001 — wire 14 receiver: applies the resume result on the client (dispatch thread — the event fires
+            // there; subscribers marshal). Registered via RegisterClient(14, ...) alongside wire 13.
+            sb.AppendLine("        /// <summary>Wire 14 (REC-001) — grace-session resume result: applies it to the client and raises ResumeResultReceived.</summary>");
+            sb.AppendLine("        internal static " + TaskOfBytes + " __ResumeResult_Requested(long senderConnId, byte[] data)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            try");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var r = new {Reader}(data);");
+            sb.AppendLine("                bool ok = r.ReadBoolean();");
+            sb.AppendLine("                byte reason = r.ReadByte();");
+            sb.AppendLine("                double retryMs = r.ReadDouble();");
+            sb.AppendLine($"                {Env}.Client?.ApplyResumeResult(ok, reason, retryMs);   // sets LastResumeResult, arms/disarms the retry window, raises the event (dispatch thread)");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
+            sb.AppendLine("            catch (global::System.Exception ex)   // malformed/short payload — isolated per connection");
+            sb.AppendLine("            {");
+            sb.AppendLine("                UnityEngine.Debug.LogException(ex);");
+            sb.AppendLine("                return EmptyResponse();");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
             sb.AppendLine("        public void UniNetSend(int methodId, byte[] payload, global::DRPC.RpcDeliveryMode mode)");
             sb.AppendLine($"            => FireAndForget({Env}.Client?.TrafficStats is {{ }} __st ? __CountedSend(methodId, payload, mode, __st) : SendRPC(methodId, payload, mode));   // ADR-0029");
             sb.AppendLine("        private global::System.Threading.Tasks.Task __CountedSend(int methodId, byte[] payload, global::DRPC.RpcDeliveryMode mode, global::UniNet.Core.Hosting.UniNetTrafficCounters stats)");
@@ -670,6 +703,8 @@ namespace UniNet.CodeGenerator
             }
 
             sb.AppendLine($"            {Dispatch}.RegisterClient(13, UniNetClientHub.__ReplicateBatch_Requested, global::DRPC.RpcDeliveryMode.ReliableOrdered);   // wire 13 — batched replication (idempotent across assemblies)");
+
+            sb.AppendLine($"            {Dispatch}.RegisterClient(14, UniNetClientHub.__ResumeResult_Requested, global::DRPC.RpcDeliveryMode.ReliableOrdered);   // REC-001 — wire 14, resume result (idempotent across assemblies)");
 
             sb.AppendLine("        }");
             sb.AppendLine("    }");

@@ -117,5 +117,66 @@ namespace UniNet.Core.Hosting
         {
             lock (_gate) return _owners.TryGetValue(netId, out var o) ? o : 0;
         }
+
+        // ── REC-001 — resume result (wire 14) ─────────────────────────
+
+        /// <summary>Last resume outcome (REC-001) — None until a wire-14 result arrives. Volatile-backed (applied on the dispatch thread).</summary>
+        public GraceResumeResult LastResumeResult
+        {
+            get => (GraceResumeResult)System.Threading.Volatile.Read(ref _lastResumeResult);
+            private set => System.Threading.Volatile.Write(ref _lastResumeResult, (int)value);
+        }
+        private int _lastResumeResult = (int)GraceResumeResult.None;
+
+        /// <summary>Raised when a resume result arrives (REC-001, wire 14) — on the DRPC dispatch thread: Unity
+        /// subscribers must marshal via <see cref="UniNetEnvironment.QueueOnMain"/>. Fires for every terminal
+        /// outcome, success included; never for a fresh connection with no token.</summary>
+        public event Action<GraceResumeResult> ResumeResultReceived;
+
+        private double _resumeRetryRemainingMs;      // > 0 while a SessionNotFound retry window is armed
+        private double _resumeRetryDeadline = -1;    // LocalClock domain — computed on the FIRST main-thread tick (the Unity clock throws off-main; the CON-001 lesson)
+        private double _resumeRetryNextSendAt;
+
+        /// <summary>Applies a wire-14 resume result (the generated client receiver calls this — dispatch thread).
+        /// Arms the retry window for SessionNotFound; every other outcome disarms it (Expired/UnknownToken are terminal).</summary>
+        public void ApplyResumeResult(bool ok, byte resultCode, double retryableRemainingMs)
+        {
+            var result = (GraceResumeResult)resultCode;
+            lock (_gate)
+            {
+                LastResumeResult = result;
+                _resumeRetryRemainingMs = result == GraceResumeResult.SessionNotFound && retryableRemainingMs > 0 ? retryableRemainingMs : 0;
+                _resumeRetryDeadline = -1;   // recomputed on the next main-thread tick — no Unity clock access here
+                _resumeRetryNextSendAt = 0;
+            }
+            ResumeResultReceived?.Invoke(result);   // outside the gate — subscribers may re-enter freely
+        }
+
+        /// <summary>
+        /// Re-sends the resume request (wire 10) while a SessionNotFound retry window is armed (REC-001) — call from
+        /// the driver Update (main thread). Sends at 0.5 s intervals until the server's retryable window closes or
+        /// a terminal result arrives, so the detach race (a reconnect faster than the server noticed the old
+        /// connection died) converges to Reattached instead of silently spawning a fresh player.
+        /// </summary>
+        public void TickResumeRetry()
+        {
+            var sender = UniNetEnvironment.ClientSender;
+            string token = SessionToken;
+            if (sender == null || string.IsNullOrEmpty(token)) return;
+            double now = UniNetTime.LocalClock();
+            lock (_gate)
+            {
+                if (_resumeRetryRemainingMs <= 0) return;
+                if (_resumeRetryDeadline < 0)
+                    _resumeRetryDeadline = now + _resumeRetryRemainingMs / 1000.0;   // first tick after arming — main thread only
+                if (now >= _resumeRetryDeadline) { _resumeRetryRemainingMs = 0; return; }   // window closed without a terminal result — stop retrying
+                if (now < _resumeRetryNextSendAt) return;
+                _resumeRetryNextSendAt = now + 0.5;
+            }
+            var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
+            w.WriteString(token);
+            byte[] payload = w.ToArray();
+            sender.UniNetSend(10, payload, global::DRPC.RpcDeliveryMode.ReliableOrdered);   // same wire-10 envelope as the hub's initial request
+        }
     }
 }

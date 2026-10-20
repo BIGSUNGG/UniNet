@@ -87,6 +87,10 @@ namespace UniNet.Unity
         /// <summary>
         /// Reconnects to the server after a disconnect (ADR-0034) — preserves the session token so the server reattaches
         /// the grace-held session (objects + ownership). The generated client hub automatically sends the resume request.
+        /// Returns whether a reconnect was ATTEMPTED AND the connection established — it is NOT the reattach outcome:
+        /// observe <see cref="NetworkClient.ResumeResultReceived"/> (or <c>NetworkClient.LastResumeResult</c>) for the
+        /// terminal result (REC-001 — Reattached, or the exact rejection reason; a SessionNotFound detach race retries
+        /// automatically at 0.5 s intervals until the server's grace window closes).
         /// Returns false when there was no previous session to resume.
         /// </summary>
         public static async Task<bool> ReconnectAsync(string address, int port, UniNetEndpointOptions options = null)
@@ -437,6 +441,10 @@ namespace UniNet.Unity
                 server.SweepUnapprovedConnections(Time.unscaledTimeAsDouble);   // CON-001 — kick undeclared connections at the same cadence
                 BroadcastTimeSync(server, Time.unscaledTimeAsDouble);   // P4 — time sync (once per second)
             }
+
+            // REC-001 — resume retry cadence: while a SessionNotFound retry window is armed (wire 14), re-send the
+            // resume request at 0.5 s intervals until the window closes or a terminal result arrives
+            UniNetEnvironment.Client?.TickResumeRetry();
 
             // ADR-0029 — client RTT probe: ping once per second while connected; the generated server hub echoes it
             // (wire 9) and the client handler EMA-smooths the round trip into NetworkClient.RoundTripTimeMs.

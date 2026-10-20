@@ -20,7 +20,7 @@ namespace UniNet.Tests
     }
 
     /// <summary>Test channel that records every system message instead of sending it.</summary>
-    internal sealed class RecordingChannel : IUniNetSystemChannel
+    internal class RecordingChannel : IUniNetSystemChannel
     {
         public long UniNetConnId { get; set; }
         internal readonly List<string> Order = new();   // cross-message send order — OWN-001 baseline assertions (owner before state/spawn)

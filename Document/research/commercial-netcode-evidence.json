@@ -761,6 +761,67 @@
         "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-remote-package.json",
         "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-staged-paths.json"
       }
+    },
+    {
+      "id": "REC-001",
+      "status": "validated_pending_release",
+      "kind": "resume-result-notification",
+      "packageVersion": "0.7.0",
+      "generatorVersion": "0.2.10",
+      "wireSystemMessagesChanged": "added client-bound wire 14 ResumeResult{ok, reason, retryableRemainingMs}",
+      "breakingChanges": ["NetworkServer.ResumeSession now returns GraceResumeResult instead of bool", "new system wire 14 (same-package ends; the package-version handshake rejects mixed versions)"],
+      "adr": "Document/decisions/0044-재개-결과-통보와-자동-재시도.md",
+      "featureDocument": "Document/features/connection-lifecycle.md",
+      "worker": {
+        "model": "zai/glm-5.3",
+        "resolvedModelWithThinking": "zai/glm-5.3:high",
+        "implementationRunId": "aa26fd0d",
+        "continuationRunIds": ["a66cc619", "2f5020c1", "a94be869", "424dcfee", "e4b5a83c", "fe62be5c"],
+        "metadata": ".pi-subagents/artifacts/aa26fd0d_worker_meta.json"
+      },
+      "regressionsFoundDuringValidation": [
+        {"defect": "Tombstone lookup was an unreachable else-branch — consumed/swept tokens always fell into the first SessionNotFound branch", "fix": "Tombstone check moved to the head of the not-found branch"},
+        {"defect": "Sweep-written tombstones used the original (already-past) expiry and were pruned by the same sweep — zero lifetime", "fix": "Sweep tombstones expire at sweep-time + one grace window"},
+        {"defect": "Test channel tried to override an interface DIM (CS0115)", "fix": "Explicit interface implementation"},
+        {"defect": "PlayMode test subscribed to a NetworkClient instance that ClientAsync replaces", "fix": "Sticky LastResumeResult polling; event contract stays EditMode-verified through the real generated receiver"}
+      ],
+      "regressionTests": [
+        "UniNet.Tests.ResumeResultTests.각_종결_사유가_요청_연결에_정확히_전달된다",
+        "UniNet.Tests.ResumeResultTests.SessionNotFound_재시도가_디태치_경합에서_재부착으로_수렴한다",
+        "UniNet.Tests.ResumeResultTests.이중_소비_패자는_UnknownToken으로_정확히_종결된다",
+        "UniNet.Tests.ResumeResultTests.실제_생성_수신기가_결과를_클라에_적용한다"
+      ],
+      "arenaExample": {
+        "kind": "PlayMode test with real loopback RUDP",
+        "entry": "UniNet.Tests.ResumeResultPlayTests.진짜_토큰은_재부착_결과를_위조_토큰은_거절_결과를_관측한다",
+        "scope": "Real wire: genuine preserved token observes Reattached (token re-seeded across the stop — the same test-procedure injection as the SEC-001 diagnostic; voluntary-stop token burn is REC-002, out of scope), forged token observes the exact rejection result"
+      },
+      "validation": [
+        {"kind": "targeted EditMode", "jobId": "99f01a14e3f149619f1e823a6554e45b", "total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        {"kind": "full EditMode", "jobId": "0891be1e6ae44921b6969422a5afe026", "total": 167, "passed": 167, "failed": 0, "skipped": 0},
+        {"kind": "full PlayMode", "jobId": "4880fda06c574e1f85dfdd47aadb6c2d", "total": 30, "passed": 30, "failed": 0, "skipped": 0},
+        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.7.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation.log"}
+      ],
+      "validationHistory": [
+        {"phase": "compile", "issues": ["DIM override (CS0115)"], "resolution": "explicit interface implementation"},
+        {"phase": "targeted EditMode", "jobId": "7f32ebd21d7842d5b3c9fcd8d22b17f0", "failed": 4, "resolution": "tombstone branch-order + sweep-tombstone lifetime defects (above)"},
+        {"phase": "targeted EditMode", "jobId": "888b0d75b8064c8db2b2a3ac1e330a63", "failed": 2, "resolution": "sweep-tombstone zero-lifetime fix"},
+        {"phase": "targeted EditMode", "jobId": "79d40e98f62e479ebeadbd71606a2731", "failed": 1, "resolution": "test premise — invalid-connId case needs a live session token; reconstructed"},
+        {"phase": "full PlayMode", "jobId": "935f9db0cb194268bb001ea1466ba743", "failed": 1, "resolution": "event subscription on a replaced instance — sticky polling"}
+      ],
+      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/rec001-validation-events.jsonl",
+      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/rec001-validation-input-blobs.json",
+      "generatorDllSha256": "30ede5fced5373c48e031c578a8a5e5318828319610cf19280a8373b3abc26e6",
+      "review": {
+        "model": "zai/glm-5.3-flash",
+        "round": 1,
+        "verdict": "CLEAN",
+        "metadata": ".pi-subagents/artifacts/b0bcca71_reviewer_meta.json",
+        "transcript": ".pi-subagents/artifacts/b0bcca71_reviewer_transcript.jsonl",
+        "output": ".pi-subagents/artifacts/b0bcca71_reviewer_output.md",
+        "residualRiskResolved": "Reviewer flagged ResumeSession's LocalClock call thread-safety as unverified; parent confirmed the generated wire-10 handler wraps ResumeSession in QueueOnMain (Emitter.cs:289) — main-thread execution, safe."
+      },
+      "release": {"status": "not_published", "version": "0.7.0", "tag": "v0.7.0"}
     }
   ],
   "finalValidation": {

@@ -88,6 +88,7 @@
 - [[0041-세션-토큰-암호학적-난수-전환]] — SEC-001: 세션 토큰을 256비트 암호학적 난수 opaque Base64로 전환(와이어 1/10 string화·파싱 전 상한·재개 3조건 소비·추측/오류로 세션 미소진·비밀 미출력)
 - [[0042-이동-소유권-전이-스트림-리셋-에포크]] — MOV-001: NetworkClient.OwnershipChanged 값변경 이벤트·MoveSimulation.ResetOwnershipStream(TState 보존)·이동 소유권 epoch(봉투 접두·불일치 기각)로 소유권 전이 후 새 스트림 즉시 채택 (0.5.0)
 - [[0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보]] — CON-001: 버전 선언 수용 전 소유권·캐치업·복제·게임 RPC 유보, 승인 시 기존 순서로 해제, 미선언 타임아웃 킥 (0.6.0, 제너레이터 0.2.9)
+- [[0044-재개-결과-통보와-자동-재시도]] — REC-001: ResumeSession 결과 열거형·wire 14 재개 결과 통보·소비/만료 토큰 툼스톤·SessionNotFound 자동 재시도(0.5s 간격) (0.7.0, 제너레이터 0.2.10)
 
 ### deployment — 배포
 
@@ -99,6 +100,8 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-20 — **REC-001 v0.7.0 구현 — 재개 결과 통보와 자동 재시도** (ADR-0044·[[features/connection-lifecycle]] 갱신. `ResumeSession`이 `GraceResumeResult` 열거형 반환(파괴), wire 14로 모든 종결 사유를 요청 연결에 통보(ok/reason/retryableRemainingMs), 소비·스윕만료 토큰 툼스톤으로 이중 소비 패자 UnknownToken·만료 Expired 정확 종결, 클라 `LastResumeResult`+`ResumeResultReceived` 이벤트, SessionNotFound 디태치 경합 자동 재시도(0.5s 간격·창 마감까지 — 경합이 재부착으로 수렴). 제너레이터 0.2.10(해시 검증 배포). EditMode 4종 신규+ReconnectGraceTests 9곳 정확 갱신·PlayMode 실RUDP 1종. 실기·CLEAN·배포·감사 CLOSED 전환은 부모 진행 중)
 
 - 2026-10-20 — **CON-001 v0.6.0 구현 — 연결 승인 수명주기** (ADR-0043·[[features/connection-lifecycle]] 갱신. 미선언 연결은 Welcome만 받고 승인(와이어 7 수용)까지 게임 데이터 전면 유보 — 소유권 재배정·캐치업·복제·스폰·ClientConnected·씬 게이트·생성 허브 게임 ServerRpc 게이트(IsVersionApproved·UnapprovedServerRpcDrops 카운터, 제너레이터 0.2.9). 승인 시 기존 순서로 1회 해제(멱등), 불일치 기존 킥 유지, 미선언 타임아웃 VersionDeclareTimeoutMs(기본 10s·0=비활성) 스윕 킥. 빈 기대버전은 현행 완전 호환. EditMode 7종+기존 100 attach 지점 선언 정합화·PlayMode 실RUDP 1종. **검증·배포 완료**: 회귀 8종(스레드 안전 포함)·타깝 8/8·EditMode 163/163·PlayMode 29/29·실경로 재현·신규 설치·Flash r2 CLEAN·v0.6.0 Release·main/tag CI 성공 — 구현 `c2d4c8e`, CON-001 CLOSED. 검증 중 발견된 회귀 2건(accept 스레드 Unity API 호출로 attach 전면 중단·생성기 DLL 미배포)은 수정·원시 이력 보존)
 

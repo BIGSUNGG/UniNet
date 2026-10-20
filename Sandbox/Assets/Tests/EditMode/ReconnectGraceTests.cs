@@ -66,8 +66,8 @@ namespace UniNet.Tests
             UniNetEnvironment.PumpMain();
             Assert.AreNotEqual(0, server.GetOwner(player.NetId), "재접속 후 소유자 존재");
 
-            bool resumed = server.ResumeSession(token, chB.UniNetConnId);
-            Assert.IsTrue(resumed, "토큰 매치 — 재부착 성립");
+            var resumed = server.ResumeSession(token, chB.UniNetConnId);
+            Assert.AreEqual(GraceResumeResult.Reattached, resumed, "토큰 매치 — 재부착 성립");
             Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "소유권이 새 연결로 이전");
         }
 
@@ -90,8 +90,8 @@ namespace UniNet.Tests
             server.SweepGraceSessions(double.MaxValue);
             UniNetEnvironment.PumpMain();
 
-            bool resumed = server.ResumeSession(token2, 999);
-            Assert.IsFalse(resumed, "만료된 세션 — 재부착 거부");
+            var resumed2 = server.ResumeSession(token2, 999);
+            Assert.AreEqual(GraceResumeResult.Expired, resumed2, "만료(스윕 폐기→툼스톤) 세션 — 재부착 거부 (정확한 종결 사유)");
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
@@ -177,13 +177,13 @@ namespace UniNet.Tests
             mutated[0] = mutated[0] == 'A' ? 'B' : 'A';   // nearest-miss forgery
             var guesses = new[] { new string('A', 43) + "=", new string(mutated), "", "0", "1" };
             foreach (var guess in guesses)
-                Assert.IsFalse(server.ResumeSession(guess, attackerConn), $"위조 토큰 거부 len={guess.Length}");
+                Assert.AreNotEqual(GraceResumeResult.Reattached, server.ResumeSession(guess, attackerConn), $"위조 토큰 거부 len={guess.Length}");   // unknown strings → SessionNotFound; empty → UnknownToken — rejection either way
 
             Assert.AreEqual(victimOwner, server.GetOwner(player.NetId), "피해자 소유권 유지 — 공격자에게 이전 없음");
 
             // the genuine token still works afterwards — the probes did not consume the session
-            bool resumed = server.ResumeSession(realToken, attackerConn);
-            Assert.IsTrue(resumed, "진짜 토큰은 공격 시도 후에도 재부착 성립 — 세션 미소진");
+            var resumed3 = server.ResumeSession(realToken, attackerConn);
+            Assert.AreEqual(GraceResumeResult.Reattached, resumed3, "진짜 토큰은 공격 시도 후에도 재부착 성립 — 세션 미소진");
             Assert.AreEqual(attackerConn, server.GetOwner(player.NetId), "소유권 이전은 유효 토큰에만");
         }
 
@@ -202,15 +202,15 @@ namespace UniNet.Tests
             server.DetachConnection(chA);
             UniNetEnvironment.PumpMain();
 
-            Assert.IsFalse(server.ResumeSession(token, 999), "임의 connId — 거부");
-            Assert.IsFalse(server.ResumeSession(token, chA.UniNetConnId), "죽은(해제된) connId — 거부");
+            Assert.AreEqual(GraceResumeResult.UnknownToken, server.ResumeSession(token, 999), "임의 connId — 거부");
+            Assert.AreEqual(GraceResumeResult.UnknownToken, server.ResumeSession(token, chA.UniNetConnId), "죽은(해제된) connId — 거부");
             Assert.AreEqual(victimOwner, server.GetOwner(player.NetId), "거부 경로에서 소유권 불변");
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
             server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
-            Assert.IsTrue(server.ResumeSession(token, chB.UniNetConnId), "이후 올바른 연결로 재개 — 토큰 미소진");
+            Assert.AreEqual(GraceResumeResult.Reattached, server.ResumeSession(token, chB.UniNetConnId), "이후 올바른 연결로 재개 — 토큰 미소진");
             Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "소유권 이전");
         }
 
@@ -232,13 +232,13 @@ namespace UniNet.Tests
             server.AttachConnection(chB);
             server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
-            Assert.IsTrue(server.ResumeSession(token, chB.UniNetConnId), "1차 재개 성공");
+            Assert.AreEqual(GraceResumeResult.Reattached, server.ResumeSession(token, chB.UniNetConnId), "1차 재개 성공");
 
             var chC = new RecordingChannel();
             server.AttachConnection(chC);
             server.OnClientVersionDeclared(chC.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
-            Assert.IsFalse(server.ResumeSession(token, chC.UniNetConnId), "동일 토큰 재사용(토큰 재생) — 거부");
+            Assert.AreEqual(GraceResumeResult.UnknownToken, server.ResumeSession(token, chC.UniNetConnId), "동일 토큰 재사용(토큰 재생) — 거부 (소비 툼스톤 → 정확한 종결)");
             Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "재생 거부 후 소유권 불변");
         }
     }

@@ -5,6 +5,13 @@
 
 ## [2026-10-20]
 
+### Added (재개 결과 통보와 자동 재시도 — REC-001, 패키지 0.7.0)
+
+- **재부착 결과의 양방향 관측** (REC-001 ·[[0044-재개-결과-통보와-자동-재시도]]·[[features/connection-lifecycle|connection-lifecycle]]) — `ReconnectAsync` true는 연결 수립일 뿐이었고 서버 `ResumeSession` bool은 생성 허브에서 폐기·거절은 완전 침묵·빠른 재접속 경합(디태치 전 재접속)은 무조건 신규 플레이어로 강등됐다
+- **근본 수정** — ① `ResumeSession`이 `GraceResumeResult`(Reattached/SessionNotFound/Expired/UnknownToken) 반환(파괴 교체, 모든 실패는 세션 미소진 — SEC-001 유지) ② wire 14 `ResumeResult{ok, reason, retryableRemainingMs}` — 모든 종결 사유가 요청 연결에 통보, SessionNotFound엔 재시도 창(유예 시간) 동반. 생성 서버 허브 송신+클라 `RegisterClient(14)` 수신기(제너레이터 0.2.10) ③ 소비/스윕만료 토큰 툼스톤(reason, expiry — 원 만료까지 보관): 이중 소비 패자 UnknownToken·스윕 만료 Expired로 정확 종결(NotFound 재시도 오인 방지) ④ `NetworkClient.LastResumeResult`+`ResumeResultReceived` 이벤트(디스패치 스레드→QueueOnMain) ⑤ 자동 재시도: SessionNotFound 창이 살아있는 한 `TickResumeRetry`(드라이버 Update 캐던스)가 wire 10을 0.5초 간격 재전송 — 디태치 경합이 재부착으로 수렴. 재시도 데드라인은 메인 스레드 첫 틱에 계산(CON-001 Unity 시계 교훈)
+- **테스트** — EditMode `ResumeResultTests` 4종(종결 사유별 wire 14 전달·경합 재시도 수렴(스텁 송신기로 0.5s 간격·종결 후 중단 단얜)·이중 소비 패자 UnknownToken·실제 생성 wire 14 수신기 경유 클라 적용+이벤트) + 기존 `ReconnectGraceTests` 9곳 bool→열거형 정확 갱신(완화 아님). PlayMode `ResumeResultPlayTests` 실RUDP(진짜 토큰 재부착 이벤트·위조 토큰 SessionNotFound 거절 관측 — 토큰 보존은 SEC-001 진단과 동일한 테스트 주입 절차)
+- **패키지 0.7.0** — 와이어 14 신규·제너레이터 0.2.10. 마이그레이션: `ResumeSession` 직접 호출자 bool→enum, 재접속 관측은 `ResumeResultReceived` 구독
+
 ### Changed (CON-001 개별 배포 확인)
 
 - **v0.6.0 게시 완료** — 구현 `c2d4c8e`·[GitHub Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.6.0), main/tag CI success·원격 태그와 패키지 0.6.0 일치 확인. 회귀 8종·타깝 8/8·EditMode 163/163·PlayMode 29/29·실경로 최소 재현·Arena 실RUDP·신규 로컬 Git 설치/샘플 컴파일 PASS, Flash r1 권장(핫패스 할당) 수용 후 r2 CLEAN. 검증 중 발견된 치명 회귀 2건 — attach 스레드에서 Unity Time API 호출로 실제 클라 attach 전면 중단(22/29 실패, 백그라운드 스레드 LocalClock throw 실증으로 규명)·생성기 0.2.9 DLL 미배포(UTF-16 문자열 grep 오검증) — 모두 수정·원시 이력 보존 후 전수 재검증. CON-001 CLOSED, 사용자 자산 해시 보존·커밋 제외 확인.
