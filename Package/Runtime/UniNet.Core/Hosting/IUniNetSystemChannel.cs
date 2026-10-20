@@ -7,7 +7,9 @@ public interface IUniNetSystemChannel
     long UniNetConnId { get; set; }
 
     /// <summary>Tells a client its own connection ID and the server's protocol version (ADR-0028 handshake).</summary>
-    void SendWelcome(long connId, string serverVersion, ulong sessionToken);
+    /// <summary>Sends the Welcome (wire 1) — connection ID, protocol version (ADR-0028), and the opaque Base64 session token
+    /// (ADR-0034/0041; 32 random bytes — never a predictable counter; empty = none issued).</summary>
+    void SendWelcome(long connId, string serverVersion, string sessionToken);
 
     /// <summary>Notifies clients that an object's owner changed (per object).</summary>
     void SendOwnerUpdate(ulong netId, long ownerConnId);

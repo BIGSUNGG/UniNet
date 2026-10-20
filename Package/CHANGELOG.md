@@ -1,3 +1,33 @@
+## 0.4.0
+
+**Session tokens are cryptographically random (breaking — wire 1/10 change).** Predictable seed+1 tokens let a malicious client guess a neighbor's token and steal their grace-session ownership (SEC-001).
+
+### Changed (breaking)
+
+- **`IssueSessionToken` / `ServerConnection.SessionToken` / `NetworkClient.SessionToken` — `ulong` → `string`.** The token is now 32 bytes of `RandomNumberGenerator` entropy as an opaque Base64 string (44 chars, `NetworkServer.SessionTokenBytes`/`MaxSessionTokenChars`). Empty string = no session (inactive/fresh connection). Tokens are unique across live connections and pending grace sessions; issuance is thread-safe.
+- **Wire 1 (Welcome) / wire 10 (ResumeRequest) carry the token as a string.** Breaking for the wire: with the **default** `ProtocolVersion` a package-version difference now rejects the client (a 0.3.x client against a 0.4.0 server — ADR-0028 handshake). If your game sets a **custom** `ProtocolVersion`, the handshake compares YOUR identifier — bump it on **both ends** in this release (the Arena demo does: `arena-1` → `arena-2-uninet-0.4`), otherwise pre-0.4.0 clients keep passing the handshake against an incompatible wire. Generator 0.2.8 required.
+
+### Fixed (security)
+
+- **SEC-001 — session-token forgery.** `ResumeSession` rejects wrong, guessed, expired, or unissued tokens AND invalid/dead new-connection IDs **without consuming the grace session** — a probing attacker can no longer burn a victim's grace window or take their ownership. Expired sessions are released by the sweep (which also reassigns orphans).
+- The generated resume handler rejects wire-10 payloads over the format bound **before** parsing — int32 UTF8 length prefix + token = at most `NetworkServer.MaxResumeRequestPayloadBytes` (48 bytes) — and drops malformed input (truncated payload / forged length prefix; the reader throws before allocating the declared length) quietly, so a flooding client can neither force a large allocation nor spam the console. Rejections consume nothing: a later genuine request still resumes.
+- Session tokens are never written to logs or exceptions; the editor debugger shows presence (`issued (44 ch)`), not the value.
+
+### Migration
+
+- If your code stored `SessionToken` as `ulong`, switch to `string` (empty = none). `ReconnectAsync`/`ClientAsync` token carry and the automatic resume request are unchanged from the game side.
+
+## 0.3.0
+
+**Unreleased development version — never published.** At the time of the 0.4.0 release preparation, public package tags stopped at 0.2.2; 0.3.0 existed only as the repository's development state between 0.2.2 and 0.4.0. Recorded here so the consumer changelog is continuous.
+
+### Changed (breaking — development state)
+
+- **State-based movement prediction (ADR-0038)** — `MoveSimulation<TInput,TState>` engine: game-defined input/state structs + pure step rule, fixed-step simulation (default 60 Hz), server input queue, owner history ring (128), rollback with server-state blob restoration. Replaced the stateless contract destructively: `NetworkTransform.MovementStep`/`MovementRule`/`SubmitMove`/`PredictOwner`/`SoftRate`/`FullReconciliation` removed. Jump/dash/teleport implemented in the Arena example.
+- **Batched replication + per-object delivery reliability (ADR-0039, wire 13)** — per-connection, per-tick reliable and unreliable batches (≤2 messages/tick, 1000 B cap); `NetworkBehaviour.NetworkReplicationDelivery` (`ReliableOrdered` default / `Unreliable` = Sequenced); still-object reliable re-send after 0.25 s silence; dormancy-flush forces reliable.
+- **Default replication rate 30 Hz (ADR-0040)** — `NetworkUpdateFrequencyHz` default 0 → 30 (step merging); 0 opts back into every-tick sending.
+- Remote rendering improvements: teleport discontinuity snap (axis-wise buffer clear instead of interpolating through), adaptive interpolation delay (arrival-interval EMA), replication-only remote interpolation fix.
+
 ## 0.2.2
 
 **Late-scene registration no longer deadlocks listen servers.**

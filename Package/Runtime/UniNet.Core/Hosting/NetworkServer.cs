@@ -57,8 +57,10 @@ namespace UniNet.Core.Hosting
         private long _rateLimitedDrops;
 
         // ADR-0034 — grace sessions: disconnected connections whose objects+ownership are preserved for reattach.
-        // Keyed by session token (issued in Welcome). Main thread only.
-        private readonly Dictionary<ulong, GraceSession> _graceSessions = new();
+        // Keyed by opaque session token (issued in Welcome, ADR-0041). Guarded by _gate: issuance runs on the transport
+        // accept thread (AttachConnection) while save/resume/sweep run on the main queue — the registry lock arbitrates both
+        // (Monitor is reentrant, so nested Snapshot* calls under the same gate stay safe).
+        private readonly Dictionary<string, GraceSession> _graceSessions = new();
         private double _nextGraceSweep;
 
         /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
@@ -72,11 +74,48 @@ namespace UniNet.Core.Hosting
         /// <summary>Server-side UniNet traffic counters (ADR-0029) — payload bytes/packets sent by this server. Per-connection view: <see cref="ServerConnection.RttMs"/>.</summary>
         public UniNetTrafficCounters TrafficStats { get; } = new();
 
-        // netstandard2.1: TickCount64 unavailable — 32-bit tick + random is sufficient per-instance seed entropy
-        private ulong _nextSessionToken = (ulong)System.Environment.TickCount << 32 | (uint)new System.Random().Next();   // ADR-0034 — per-instance random seed (predictable +1 sequences let attackers guess neighbor tokens)
+        /// <summary>Session token entropy in bytes (ADR-0041) — 256-bit: guessing a live token is computationally infeasible.</summary>
+        public const int SessionTokenBytes = 32;
 
-        /// <summary>Issues a new session token (ADR-0034) — sent in the Welcome; the client presents it on reconnect.</summary>
-        public ulong IssueSessionToken() => _nextSessionToken++;
+        /// <summary>
+        /// Session token length in characters (ADR-0041) — Base64 of <see cref="SessionTokenBytes"/> bytes. The generated resume
+        /// handler bounds the wire-10 payload BEFORE parsing (see <see cref="MaxResumeRequestPayloadBytes"/>), so a forged length
+        /// prefix can never drive a large string allocation (MessageProtocol strings are int32-length-prefixed UTF8 — the reader
+        /// also validates the declared length against the buffer before allocating, so truncation/forgery throws, not allocates).
+        /// </summary>
+        public const int MaxSessionTokenChars = 44;
+
+        /// <summary>
+        /// Upper bound of a well-formed wire-10 (ResumeRequest) payload (ADR-0041) — int32 UTF8 length prefix (4 bytes) + token
+        /// characters. The generated server handler rejects anything larger before parsing.
+        /// </summary>
+        public const int MaxResumeRequestPayloadBytes = sizeof(int) + MaxSessionTokenChars;   // 48
+
+        /// <summary>
+        /// Issues a new session token (ADR-0034/0041) — <see cref="SessionTokenBytes"/> bytes of cryptographic randomness as an
+        /// opaque Base64 string, sent in the Welcome and presented back on reconnect. Never empty and never equal to another
+        /// live connection's token or a pending grace-session token (collision odds are ~2^-256; the check is belt and braces).
+        /// Uses <see cref="System.Security.Cryptography.RandomNumberGenerator"/> — never time, Random, Guid, or counters,
+        /// because predictable sequences let an attacker guess a neighbor's token and steal their grace session.
+        /// Thread-safe: callable from the transport accept thread (takes the registry gate).
+        /// </summary>
+        public string IssueSessionToken()
+        {
+            lock (_gate)
+            {
+                while (true)
+                {
+                    var bytes = new byte[SessionTokenBytes];
+                    System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+                    string token = Convert.ToBase64String(bytes);
+                    if (_graceSessions.ContainsKey(token)) continue;
+                    bool clash = false;
+                    for (int i = 0; i < _connections.Count; i++)
+                        if (_connections[i].SessionToken == token) { clash = true; break; }
+                    if (!clash) return token;
+                }
+            }
+        }
 
         /// <summary>
         /// Per-connection ServerRpc rate limit in calls/second (ADR-0032) — 0 = unlimited (default, opt-in).
@@ -187,8 +226,9 @@ namespace UniNet.Core.Hosting
             /// <summary>Whether the Welcome has been sent (guards LoadScene broadcast from racing attach).</summary>
             public bool WelcomeSent { get; internal set; }
 
-            /// <summary>Session token issued in the Welcome (ADR-0034) — identifies the connection for grace-session reattach.</summary>
-            public ulong SessionToken { get; internal set; }
+            /// <summary>Session token issued in the Welcome (ADR-0034/0041) — opaque Base64 string identifying the connection for
+            /// grace-session reattach. Empty = not issued (inactive; grace saving treats it as no session).</summary>
+            public string SessionToken { get; internal set; } = string.Empty;
 
             /// <summary>The connection's send channel (the generated server hub — generated code type-casts it for sends).</summary>
             public IUniNetSystemChannel Channel { get; }
@@ -572,11 +612,12 @@ namespace UniNet.Core.Hosting
             AllClientsSceneLoaded?.Invoke(scene);
         }
 
-        /// <summary>Saves a grace session for a disconnecting connection (ADR-0034, main thread).</summary>
-        private void SaveGraceSession(long connId, ulong sessionToken)
+        /// <summary>Saves a grace session for a disconnecting connection (ADR-0034, main thread). An empty token (never issued —
+        /// inactive grace) skips the session and reassigns ownership immediately instead of preserving a session nothing can resume.</summary>
+        private void SaveGraceSession(long connId, string sessionToken)
         {
             var token = sessionToken;
-            if (token == 0) { ReassignOwnership(); return; }
+            if (string.IsNullOrEmpty(token)) { ReassignOwnership(); return; }
 
             var owned = new List<ulong>();
             foreach (var (netId, entry) in SnapshotObjects())
@@ -584,26 +625,40 @@ namespace UniNet.Core.Hosting
                     owned.Add(netId);
             var playerObj = _playerObjects.TryGetValue(connId, out var po) ? po : 0;
 
-            _graceSessions[token] = new GraceSession
+            lock (_gate)   // issuance reads the registry from the transport accept thread (ADR-0041) — same gate arbitrates
             {
-                Token = token,
-                OldConnId = connId,
-                ExpiresAt = UniNetTime.LocalClock() + SessionGraceSeconds,
-                OwnedNetIds = owned,
-                PlayerObjectNetId = playerObj,
-            };
+                _graceSessions[token] = new GraceSession
+                {
+                    Token = token,
+                    OldConnId = connId,
+                    ExpiresAt = UniNetTime.LocalClock() + SessionGraceSeconds,
+                    OwnedNetIds = owned,
+                    PlayerObjectNetId = playerObj,
+                };
+            }
         }
 
         /// <summary>
         /// Reattaches a grace session to a new connection (ADR-0034, main thread — called by the generated resume handler).
-        /// Returns true when the session matched and ownership was transferred.
+        /// Returns true only when the token matched a live, unexpired session AND newConnId is a current live connection;
+        /// ownership is then transferred. A wrong, guessed, expired, or unissued token — or an unknown/dead newConnId —
+        /// returns false WITHOUT consuming the session, so a probing attacker can never burn a victim's grace window
+        /// (ADR-0041). Expired sessions are left for SweepGraceSessions, which also reassigns their orphans.
         /// </summary>
-        public bool ResumeSession(ulong token, long newConnId)
+        public bool ResumeSession(string token, long newConnId)
         {
-            if (!_graceSessions.TryGetValue(token, out var session)) return false;
-            if (UniNetTime.LocalClock() > session.ExpiresAt) { _graceSessions.Remove(token); return false; }
-
-            _graceSessions.Remove(token);
+            if (string.IsNullOrEmpty(token)) return false;   // nothing presented — cannot match any issued token
+            GraceSession session;
+            lock (_gate)
+            {
+                if (!_graceSessions.TryGetValue(token, out session)) return false;   // unknown/guessed token — session survives
+                if (UniNetTime.LocalClock() > session.ExpiresAt) return false;   // expired — sweep owns removal+reassignment
+                bool live = false;
+                for (int i = 0; i < _connections.Count; i++)
+                    if (_connections[i].ConnId == newConnId && !_connections[i].Disconnected) { live = true; break; }
+                if (!live) return false;   // invalid new connId — session survives for the genuine reconnect
+                _graceSessions.Remove(token);   // consumed only on the verified success path
+            }
             foreach (var netId in session.OwnedNetIds)
             {
                 var entry = GetEntry(netId);
@@ -623,30 +678,36 @@ namespace UniNet.Core.Hosting
         {
             if (time < _nextGraceSweep) return;
             _nextGraceSweep = time + 0.5;
-            if (_graceSessions.Count == 0) return;
-            List<ulong>? expired = null;
-            foreach (var kv in _graceSessions)
-                if (time > kv.Value.ExpiresAt)
-                    (expired ??= new List<ulong>()).Add(kv.Key);
-            if (expired != null)
+            lock (_gate)
             {
-                foreach (var tk in expired) _graceSessions.Remove(tk);
-                ReassignOwnership();
+                if (_graceSessions.Count == 0) return;
+                List<string>? expired = null;
+                foreach (var kv in _graceSessions)
+                    if (time > kv.Value.ExpiresAt)
+                        (expired ??= new List<string>()).Add(kv.Key);
+                if (expired != null)
+                {
+                    foreach (var tk in expired) _graceSessions.Remove(tk);
+                    ReassignOwnership();
+                }
             }
         }
 
         /// <summary>Whether a connId is held by an active grace session (ADR-0034 — ReassignOwnership skips these).</summary>
         private bool IsInGraceSession(long connId)
         {
-            foreach (var kv in _graceSessions)
-                if (kv.Value.OldConnId == connId) return true;
-            return false;
+            lock (_gate)
+            {
+                foreach (var kv in _graceSessions)
+                    if (kv.Value.OldConnId == connId) return true;
+                return false;
+            }
         }
 
-        /// <summary>Grace session state (ADR-0034).</summary>
+        /// <summary>Grace session state (ADR-0034). The token is the opaque Base64 session key (ADR-0041) — never logged.</summary>
         private sealed class GraceSession
         {
-            public ulong Token;
+            public string Token = string.Empty;
             public long OldConnId;
             public double ExpiresAt;
             public List<ulong> OwnedNetIds = new();

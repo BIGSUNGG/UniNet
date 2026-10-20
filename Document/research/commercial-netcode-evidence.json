@@ -4,9 +4,16 @@
   "scope": {
     "unity": "6",
     "runtimeApi": "netstandard2.1",
-    "validatedPlatforms": ["Windows server", "Windows client"],
+    "validatedPlatforms": [
+      "Windows server",
+      "Windows client"
+    ],
     "authority": "server-authoritative self-hosted netcode",
-    "excluded": ["account/database/matchmaking/cloud service implementation", "non-Windows execution guarantee", "unconditional union of other networking paradigms"]
+    "excluded": [
+      "account/database/matchmaking/cloud service implementation",
+      "non-Windows execution guarantee",
+      "unconditional union of other networking paradigms"
+    ]
   },
   "baseline": {
     "commit": "1cee018baf7d20a7ea01480f37eaafe013f04b83",
@@ -25,7 +32,10 @@
       "status": "closed",
       "kind": "test-isolation-only",
       "commit": "d69739816e9f1d47678ac6d8060a2f4c0055cdf6",
-      "changedFiles": ["Sandbox/Assets/Tests/EditMode/MoveSimulationTests.cs", "Document/changelog.md"],
+      "changedFiles": [
+        "Sandbox/Assets/Tests/EditMode/MoveSimulationTests.cs",
+        "Document/changelog.md"
+      ],
       "worker": {
         "model": "zai/glm-5.3",
         "resolvedModelWithThinking": "zai/glm-5.3:high",
@@ -47,9 +57,30 @@
       },
       "regressionTest": "UniNet.Tests.MoveSimulationTests.잘못된_페이로드는_버려지고_예외가_새지_않는다",
       "validation": [
-        {"kind": "targeted EditMode", "jobId": "9e1859170206428f92a552cb6f87ecb0", "total": 1, "passed": 1, "failed": 0, "skipped": 0},
-        {"kind": "full EditMode", "jobId": "b9c3a0b1963749ee9ec965e6b9a4b758", "total": 132, "passed": 132, "failed": 0, "skipped": 0},
-        {"kind": "full PlayMode", "jobId": "daab8138afee4c8ab3545c9e2433c804", "total": 27, "passed": 27, "failed": 0, "skipped": 0}
+        {
+          "kind": "targeted EditMode",
+          "jobId": "9e1859170206428f92a552cb6f87ecb0",
+          "total": 1,
+          "passed": 1,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full EditMode",
+          "jobId": "b9c3a0b1963749ee9ec965e6b9a4b758",
+          "total": 132,
+          "passed": 132,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full PlayMode",
+          "jobId": "daab8138afee4c8ab3545c9e2433c804",
+          "total": 27,
+          "passed": 27,
+          "failed": 0,
+          "skipped": 0
+        }
       ],
       "releaseVersion": null,
       "arenaExampleRequired": false,
@@ -57,7 +88,98 @@
       "exemptionReason": "Runtime code, public API, diagnostics and runtime log contracts were not changed. Only the test now captures and asserts its expected fault and restores the global logger. No functional release or new Arena example is claimed."
     }
   ],
-  "functionalChanges": [],
+  "functionalChanges": [
+    {
+      "id": "SEC-001",
+      "status": "validated_pending_release",
+      "kind": "security-fix",
+      "adr": "Document/decisions/0041-세션-토큰-암호학적-난수-전환.md",
+      "featureDocument": "Document/features/connection-lifecycle.md",
+      "packageVersion": "0.4.0",
+      "generatorVersion": "0.2.8",
+      "worker": {
+        "model": "zai/glm-5.3",
+        "implementationRunId": "d6517bbf",
+        "implementationMetadata": ".pi-subagents/artifacts/d6517bbf_worker_meta.json",
+        "implementationTranscript": ".pi-subagents/artifacts/d6517bbf_worker_transcript.jsonl",
+        "fixPassMetadata": [
+          ".pi-subagents/artifacts/e46bf767_worker_meta.json",
+          ".pi-subagents/artifacts/fab09050_worker_meta.json",
+          ".pi-subagents/artifacts/bf6ad587_worker_meta.json",
+          ".pi-subagents/artifacts/66154991_worker_meta.json"
+        ],
+        "finalOutput": ".pi-subagents/artifacts/66154991_worker_output.md",
+        "modelsVerified": true
+      },
+      "regressionTests": [
+        "UniNet.Tests.ReconnectGraceTests.토큰은_256비트_난수_Base64이고_다중_발급이_유일하다",
+        "UniNet.Tests.ReconnectGraceTests.추측_토큰으로_피해자_소유권을_가로챌_수_없다",
+        "UniNet.Tests.ReconnectGraceTests.잘못된_connId_거절_후_올바른_연결로_재개_가능하다",
+        "UniNet.Tests.ReconnectGraceTests.중복_재개는_거부되고_소유권이_불변이다",
+        "UniNet.Tests.ReconnectGraceTests.재부착이_소유권을_새_연결로_이전한다",
+        "UniNet.Tests.ReconnectGraceTests.유예_만료_후_재배정이_고아를_입양한다",
+        "UniNet.Tests.ReconnectGraceTests.유예기간_중_소유권이_보존된다",
+        "UniNet.Tests.ReconnectGraceTests.유예_비활성_시_즉시_재배정",
+        "UniNet.Tests.ResumeRequestWireTests.정상_와이어_재개_요청은_생성_핸들러를_통해_소유권을_이전한다",
+        "UniNet.Tests.ResumeRequestWireTests.잘림_초과_위조_접두_요청은_세션을_소진하지_않고_이후_정상_재개가_성공한다"
+      ],
+      "arenaDiagnostic": {
+        "entry": "Arena scene (Play Mode) → ArenaBootstrap context menu → 'Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)'",
+        "precondition": "Play Mode only; active demo session is explicitly stopped first; re-entry guarded",
+        "subject": "NON-DYNAMIC marker in the real server registry; actual loopback RUDP client/server, marker ownership and player mapping; NOT full avatar recovery or the final three-process scenario",
+        "successLog": "[UNINET-VERIFY] SEC-001 DIAG PASS",
+        "run": {
+          "status": "passed",
+          "transport": "actual RUDP loopback in Unity Editor",
+          "rawEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
+          "assertions": ["two forged tokens rejected", "victim marker ownership unchanged", "genuine resume succeeds after forgery attempts", "player mapping restored", "diagnostic runtime cleaned up"]
+        }
+      },
+      "validation": [
+        {"kind": "targeted EditMode", "jobId": "b28cdbfe217f4116a9db19375a4efde1", "total": 10, "passed": 10, "failed": 0, "skipped": 0},
+        {"kind": "full EditMode", "jobId": "b3af36a5ae554620ab7f71c4e3d920b2", "total": 138, "passed": 138, "failed": 0, "skipped": 0},
+        {"kind": "full PlayMode", "jobId": "12ff2e92346b46d8b97ba90bef5d2a74", "total": 27, "passed": 27, "failed": 0, "skipped": 0},
+        {"kind": "CodeGenerator Release build", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-codegen-build-r2.log", "warning": "NU5128 analyzer-only package layout warning; no compiler errors"},
+        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.4.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation.log"}
+      ],
+      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
+      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/sec001-validated-input-blobs.json",
+      "analyzerReplacement": ".pi-subagents/artifacts/commercial-netcode/sec001-analyzer-replacement.json",
+      "review": {
+        "model": "zai/glm-5.3-flash",
+        "round": 3,
+        "verdict": "CLEAN",
+        "metadata": ".pi-subagents/artifacts/7a9d082e_reviewer_meta.json",
+        "output": ".pi-subagents/artifacts/7a9d082e_reviewer_output.md",
+        "history": [
+          {"round": 1, "verdict": "ISSUES", "metadata": ".pi-subagents/artifacts/4dee4939_reviewer_0_meta.json", "output": ".pi-subagents/artifacts/4dee4939_reviewer_0_output.md"},
+          {"round": 2, "verdict": "ISSUES", "metadata": ".pi-subagents/artifacts/105f3c09_reviewer_0_meta.json", "output": ".pi-subagents/artifacts/105f3c09_reviewer_0_output.md"}
+        ],
+        "documentationCheck": {
+          "status": "passed",
+          "verdict": "CLEAN",
+          "model": "zai/glm-5.3-flash",
+          "metadata": ".pi-subagents/artifacts/919b7a82_reviewer_meta.json",
+          "transcript": ".pi-subagents/artifacts/919b7a82_reviewer_transcript.jsonl",
+          "output": ".pi-subagents/artifacts/919b7a82_reviewer_output.md",
+          "scope": "Additional feature documentation and evidence consistency; source unchanged after round 3"
+        }
+      },
+      "synchronizedDocs": [
+        "Document/features/connection-lifecycle.md",
+        "Document/decisions/0041-세션-토큰-암호학적-난수-전환.md",
+        "Document/examples/arena-shooter.md",
+        "Document/overview.md",
+        "Document/deployment.md",
+        "Document/00-INDEX.md",
+        "Document/changelog.md",
+        "Package/CHANGELOG.md",
+        "README.md",
+        "skills/uninet/SKILL.md"
+      ],
+      "release": {"status": "not_published", "version": "0.4.0", "tag": "v0.4.0", "implementationCommit": null, "url": null, "ciRun": null}
+    }
+  ],
   "finalValidation": {
     "status": "not_started",
     "releasedCodeRef": null,

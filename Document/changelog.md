@@ -5,9 +5,26 @@
 
 ## [2026-10-19]
 
+### Added (세션 토큰 암호학적 난수 전환 — SEC-001, 패키지 0.4.0)
+
+- **세션 토큰을 256비트 암호학적 난수 opaque Base64로 전환** ([[0041-세션-토큰-암호학적-난수-전환]]·[[features/connection-lifecycle|connection-lifecycle]]) — 기존 시드+1 `ulong` 발급은 인접 토큰 예측으로 타인 유예 세션 소유권 탈취 가능(SEC-001 실기 확인). `RandomNumberGenerator` 32바이트 → Base64 44자(`SessionTokenBytes`/`MaxSessionTokenChars`). 비활성 = 빈 문자열. 발급은 활성/유예 토큰과 무충돌·스레드 안전(`_gate` 통일)
+- **`ResumeSession` 강화** — 토큰 일치·만료 전·새 연결 활성 3조건 통과 시에만 세션 소비. 잘못된/추측/만료/미발급 토큰·잘못된 connId는 거부만 하고 세션 미소진. 만료 제거·고아 재배정은 `SweepGraceSessions` 담당
+- **와이어 1(Welcome)·10(ResumeRequest) 토큰 `string`화 + 재개 파싱 전 페이로드 상한** — 위조 길이 접두의 대형 문자열 할당 차단. 토큰 원문은 로그·예외 금지, 에디터 디버거는 존재 표시(`issued (44 ch)`)로 마스킹
+- **타입 전파** — `IssueSessionToken`/`ServerConnection.SessionToken`/`NetworkClient.SessionToken`/`IUniNetSystemChannel.SendWelcome` → `string`. 생성기 0.2.8(Emitter Welcome/Resume 직렬화·조건). 테스트 채널 8곳 시그니처 동반
+- **테스트** — `ReconnectGraceTests` 8종(기존 4종 갱신 + 토큰 형식/유일성·추측 거부·connId 오류 미소진·중복 재개 거부 신규 4종). Arena 진단 `Diag/SEC-001 위조 토큰 재개 거부`(실서버/클라 API·토큰 미출력)
+- **문서·검증** — features/connection-lifecycle·ADR-0041·overview·README·skills/uninet/SKILL.md·00-INDEX·arena-shooter·deployment·audit·evidence.json 동기화. 회귀 **10/10**, EditMode **138/138**, PlayMode **27/27**, Arena 실제 RUDP 마커 진단 **DIAG PASS**, 소스 리뷰 **CLEAN**·패키지 정적 검증 PASS. 개별 게시 확인 전 SEC-001은 OPEN 유지. `ulong`→`string` 마이그레이션은 Package/CHANGELOG.md 0.4.0 참조. 설치 pin `#v0.4.0`, Arena 앱 식별자 `arena-2-uninet-0.4`; 커스텀 ProtocolVersion은 SDK/wire 변경 시 양단 함께 올려야 함. 0.3.0은 미배포 개발 이력으로 기록하고, 개요의 이미 해소된 상류 차단 과제·과거 테스트 수를 현재 점검 상태와 구분
+
 ### Added (상용 넷코드 내부 점검 — 진행 중)
 
 - **상용 셀프호스팅 넷코드 점검 대장** — [[research/commercial-netcode-audit]]에 런타임 C# 44개 파일의 조사 대응표, 코드로 확인된 문제와 추가 재현 후보, 기준 테스트 결과, 최초 내부 완료 후 타사 비교라는 순서를 기록. `research/commercial-netcode-evidence.json`에 지정 모델의 실제 실행 메타데이터·테스트 원시 결과·기능별 배포를 연결하는 증거대장 신설. 아직 기능 미해결 항목이 남아 있으며 완료 또는 배포를 주장하지 않음
+
+### Fixed (SEC-001 검토 r1 수정 — 미커밋 구현에 대한 fix pass)
+
+- **와이어 10 재개 상한 정정** — MessageProtocol 문자열은 int32 4바이트 길이 접두 + UTF8이다(부모 실측 48바이트/44자). 기존 `1+44=45` 상한은 정상 재개 요청 전면 거절 버그. `MaxResumeRequestPayloadBytes=48`로 정정·상한 초과·불량 입력(잘림·위조 접두 — 리더가 선언 길이를 버퍼 대조 후 슬라이스하므로 위조 접두는 할당이 아닌 예외)은 **조용히 폐기**(미인증 경로의 메시지마다 예외 기록 = 공격자 제어 콘솔 폭격). ADR-0041·Package/CHANGELOG 1바이트 서술 동시 정정
+- **디버거 클라 token 표시줄 괄호 누락 컴파일 오류 수리** + 전체 파일 괄호 균형 대조
+- **Arena 진단 재설계** — 기존 데모 런타임을 명시적 정상 정지(고아 7777 리스너 방지)·재진입 가드 추가, 소유 대상을 비동적 마커(실제 서버 레지스트리 등록)로 전환 — ClientStop 동적 스폰 소거가 아바타를 파괴해 유예 단언이 깨지는 기존 LIF/REC 갭 회피. "마커 기반이지 아바타 복구 검증 아님" 명시
+- **`ResumeRequestWireTests` 2종 신설** — 실제 MessageBufferWriter 페이로드를 생성 허브 `__ResumeRequest_Requested`(reflection)로 투입·PumpMain까지: 정상 48바이트 재개 성립·잘림/초과(49B)/위조 접두(100만 자 선언) 무소진·이후 정상 재개 성공 (core-direct 8종이 못 잡던 와이어 계층 회귀 방지)
+- **Package/CHANGELOG 0.3.0 미배포 개발 이력 보충** (공개 태그는 0.2.2까지 — 0.3.0 Release로 오기 금지)·evidence.json 검토 r1 fix-pass 기록·audit 진행 근거 갱신
 
 ### Fixed (테스트 격리 보수 — 런타임 무변경)
 

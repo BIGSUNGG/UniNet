@@ -21,8 +21,9 @@ namespace UniNet.Core.Hosting
         /// </summary>
         public string ServerProtocolVersion { get; set; }
 
-        /// <summary>Session token issued by the server in the Welcome (ADR-0034) — presented back on reconnect for grace-session reattach.</summary>
-        public ulong SessionToken { get; set; }
+        /// <summary>Session token issued by the server in the Welcome (ADR-0034/0041) — an opaque Base64 string presented back
+        /// on reconnect for grace-session reattach. Empty (or null) = no session: fresh connection, resume disabled/inactive.</summary>
+        public string SessionToken { get; set; } = string.Empty;
 
         /// <summary>Client-side UniNet traffic counters (ADR-0029) — payload bytes/packets received by this client and sent by its RPCs.</summary>
         public UniNetTrafficCounters TrafficStats { get; } = new();

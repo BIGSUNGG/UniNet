@@ -259,5 +259,139 @@ namespace Arena
                 NetworkDestroy(players[i].gameObject);
             }
         }
+
+#if UNITY_EDITOR
+        // ── SEC-001 (ADR-0041) in-editor diagnostic — real server/client/RUDP APIs on a side port ─────────────
+        // Proves: a forged/guessed session token cannot resume a victim's grace session (ownership unchanged),
+        // while the genuine token reattaches it over the real wire. The ownership subject is a NON-DYNAMIC marker
+        // registered in the real server registry — ClientStop's dynamic-spawn sweep would destroy a dynamic avatar
+        // (existing LIF/REC gap) and break the grace assertion, so this verifies MARKER-based ownership + resume +
+        // player mapping, NOT full avatar recovery (that remains REC-001). Token values are never logged.
+        // Precondition/behavior: an active demo session (any role) is EXPLICITLY and gracefully stopped first —
+        // never silently overwritten (an orphaned listener would keep accepting connections until play ends).
+        private const int DiagPort = ArenaConfig.Port + 7;
+        private static bool _sec001Running;   // re-entry guard — ContextMenu double-click protection
+
+        [ContextMenu("Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)")]
+        private async void RunSec001TokenDiagnostic()
+        {
+            const string tag = "[UNINET-VERIFY] SEC-001";
+            if (!Application.isPlaying)   // ContextMenu also shows in Edit Mode — the documented Play-Mode precondition, enforced: nothing is started or stopped otherwise
+            { Debug.LogError($"{tag} SKIP — Play Mode 전용 (씬 진입 후 플레이 상태에서 실행)"); return; }
+            if (_sec001Running) { Debug.LogError($"{tag} SKIP — 진단 이미 실행 중 (재진입 차단)"); return; }
+            _sec001Running = true;
+            try
+            {
+                // 0) stop any ACTIVE demo session gracefully (the same stop path as OnApplicationQuit, awaited) so the
+                // diagnostic never orphans the demo listener — announced, never a silent overwrite
+                if (UniNetEnvironment.Server != null || UniNetEnvironment.Client != null)
+                {
+                    Debug.Log($"{tag} 기존 데모 런타임 정상 정지 (role={_resolvedRole}) 후 진단 시작");
+                    if (_started)
+                    {
+                        switch (_resolvedRole)
+                        {
+                            case ArenaRole.Server: await UniNetManager.ServerStopAsync(); break;
+                            case ArenaRole.Host: await UniNetManager.HostStopAsync(); break;
+                            default: UniNetManager.ClientStop(); break;
+                        }
+                    }
+                    else
+                    {
+                        UniNetManager.ClientStop();
+                        await UniNetManager.ServerStopAsync();
+                    }
+                }
+                var options = new UniNet.Core.Hosting.UniNetEndpointOptions { ProtocolVersion = ArenaConfig.ProtocolVersion };
+
+                // 1) dedicated diagnostic runtime on a side port (grace 10 s) + a NON-DYNAMIC scene-style marker in the
+                // real server registry — it survives ClientStop's dynamic-spawn sweep (a dynamic avatar would not)
+                await UniNetManager.ServerAsync(DiagPort, options);
+                var server = UniNetEnvironment.Server;
+                server.SessionGraceSeconds = 10;
+                ulong netId = Fnv1a.Hash64("arena-sec001-ownership-marker");   // deterministic side id — no scene/prefab dependency
+                server.RegisterSceneObject(netId, new object[] { new object() });
+
+                // 2) victim connects — round-robin assigns the marker's ownership (only connection)
+                await UniNetManager.ClientAsync("127.0.0.1", DiagPort, options);
+                if (!await WaitAsync(() => UniNetEnvironment.Client != null && UniNetEnvironment.Client.LocalConnId != 0, 5, "피해자 Welcome")) return;
+                long victimConn = UniNetEnvironment.Client.LocalConnId;
+                string realToken = UniNetEnvironment.Client.SessionToken;   // secret — used in-process only, never logged
+                server.SetPlayerObject(victimConn, netId);
+                if (server.GetOwner(netId) != victimConn) { Debug.LogError($"{tag} 준비 실패 — 마커 소유자≠피해자"); return; }
+
+                // 3) victim drops — grace must hold the ownership (no other connection to reassign to)
+                UniNetManager.ClientStop();
+                if (!await WaitGoneAsync(victimConn, 5, "피해자 해제 관측")) return;
+                if (server.GetOwner(netId) != victimConn) { Debug.LogError($"{tag} 유예 보존 실패"); return; }
+
+                // 4) attacker joins twice with forged tokens — ownership must NOT move (SEC-001)
+                char[] mutated = realToken.ToCharArray();
+                mutated[0] = mutated[0] == 'A' ? 'B' : 'A';
+                string[] forgeries = { new string('A', 43) + "=", new string(mutated) };
+                for (int i = 0; i < forgeries.Length; i++)
+                {
+                    UniNetEnvironment.SetClient(new NetworkClient { SessionToken = forgeries[i] });
+                    await UniNetManager.ClientAsync("127.0.0.1", DiagPort, options);
+                    if (!await WaitAsync(() => UniNetEnvironment.Client != null && UniNetEnvironment.Client.LocalConnId != 0, 5, $"공격자{i} Welcome")) return;
+                    long attackerConn = UniNetEnvironment.Client.LocalConnId;
+                    await System.Threading.Tasks.Task.Delay(600);   // let the (forged) resume reach the server
+                    long owner = server.GetOwner(netId);
+                    if (owner == attackerConn) { Debug.LogError($"{tag} FAIL — 위조 토큰{i}로 소유권 탈취됨 (SEC-001 잔존)"); return; }
+                    if (owner != victimConn) { Debug.LogError($"{tag} FAIL — 예상 밖 재배정 owner={owner}"); return; }
+                    UniNetManager.ClientStop();
+                    if (!await WaitGoneAsync(attackerConn, 5, $"공격자{i} 해제 관측")) return;
+                }
+                Debug.Log($"{tag} 위조 토큰 2종(전제 추측·근접 변조) 재개 거부 — 피해자 마커 소유권 유지 PASS");
+
+                // 5) genuine token reattach via the documented ReconnectAsync path (marker ownership + player mapping)
+                UniNetEnvironment.SetClient(new NetworkClient { SessionToken = realToken });
+                bool reconnected = await UniNetManager.ReconnectAsync("127.0.0.1", DiagPort, options);
+                if (!reconnected || !await WaitAsync(() => server.GetOwner(netId) == UniNetEnvironment.Client?.LocalConnId, 5, "진짜 토큰 재부착"))
+                { Debug.LogError($"{tag} FAIL — 진짜 토큰 재부착 실패 (토큰이 공격 중 소진됨?)"); return; }
+                long resumedConn = UniNetEnvironment.Client.LocalConnId;
+                if (server.GetPlayerObject(resumedConn) != netId) { Debug.LogError($"{tag} FAIL — 플레이어 매핑 미복원"); return; }
+
+                Debug.Log($"{tag} 진짜 토큰 재부착 — 마커 소유권·플레이어 매핑 복원 PASS (위조 시도 후 세션 미소진)");
+                Debug.Log($"[UNINET-VERIFY] SEC-001 DIAG PASS — 위조 토큰 거부·피해자 소유권 유지·진짜 토큰 재부착 (마커 기반·아바타 복구 아님·토큰 원문 미출력)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                Debug.LogError($"{tag} 예외로 중단");
+            }
+            finally
+            {
+                UniNetManager.ClientStop();
+                UniNetManager.ServerStop();
+                _sec001Running = false;
+                Debug.Log($"{tag} 진단 종료 — 런타임 정리 (데모 부트스트랩은 재플레이로 복귀)");
+            }
+        }
+
+        private static async System.Threading.Tasks.Task<bool> WaitAsync(System.Func<bool> until, float seconds, string what)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(seconds);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (until()) return true;
+                await System.Threading.Tasks.Task.Delay(50);
+            }
+            Debug.LogError($"[UNINET-VERIFY] SEC-001 대기 실패 — {what}");
+            return false;
+        }
+
+        private static System.Threading.Tasks.Task<bool> WaitGoneAsync(long connId, float seconds, string what)
+        {
+            var server = UniNetEnvironment.Server;
+            if (server == null) return WaitAsync(() => false, seconds, what);
+            return WaitAsync(() =>
+            {
+                foreach (var conn in server.SnapshotConnections())
+                    if (conn.ConnId == connId) return false;
+                return true;
+            }, seconds, what);
+        }
+#endif
     }
 }

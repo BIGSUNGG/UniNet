@@ -55,8 +55,11 @@ namespace Arena
         public const int Damage = 25;
 
         /// <summary>Protocol-handshake version (ADR-0028) — the demo's build identity. Clients and servers from
-        /// different demo builds reject each other with a VersionMismatch kick; bump this when the demo's wire content changes.</summary>
-        public const string ProtocolVersion = "arena-1";
+        /// different demo builds reject each other with a VersionMismatch kick. This overrides the package-version default,
+        /// so it must be bumped on BOTH ends whenever the underlying SDK/wire changes — raised to "arena-2-uninet-0.4"
+        /// for UniNet 0.4.0 (SEC-001 token wire 1/10 change; the old "arena-1" would have accepted 0.3.x-era clients).
+        /// With the default (unset) ProtocolVersion the handshake compares package versions instead — see ADR-0041.</summary>
+        public const string ProtocolVersion = "arena-2-uninet-0.4";
 
         /// <summary>Per-connection ServerRpc rate limit (ADR-0032) - a generous normal-gameplay ceiling (the movement input stream peaks at MoveSimHz=60/s plus aim and fire) that still keeps macro floods out. 0 = unlimited.</summary>
         public const int ServerRpcRateLimitPerSecond = 200;

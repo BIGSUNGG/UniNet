@@ -274,7 +274,7 @@ namespace UniNet.Tests
             public long UniNetConnId { get; set; }
             internal readonly System.Collections.Generic.List<(ulong NetId, byte SubCount, ulong[] TypeKeys, byte[][] States)> Spawns = new();
 
-            public void SendWelcome(long connId, string serverVersion, ulong sessionToken) { }
+            public void SendWelcome(long connId, string serverVersion, string sessionToken) { }
             public void SendOwnerUpdate(ulong netId, long ownerConnId) { }
             public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) { }
             public void SendReplicateBatch(byte[] blob, DRPC.RpcDeliveryMode mode) { }

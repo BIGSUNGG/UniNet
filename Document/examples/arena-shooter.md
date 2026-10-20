@@ -17,7 +17,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 
 | 파일 | 역할 |
 | --- | --- |
-| `ArenaConfig.cs` | 시뮬레이션 상수·스폰 지점·기둥 규격 (단일 진실 공급원) |
+| `ArenaConfig.cs` | 시뮬레이션 상수·스폰 지점·기둥 규격 (단일 진실 공급원). 데모 빌드 식별자 `ProtocolVersion = "arena-2-uninet-0.4"` (ADR-0028/0041 — SDK 와이어 변경 시 양단 함께 상향) |
 | `ArenaRole.cs` | 역할 판별 — 인스펙터 강제값 → MPPM 태그 → MPPM 토폴로지 |
 | `ArenaBootstrap.cs` | 역할별 UniNet 시작 + 서버의 접속 수 ↔ 플레이어 수 동기화 |
 | `ArenaPlayer.cs` | RPC 3종·[Replicated] 조건 4종·RepNotify·서버 권위 시뮬레이션·로컬 입력·비주얼 |
@@ -106,6 +106,10 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 이동 규칙 단일 공급원 | 서버 권위 시뮬레이션과 클라 예측이 ArenaMovement.Step(상태 기반) 공유 — 점프 속도·대시 쿨다운이 상태로 롤백에서 정확 복원 | ArenaMovement |
 
 ## 자동 검증
+
+### 에디터 진단 (ContextMenu — SEC-001 세션 토큰)
+
+Arena 씬 Play Mode에서 `ArenaBootstrap` 컴포넌트의 컨텍스트 메뉴 **`Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)`** — 진입 시 실행 중 데모 런타임을 명시적으로 정상 정지한 뒤(조용한 덮어쓰기 금지·재진입 가드 포함) 사이드 포트(ArenaConfig.Port+7)에 자체 서버/클라 런타임을 띄워 실제 RUDP API로 ① 피해자 접속·**비동적 마커** 소유(ClientStop의 동적 스폰 소거가 아바타를 파괴하는 기존 LIF/REC 갭 회피) ② 전제 추측·근접 변조 토큰의 재개 거부·피해자 소유권 유지 ③ 진짜 토큰 `ReconnectAsync` 재부착·플레이어 매핑 복원을 Console `[UNINET-VERIFY] SEC-001` 로그로 확인한다(토큰 원문은 미출력). **마커 기반 소유권·재개 검증이며 실제 아바타 복구 검증이 아니다** — 유예 세션 계약은 ADR-0034/0041, 아바타 전체 복구는 REC-001 과제로 남는다.
 
 ### PlayMode 테스트 (Test Runner)
 

@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨
 - **최초 작성**: 2026-09-21
-- **마지막 갱신**: 2026-10-12 (ADR-0027 — 킥·종료 사유)
+- **마지막 갱신**: 2026-10-19 (ADR-0041 — 세션 토큰 보호·0.4.0 마이그레이션)
 
 ## 개요
 
@@ -57,8 +57,26 @@ UniNetManager.ClientDisconnected += reason =>   // ADR-0027·0028 — Kicked / S
 if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 ```
 
+## 재접속 토큰 보호 (0.4.0 — ADR-0041)
+
+결정 배경: [[0041-세션-토큰-암호학적-난수-전환]]. 이번 변경은 예측 가능한 증가 토큰을 교체하는 SEC-001이며, 재접속 전체 수명주기의 완결을 의미하지 않는다.
+
+| API / 설정 | 계약 |
+| --- | --- |
+| `NetworkClient.SessionToken` / `ServerConnection.SessionToken` | `string`. 암호학적 난수 32바이트의 opaque Base64 44자이며 빈 문자열/null은 비활성이다. 게임에서 값의 의미를 해석하거나 로그에 출력하지 않는다 |
+| `NetworkServer.IssueSessionToken()` | `string` 반환. 접속 처리에서 자동 발급하며 활성 연결·유예 세션의 토큰과 충돌하지 않는다. 일반 게임 코드는 직접 발급할 필요가 없다 |
+| `NetworkServer.SessionGraceSeconds` | 기본 0은 유예 비활성. 양수로 설정해야 연결 해제 후 재부착할 유예 세션이 보존된다 |
+| `NetworkServer.ResumeSession(string token, long newConnId)` | 메인 스레드의 서버 처리. 미만료 유예 토큰과 실제 살아 있는 새 연결이 모두 확인된 경우에만 소유권·플레이어 매핑을 이전하고 토큰을 소비한다. 잘못된 토큰·죽은/미지 연결은 세션을 소진하지 않는다 |
+
+- **와이어·입력 경계**: Welcome(와이어 1)과 ResumeRequest(와이어 10)의 토큰은 `string`이다. 재개 RPC 페이로드 상한은 int32 UTF-8 길이 접두 4바이트 + Base64 본문 44바이트 = **48바이트**(`MaxResumeRequestPayloadBytes`). 전송 계층의 헤더·암호화 오버헤드는 이 수치에 포함하지 않는다. 초과·잘림·위조 길이 입력은 조용히 폐기하며 수신 페이로드 카운터에는 집계한다.
+- **마이그레이션**: 토큰 저장·테스트 채널의 `ulong`을 `string`으로, `token == 0` 검사를 `string.IsNullOrEmpty(token)`으로 바꾼다. 생성기는 0.2.8이다. 기본 `ProtocolVersion`은 패키지 버전 비교로 0.3.x/0.4.0 혼속을 거부하지만, 커스텀 값을 쓰면 SDK/wire 변경 배포에서 앱 프로토콜 식별자도 양단 함께 올려야 한다. Arena는 `arena-2-uninet-0.4`를 사용한다.
+- **비밀 취급**: 토큰은 보유자가 세션을 재개할 수 있는 bearer 비밀이다. 난수화는 추측 방지이지 인증·기밀성 자체의 보장이 아니다. 실서비스는 인증·DTLS 설정과 함께 사용하고 토큰을 로그·HUD·분석 이벤트에 넣지 않는다. 에디터 디버거도 원문 대신 발급 여부·길이만 표시한다.
+- **기존 한계**: `ReconnectAsync`의 반환값은 서버의 재부착 성공 응답이 아니다. 빠른 재접속 경합·결과 통보·아바타 정리와 유예의 상호작용은 REC-001, 연결 승인/독립 wire 버전 게이트는 CON-001/002에 남아 있다. 자발적 `ClientStop`은 클라이언트 환경을 지우므로 일반적인 원격 연결 상실 후 재접속과 구분한다.
+- **Arena 예시**: Play Mode의 `ArenaBootstrap` 메뉴 `Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)`는 기존 데모 세션을 명시적으로 정지하고 실제 RUDP로 위조 토큰 거부·정상 재부착·플레이어 매핑 복원을 검증한다. 비동적 마커를 사용하며 **아바타 복구 검증은 아니다**. 진단의 환경/토큰 주입은 공격 재현용 테스트 절차이지 게임 수명주기의 권장 사용법이 아니다. 성공 마커는 `[UNINET-VERIFY] SEC-001 DIAG PASS`다.
+
 ## 테스트 / 검증
 
+- 2026-10-19 SEC-001 배포 준비 검증 — `ReconnectGraceTests` 8종 + `ResumeRequestWireTests` 2종 **10/10**, EditMode 전수 **138/138**, PlayMode 전수 **27/27**, Arena 실제 RUDP 진단 **DIAG PASS**. 잘못된 연결·중복 재개·위조 토큰·48바이트 정상 요청·초과/잘림/위조 접두 후 정상 재개·폐기 트래픽 카운터를 확인했다. 원시 증거와 개별 배포 상태는 `Document/research/commercial-netcode-evidence.json` 참조
 - EditMode `LifecycleEventTests` 4종 — 발화 순서(접속→해제)·소유권 재배정 전 발화 계약·접속 경로 구독자 예외 격리와 펌프 잔여 작업 보존·해제 경로 예외 무관 재배정 보장
 - PlayMode `LifecycleEventPlayTests` 2종 — 실제 루프백 RUDP 세션에서 서버/클라 이벤트·상태 조회(환영 ID 일치·원격 종료 콜백 + **서버 정지 사유 ServerShutdown 검증**), Arena 방식 퇴장 아바타 파괴와 서버 등록 해제
 - EditMode `DisconnectNoticeTests` 3종 (ADR-0027) — 킥 공지 대상 연결 한정 전송·미지 연결 false·서버 종료 공지 전 연결 전달
@@ -70,6 +88,7 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 
 ## 변경 이력
 
+- 2026-10-19 — ADR-0041 세션 토큰 보호: 256비트 난수 Base64 `string`, 재부착 전 유효 연결 검증, 48바이트 재개 입력 상한·조용한 폐기·수신 카운터, 디버거 마스킹. 0.4.0 API/wire 마이그레이션·재접속 잔여 한계·Arena 마커 진단 및 실행 근거 반영
 - 2026-10-12 — ADR-0028 프로토콜/빌드 버전 핸드셰이크: `UniNetEndpointOptions.ProtocolVersion`·와이어 7 버전 선언·Welcome 서버 버전 필드·불일치 `VersionMismatch` 거부(제너레이터 0.2.3)
 - 2026-10-12 — ADR-0027 킥·종료 사유: `DisconnectClient` API·와이어 시스템 메시지 6·`ClientDisconnected` 사유 인자로 서명 변경(파괴적·마이그레이션 노트 ADR 참조)·제너레이터 0.2.2
 - 2026-09-21 — 리뷰 라운드 1 수정 반영 (해제 경로 재배정 finally 보장·플래그 레이스 제거·허브 동일성 필터·ClientStop 서술 정정·EDI 재던짐·스톰 가이드)

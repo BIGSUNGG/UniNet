@@ -111,7 +111,7 @@ namespace UniNet.Tests
             internal readonly System.Collections.Generic.List<ulong> Spawns = new();
             internal readonly System.Collections.Generic.List<ulong> Destroys = new();
 
-            public void SendWelcome(long connId, string serverVersion, ulong sessionToken) => WelcomeConnId = connId;
+            public void SendWelcome(long connId, string serverVersion, string sessionToken) => WelcomeConnId = connId;
             public void SendOwnerUpdate(ulong netId, long ownerConnId) => OwnerUpdates.Add((netId, ownerConnId));
             public void SendReplicate(ulong netId, byte subId, int methodId, byte[] payload) { }
             public void SendReplicateBatch(byte[] blob, RpcDeliveryMode mode) { }

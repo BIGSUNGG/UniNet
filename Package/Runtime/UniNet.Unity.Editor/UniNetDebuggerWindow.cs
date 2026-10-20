@@ -84,7 +84,8 @@ namespace UniNet.Unity.Editor
                     EditorGUILayout.LabelField(server.IsClientSceneReady(conn.ConnId) ? "✓" : "…", GUILayout.Width(50));
                     long drops = server.GetRateLimitedServerRpcDrops(conn.ConnId);
                     EditorGUILayout.LabelField(drops > 0 ? drops.ToString() : "0", GUILayout.Width(80));
-                    EditorGUILayout.LabelField($"0x{conn.SessionToken:X}", GUILayout.Width(120));
+                    // ADR-0041 — the token is a secret reattach credential: show presence/shape only, never the value
+                    EditorGUILayout.LabelField(string.IsNullOrEmpty(conn.SessionToken) ? "none" : $"issued ({conn.SessionToken.Length} ch)", GUILayout.Width(120));
                     EditorGUILayout.EndHorizontal();
                 }
                 EditorGUILayout.EndVertical();
@@ -142,7 +143,7 @@ namespace UniNet.Unity.Editor
             EditorGUI.indentLevel++;
 
             EditorGUILayout.LabelField($"ConnId: {client.LocalConnId}");
-            EditorGUILayout.LabelField($"Session token: 0x{client.SessionToken:X}");
+            EditorGUILayout.LabelField("Session token: " + (string.IsNullOrEmpty(client.SessionToken) ? "none" : $"issued ({client.SessionToken.Length} ch)"));   // ADR-0041 — value never shown
             EditorGUILayout.LabelField($"Server version: {client.ServerProtocolVersion ?? "…"}");
             EditorGUILayout.LabelField($"RTT: {(client.RoundTripTimeMs >= 0 ? $"{client.RoundTripTimeMs:F0}ms" : "…")}");
             EditorGUILayout.LabelField($"Last disconnect: {client.LastDisconnectReason}");

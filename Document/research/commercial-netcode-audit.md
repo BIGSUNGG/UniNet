@@ -25,8 +25,8 @@
 | RPC·생성기 조사 | `.pi-subagents/artifacts/28fac812_scout_0_output.md` |
 | 복제·스폰 조사 | `.pi-subagents/artifacts/2fcc3b6b_scout_0_output.md` |
 | 이동·시간 조사 | `.pi-subagents/artifacts/795a250f_scout_0_output.md` |
-| 기준 테스트 보수 worker | `.pi-subagents/artifacts/commercial-netcode/worker-baseline-test.md` (원 실행 `1690c8bf`, 재개 `7f89c2eb`) |
-| 기준 테스트 보수 reviewer | `.pi-subagents/artifacts/commercial-netcode/review-baseline-test-r1.md` (원 실행 `21c02b2e`, 형식 보완 재개 `226be8e4`) |
+| 기준 테스트 보수 worker | `.pi-subagents/artifacts/7f89c2eb_worker_output.md` (원 실행 `1690c8bf`, 재개 `7f89c2eb`; 재사용 출력 별칭 대신 해당 실행의 고정 산출물) |
+| 기준 테스트 보수 reviewer | `.pi-subagents/artifacts/226be8e4_reviewer_output.md` (원 실행 `21c02b2e`, 형식 보완 재개 `226be8e4`) |
 
 하네스 파일은 배포 패키지에 넣지 않는다. 최종 기능별 증거대장은 같은 폴더의 `commercial-netcode-evidence.json`에 원시 실행·테스트·배포를 연결한다.
 
@@ -88,8 +88,8 @@
 | ID | 상태 | 문제·증거 | 필요한 확인/해결 |
 | --- | --- | --- | --- |
 | QA-001 | CLOSED | 잘린 이동 입력 테스트가 전역 LogFault의 실제 예외 로그를 미기대. 기준 EditMode job `b0e1e2fd3ace401382514bfc7a88b3e2`에서 재현 | 테스트 보수 커밋 `d697398`; targeted 1/1·EditMode 132/132·PlayMode 27/27, 지정 모델 reviewer CLEAN. 런타임·배포 버전 무변경 |
-| SEC-001 | OPEN | `NetworkServer.cs:76-79` 세션 토큰이 시드 뒤 +1 발급. `ResumeSession:601-619`은 토큰 소유자를 재개 대상으로 사용. 실제 Unity 호출에서 인접 토큰 예측 가능 `true`(비밀 값 출력 안 함) | 암호학적 난수·비제로/충돌 처리·유효 재개 연결 검증. 이웃 토큰 추측으로 소유권을 가져가지 못하는 회귀·Arena 시나리오 |
-| CON-001 | OPEN | `NetworkServer.AttachConnection:361-383`이 버전 수용 전에 소유권·전체 상태·접속 이벤트 실행. `AllowsServerRpc:463-485`에도 핸드셰이크 완료 게이트 없음 | 버전 미선언·불일치·타임아웃 상태에서 게임 데이터/RPC 차단을 실제 세션으로 검증하고 승인 수명주기 정립 |
+| SEC-001 | OPEN | 시작 기준점의 `NetworkServer.cs:76-79`는 증가 ulong 토큰, `ResumeSession:601-619`은 bearer 토큰으로 재부착. 실제 Unity에서 인접 토큰 예측 가능 `true` 확인(비밀 미출력) | **실행 검증 완료·개별 배포 대기(2026-10-19)**: ADR-0041, 토큰 RNG 256비트 Base64 string·48바이트 재개 상한·유효 연결 검증·조용한 거절과 수신 카운터·디버거 마스킹. 생성기 0.2.8 DLL 재빌드/배치·패키지 정적 검증, 회귀 10/10·EditMode 138/138·PlayMode 27/27·Arena 실제 RUDP 마커 진단 PASS, 지정 모델 소스 리뷰 r3 CLEAN. Arena는 아바타 복구나 최종 3프로세스 검증을 주장하지 않는다. 원시 증거·수정 이력은 evidence.json 참조. 0.4.0 신규 설치·개별 게시 확인 전까지 OPEN |
+| CON-001 | OPEN | `NetworkServer.AttachConnection:361-383`이 버전 수용 전에 소유권·전체 상태·접속 이벤트 실행. `AllowsServerRpc:463-485`에도 핸드셰이크 완료 게이트 없음. 커스텀 ProtocolVersion은 SDK 버전 비교를 대체함 | 버전 미선언·불일치·타임아웃 상태에서 게임 데이터/RPC 차단과 승인 수명주기를 정립. 앱 식별자가 같아도 다른 SDK wire를 구분할 독립 검증 필요(SEC-001의 Arena 식별자 상향은 해당 데모의 마이그레이션일 뿐 이 게이트 구현이 아님) |
 | CON-002 | INVESTIGATE | `UniNetEndpointOptions`에는 공통 연결 키만 있고 게임별 자격 증명을 검사하는 접속 승인 확장점이 없음 | 계정 서비스 구축은 제외하되 게임 제공 인증/승인 콜백이 데이터 노출 전에 실행되는 연결 계약 필요성·API 확정 |
 | REC-001 | OPEN | ADR-0034가 빠른 재접속 실패 창·결과 통보 부재를 명시. `UniNetManager.ReconnectAsync:91-97`은 재부착 결과와 무관하게 연결 후 true 반환 | 재개 승인/거절 결과, 기존 연결 감지 전 재개 경합, 토큰 수명·만료·새 연결 유효성·게임 아바타 보존을 실제 세션으로 검증 |
 | OWN-001 | OPEN | `NetworkServer.SendCatchup:794-820`은 기존 소유권을 전송하지 않음. 살아 있는 소유자는 ReassignOwnership이 유지. `SendVisibilityState:1216-1235`도 씬 객체 경로에는 소유권 통보 없음 | 씬/동적 후발 캐치업과 씬 가시성 복귀의 owner 기준선. 기존 동적 가시성 복귀에는 이미 통보가 있으므로 중복 결함으로 세지 않음 |

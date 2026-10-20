@@ -90,8 +90,8 @@ namespace UniNet.Unity
         /// </summary>
         public static async Task<bool> ReconnectAsync(string address, int port, UniNetEndpointOptions options = null)
         {
-            var prevToken = UniNetEnvironment.Client?.SessionToken ?? 0;
-            if (prevToken == 0) return false;
+            var prevToken = UniNetEnvironment.Client?.SessionToken ?? string.Empty;
+            if (prevToken.Length == 0) return false;   // no stored session — nothing to resume (inactive: empty token)
             await ClientAsync(address, port, options);
             return true;
         }
@@ -105,9 +105,9 @@ namespace UniNet.Unity
         {
             var factory = RequireFactory();
             UniNetDriver.Ensure();
-            var prevToken = UniNetEnvironment.Client?.SessionToken ?? 0;
+            var prevToken = UniNetEnvironment.Client?.SessionToken ?? string.Empty;
             UniNetEnvironment.SetClient(new NetworkClient());
-            UniNetEnvironment.Client.SessionToken = prevToken;   // ADR-0034 — carry for reattach
+            UniNetEnvironment.Client.SessionToken = prevToken;   // ADR-0034 — carry for reattach (empty = fresh session)
             UniNetEnvironment.SetClientSender(null);   // so a stale session hub's late Disconnected fails the hub identity filter
             UniNetEnvironment.LocalProtocolVersion = options?.ProtocolVersion ?? UniNet.Core.UniNetInfo.Version;   // ADR-0028 — declared on connect by the generated hub
             NetworkBehaviour.RegisterAllToClient();

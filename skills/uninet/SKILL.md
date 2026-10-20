@@ -21,10 +21,10 @@ UniNet is a **server-authoritative** networking framework for Unity, targeting t
 Add one line to your project's `Packages/manifest.json`:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.3.0"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.0"
 ```
 
-- `#v0.3.0` pins a release tag (omit to track the default branch).
+- `#v0.4.0` pins a release tag (omit to track the default branch).
 - All dependencies are bundled — no NuGet feed, no extra config. Private repos work if your editor account can `git clone`.
 
 ### Mental model
@@ -173,6 +173,8 @@ server.SetPlayerObject(connId, avatar.NetId);                    // declare the 
 UniNetManager.DestroyObjectsOwnedBy(connId);                    // departure cleanup — network destroy + local GO destroy of the leaver's dynamic objects (Core server.DestroyObjectsOwnedBy is network-only)
 server.ServerRpcRateLimitPerSecond = 120;                          // per-connection flood guard (ADR-0032) — 0 = unlimited; drops counted in RateLimitedServerRpcDrops
 server.SessionGraceSeconds = 10;  // reconnect grace (ADR-0034) — preserve ownership for 10 s; 0 = off
+// The session token behind it (ADR-0041) is a 256-bit random opaque string issued in the Welcome and carried by
+// ReconnectAsync/ClientAsync — treat it as a secret: never log or persist it; it is never printed by UniNet.
 server.LoadScene("BattleScene");                               // scene transition (ADR-0035) — clients auto-load + report; gate event:
 // Editor debugging: Window → UniNet → Network Debugger — live connections, traffic, objects, ownership (ADR-0036)
 server.AllClientsSceneLoaded += scene => { /* all clients ready — start gameplay */ };
@@ -183,6 +185,9 @@ var options = new UniNetEndpointOptions { ProtocolVersion = "mygame-1.4.2" };
 options.DisconnectTimeoutMs = 10000;                             // keep-alive tuning (ADR-0033) — 0 = transport default 5000 ms; raise for lossy/mobile links (the 1 Hz RTT probe keeps traffic flowing)
 await UniNetManager.ServerAsync(port, options);              // server enforces (ExpectedProtocolVersion)
 await UniNetManager.ClientAsync(host, port, options);        // client declares on connect — mismatch rejects with the VersionMismatch reason
+// Constraint: with the DEFAULT ProtocolVersion the handshake compares package versions (a 0.3.x client is rejected by a 0.4.0
+// server). A CUSTOM ProtocolVersion compares YOUR identifier only — on an SDK/wire-changing release (like 0.4.0) you must bump
+// your app protocol identifier on BOTH ends yourself, or old clients keep passing the handshake with an incompatible wire.
 
 // Network statistics (ADR-0029) — application-bandwidth view (UniNet payload bytes; wire framing excluded):
 var st = server.TrafficStats;                                 // BytesSent/BytesReceived/PacketsSent/PacketsReceived (Interlocked)
