@@ -5,6 +5,10 @@
 
 ## [2026-10-20]
 
+### Changed (CON-001 개별 배포 확인)
+
+- **v0.6.0 게시 완료** — 구현 `c2d4c8e`·[GitHub Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.6.0), main/tag CI success·원격 태그와 패키지 0.6.0 일치 확인. 회귀 8종·타깝 8/8·EditMode 163/163·PlayMode 29/29·실경로 최소 재현·Arena 실RUDP·신규 로컬 Git 설치/샘플 컴파일 PASS, Flash r1 권장(핫패스 할당) 수용 후 r2 CLEAN. 검증 중 발견된 치명 회귀 2건 — attach 스레드에서 Unity Time API 호출로 실제 클라 attach 전면 중단(22/29 실패, 백그라운드 스레드 LocalClock throw 실증으로 규명)·생성기 0.2.9 DLL 미배포(UTF-16 문자열 grep 오검증) — 모두 수정·원시 이력 보존 후 전수 재검증. CON-001 CLOSED, 사용자 자산 해시 보존·커밋 제외 확인.
+
 ### Added (연결 승인 수명주기 — CON-001, 패키지 0.6.0)
 
 - **미선언 연결의 게임 데이터 유보·타임아웃 킥** (CON-001 ·[[0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보]]·[[features/connection-lifecycle|connection-lifecycle]]) — ADR-0028은 불일치만 거부했고 '선언 자체를 안 함' 경로가 맹점이었다(미검증 연결이 소유권·캐치업·복제·게임 RPC 전체 사용)

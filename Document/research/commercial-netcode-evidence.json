@@ -603,7 +603,7 @@
     },
     {
       "id": "CON-001",
-      "status": "validated_pending_review_and_release",
+      "status": "closed",
       "kind": "connection-approval-gate",
       "packageVersion": "0.6.0",
       "generatorVersion": "0.2.9",
@@ -679,7 +679,19 @@
           "kind": "package validation",
           "command": "bash Package/tools/validate-package.sh --tag v0.6.0",
           "exitCode": 0,
-          "log": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation.log"
+          "log": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation.log",
+          "precommitLog": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation-precommit.log"
+        },
+        {
+          "kind": "fresh Unity install from committed local Git URL",
+          "command": "timeout 600 bash Package/tools/verify-install.sh",
+          "exitCode": 0,
+          "commit": "c2d4c8e7b3e915fcbd41ac3314584eaace812059",
+          "sampleCompiled": true,
+          "log": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local.log",
+          "unityLog": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local-unity.log",
+          "packageLock": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local-packages-lock.json",
+          "note": "Local-Git gate; the final public-tag install gate remains."
         }
       ],
       "validationHistory": [
@@ -734,9 +746,20 @@
         ]
       },
       "release": {
-        "status": "not_published",
+        "status": "published",
         "version": "0.6.0",
-        "tag": "v0.6.0"
+        "tag": "v0.6.0",
+        "implementationCommit": "c2d4c8e7b3e915fcbd41ac3314584eaace812059",
+        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.6.0",
+        "publishedAt": "2026-10-20T04:52:56Z",
+        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39371895239",
+        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39371895200",
+        "ciConclusion": "success",
+        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-ci-runs.json",
+        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-release.json",
+        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-remote-tag.txt",
+        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-remote-package.json",
+        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-staged-paths.json"
       }
     }
   ],
