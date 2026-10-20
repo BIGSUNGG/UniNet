@@ -24,6 +24,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // catch-up — no viewer position → always relevant → full state + seed
             ch.Clear();
 
@@ -48,6 +49,7 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "rel-late");   // registered after connect
@@ -69,7 +71,9 @@ namespace UniNet.Tests
             var ch1 = new RecordingChannel();
             var ch2 = new RecordingChannel();
             server.AttachConnection(ch1);   // ConnId 1 — rejected by the hook
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(ch2);   // ConnId 2 — allowed by the hook
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             Assert.AreEqual(0, ch1.Replicates.Count, "거부 연결 — 캐치업 제외");
@@ -87,6 +91,7 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             server.SetViewerPosition(ch.UniNetConnId, 100f, 0f, 0f);   // 100 units from the dynamic object at the origin — outside the cull
 

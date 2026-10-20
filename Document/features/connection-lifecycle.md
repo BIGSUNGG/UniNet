@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨
 - **최초 작성**: 2026-09-21
-- **마지막 갱신**: 2026-10-19 (ADR-0041 — 세션 토큰 보호·0.4.0 마이그레이션)
+- **마지막 갱신**: 2026-10-20 (ADR-0043 — 연결 승인 수명주기·0.6.0)
 
 ## 개요
 
@@ -57,6 +57,10 @@ UniNetManager.ClientDisconnected += reason =>   // ADR-0027·0028 — Kicked / S
 if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 ```
 
+## 연결 승인 수명주기 (0.6.0 — ADR-0043)
+
+버전 검사가 활성(기본 — `ProtocolVersion` 비었지 않음)인 한, 와이어 7 선언이 수용되기 전까지 연결은 **Welcome만 수신**한다. 미승인 연결은 소유권 재배정(후보·수신)·캐치업·복제 틱·스폰/파괴 통보·LoadScene 브로드캐스트·씬 준비 게이트·`ClientConnected`에서 제외되고, 생성 허브의 게임 ServerRpc는 `IsVersionApproved` 게이트에서 조용히 기각된다(`UnapprovedServerRpcDrops` 카운터). 시스템 와이어 7/8/10/12는 게이트 밖 — 핸드셰이크 생존 필수. 승인 시 보류 작업이 기존 순서(대기 씬→재배정→캐치업→`ClientConnected`)로 정확히 1회 실행되고 재선언은 멱등이다. 미승인 연결의 해제는 `ClientDisconnected`·유예 세션 없이 조용히 정리된다. 미선언 연결은 `VersionDeclareTimeoutMs`(기본 10000, 0=스윕 비활성) 후 기존 킥 경로로 `VersionMismatch` 퇴장된다. `ProtocolVersion`을 빈 문자열로 두면 즉시 동기 승인 — 기존 동작 완전 호환. 실제 클라이언트는 생성 허브가 자동 선언하므로 무변경.
+
 ## 재접속 토큰 보호 (0.4.0 — ADR-0041)
 
 결정 배경: [[0041-세션-토큰-암호학적-난수-전환]]. 이번 변경은 예측 가능한 증가 토큰을 교체하는 SEC-001이며, 재접속 전체 수명주기의 완결을 의미하지 않는다.
@@ -87,6 +91,8 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - 2026-10-12: EditMode 87/87 · PlayMode 22/22 (MCP 에디터) · 2-프로세스 킥·버전 왕복 PASS
 
 ## 변경 이력
+
+- 2026-10-20 — ADR-0043 연결 승인 수명주기: 미선언 연결 게임 데이터 유보(소유권·캐치업·복제·이벤트·RPC 게이트)·승인 시 순서 보장 해제·미선언 타임아웃 킥(`VersionDeclareTimeoutMs`)·제너레이터 0.2.9. 0.6.0 (CON-001)
 
 - 2026-10-19 — ADR-0041 세션 토큰 보호: 256비트 난수 Base64 `string`, 재부착 전 유효 연결 검증, 48바이트 재개 입력 상한·조용한 폐기·수신 카운터, 디버거 마스킹. 0.4.0 API/wire 마이그레이션·재접속 잔여 한계·Arena 마커 진단 및 실행 근거 반영
 - 2026-10-12 — ADR-0028 프로토콜/빌드 버전 핸드셰이크: `UniNetEndpointOptions.ProtocolVersion`·와이어 7 버전 선언·Welcome 서버 버전 필드·불일치 `VersionMismatch` 거부(제너레이터 0.2.3)

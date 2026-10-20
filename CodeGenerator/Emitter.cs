@@ -106,6 +106,11 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("                {");
             sb.AppendLine($"                    var __srv = {Env}.Server;");
             sb.AppendLine("                    __srv?.TrafficStats.OnReceived(data.Length);   // ADR-0029");
+            sb.AppendLine("                    if (__srv != null && !__srv.IsVersionApproved(UniNetConnId))   // CON-001 - undeclared connections get no game ServerRpc (wires 7/8/10/12 register separately and bypass this gate - the handshake must survive it)");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        __srv.ReportUnapprovedServerRpc(UniNetConnId);   // quiet drop - the global counter is the only observable");
+            sb.AppendLine("                        return global::System.Threading.Tasks.Task.FromResult(global::System.Array.Empty<byte>());");
+            sb.AppendLine("                    }");
             sb.AppendLine("                    if (__srv != null && !__srv.AllowsServerRpc(UniNetConnId))   // ADR-0032 - per-connection rate limit");
             sb.AppendLine("                    {");
             sb.AppendLine("                        if (global::UniNet.Core.Hosting.NetworkServer.ReportServerRpcRejection(UniNetConnId))   // throttled - first per sender + one per 5 s (floods stay silent)");

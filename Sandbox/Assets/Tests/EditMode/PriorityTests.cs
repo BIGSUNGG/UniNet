@@ -33,6 +33,7 @@ namespace UniNet.Tests
             server.ReplicationBudgetPerTickBytes = 8;   // a SpawnablePlayer Score delta = mask(4) + int(4) = 8 bytes — allows exactly one
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var high = RegisterScenePlayer(server, "prio-high", 1);
@@ -71,6 +72,7 @@ namespace UniNet.Tests
             server.ReplicationBudgetPerTickBytes = 8;
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var a = RegisterScenePlayer(server, "prio-a", 1);
@@ -104,6 +106,7 @@ namespace UniNet.Tests
             server.ReplicationBudgetPerTickBytes = 8;
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var high = RegisterScenePlayer(server, "starve-high", 1);   // changed every tick — priority 2
@@ -143,6 +146,7 @@ namespace UniNet.Tests
             Assert.AreEqual(0, server.ReplicationBudgetPerTickBytes);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var high = RegisterScenePlayer(server, "prio-unl1", 1);
@@ -170,6 +174,7 @@ namespace UniNet.Tests
             server.ReplicationBudgetPerTickBytes = 8;
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var x = RegisterScenePlayer(server, "prio-x", 1);   // priority 1 — keeps getting deferred
@@ -218,6 +223,7 @@ namespace UniNet.Tests
             server.ReplicationBudgetPerTickBytes = 8;
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var x = RegisterScenePlayer(server, "prio-big", 1);

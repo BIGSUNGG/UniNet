@@ -87,6 +87,7 @@
 - [[0040-복제-주기-기본값-30Hz]] — NetworkUpdateFrequencyHz 기본 0(무제한)→30. 0 설정으로 매 틱 옵트인
 - [[0041-세션-토큰-암호학적-난수-전환]] — SEC-001: 세션 토큰을 256비트 암호학적 난수 opaque Base64로 전환(와이어 1/10 string화·파싱 전 상한·재개 3조건 소비·추측/오류로 세션 미소진·비밀 미출력)
 - [[0042-이동-소유권-전이-스트림-리셋-에포크]] — MOV-001: NetworkClient.OwnershipChanged 값변경 이벤트·MoveSimulation.ResetOwnershipStream(TState 보존)·이동 소유권 epoch(봉투 접두·불일치 기각)로 소유권 전이 후 새 스트림 즉시 채택 (0.5.0)
+- [[0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보]] — CON-001: 버전 선언 수용 전 소유권·캐치업·복제·게임 RPC 유보, 승인 시 기존 순서로 해제, 미선언 타임아웃 킥 (0.6.0, 제너레이터 0.2.9)
 
 ### deployment — 배포
 
@@ -98,6 +99,8 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-20 — **CON-001 v0.6.0 구현 — 연결 승인 수명주기** (ADR-0043·[[features/connection-lifecycle]] 갱신. 미선언 연결은 Welcome만 받고 승인(와이어 7 수용)까지 게임 데이터 전면 유보 — 소유권 재배정·캐치업·복제·스폰·ClientConnected·씬 게이트·생성 허브 게임 ServerRpc 게이트(IsVersionApproved·UnapprovedServerRpcDrops 카운터, 제너레이터 0.2.9). 승인 시 기존 순서로 1회 해제(멱등), 불일치 기존 킥 유지, 미선언 타임아웃 VersionDeclareTimeoutMs(기본 10s·0=비활성) 스윕 킥. 빈 기대버전은 현행 완전 호환. EditMode 7종+기존 100 attach 지점 선언 정합화·PlayMode 실RUDP 1종. 실기·CLEAN·배포·감사 CLOSED 전환은 부모 진행 중)
 
 - 2026-10-20 — **MOV-001 v0.5.0 구현 — 이동 소유권 전이 스트림 리셋·epoch** (ADR-0042·[[features/movement-prediction]] 갱신. `NetworkClient.OwnershipChanged` 값변경 이벤트(디스패치 스레드→QueueOnMain)·`MoveSimulation.ResetOwnershipStream`(권위 TState 보존)·`NetworkTransform` 이동 epoch([Replicated(OwnerOnly)]·봉투 `[uint epoch][int len][byte[]]` 접두·RPC 시그니처·시스템 메시지 불변·생성기 재빌드 불필요)·불일치 조용 기각+`MoveEpochMismatches` 카운터·클라 양경로 재바인딩·호스트 이중 리셋 가드. 파괴 변경 2종(인터페이스 메서드·봉투 레이아웃). **검증·배포 완료**: 회귀 9종·타깃 28/28·EditMode 155/155·PlayMode 28/28·Arena 실RUDP 사이클·신규 설치·Flash r2 CLEAN·v0.5.0 Release·main/tag CI 성공 — 구현 `3c3b4df`, MOV-001 CLOSED)
 

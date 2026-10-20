@@ -51,6 +51,7 @@ namespace UniNet.Unity
             UniNetDriver.Ensure();
             var server = new NetworkServer();
             server.ExpectedProtocolVersion = options?.ProtocolVersion ?? UniNet.Core.UniNetInfo.Version;   // ADR-0028 — handshake expectation
+            server.VersionDeclareTimeoutMs = options?.VersionDeclareTimeoutMs ?? 10000;   // CON-001 — undeclared-connection kick timeout (0 = hold indefinitely)
             UniNetEnvironment.SetServer(server);
             NetworkBehaviour.RegisterAllToServer();
 
@@ -433,6 +434,7 @@ namespace UniNet.Unity
                 RecordRewindHistory(alive, Time.unscaledTimeAsDouble);   // P4 — record positions for rewind-tracked objects
                 server.TickReplication(alive, Time.unscaledTimeAsDouble);
                 server.SweepGraceSessions(Time.unscaledTimeAsDouble);   // ADR-0034 — expire grace sessions   // feed the real clock — activates P3 rate and starvation policies
+                server.SweepUnapprovedConnections(Time.unscaledTimeAsDouble);   // CON-001 — kick undeclared connections at the same cadence
                 BroadcastTimeSync(server, Time.unscaledTimeAsDouble);   // P4 — time sync (once per second)
             }
 

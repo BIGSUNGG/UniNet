@@ -50,11 +50,13 @@ namespace UniNet.Tests
 
             var ch1 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // conn 1 adopts the orphan — owner = 1
             ch1.Clear();
 
             var ch2 = new RecordingChannel();
             server.AttachConnection(ch2);
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // late join — existing live owner KEEPed
 
             Assert.AreEqual(ch1.UniNetConnId, server.GetOwner(player.NetId), "살아 있는 기존 소유자 KEEP");
@@ -68,6 +70,7 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             var ch1 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var go = new GameObject("own-dyn");
@@ -79,6 +82,7 @@ namespace UniNet.Tests
 
             var ch2 = new RecordingChannel();
             server.AttachConnection(ch2);
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             Assert.AreEqual(ch1.UniNetConnId, server.GetOwner(netId), "기존 소유자 KEEP");
@@ -92,6 +96,7 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             var ch1 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var go = new GameObject("own-dyn-initial");
@@ -116,7 +121,9 @@ namespace UniNet.Tests
             var ch1 = new RecordingChannel();
             var ch2 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(ch2);
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // owner = conn 1
             ch2.Clear();
 
@@ -137,6 +144,7 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             var ch1 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var go = new GameObject("own-dyn-reenter");
@@ -163,6 +171,7 @@ namespace UniNet.Tests
             var server = new NetworkServer();
             var ch1 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             var go = new GameObject("own-zero");
@@ -202,6 +211,7 @@ namespace UniNet.Tests
 
             var ch1 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // owner = conn 1 — owner view catches up BOTH subs (Armor is OwnerOnly)
             CollectionAssert.AreEquivalent(new[] { "replicate:" + netId + ":0", "replicate:" + netId + ":1" },
                 ReplicatesOf(ch1, netId), "소유자 뷰 — 두 서브 모두 캐치업");
@@ -209,6 +219,7 @@ namespace UniNet.Tests
 
             var ch2 = new RecordingChannel();
             server.AttachConnection(ch2);
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             Assert.AreEqual(1, CountOwners(ch2, netId), "객체별 기준선 — 서브마다가 아니라 한 번");
@@ -228,6 +239,7 @@ namespace UniNet.Tests
 
             var ch1 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // catch-up recorded on the wire — owner view (conn 1 is the owner)
 
             var client = new NetworkClient();

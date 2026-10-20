@@ -31,7 +31,9 @@ namespace UniNet.Tests
             _ownerCh = new RecordingChannel();
             _guestCh = new RecordingChannel();
             _server.AttachConnection(_ownerCh);
+            _server.OnClientVersionDeclared(_ownerCh.UniNetConnId, _server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             _server.AttachConnection(_guestCh);
+            _server.OnClientVersionDeclared(_guestCh.UniNetConnId, _server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // welcome + ownership assignment — single object, so the first connection owns it
         }
 

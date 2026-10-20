@@ -31,6 +31,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "pmap");
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             server.SetPlayerObject(ch.UniNetConnId, player.NetId);
@@ -48,6 +49,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "pmap-detach");
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             server.SetPlayerObject(ch.UniNetConnId, player.NetId);
             Assert.AreNotEqual(0UL, server.GetPlayerObject(ch.UniNetConnId), "등록 확인");
@@ -65,6 +67,7 @@ namespace UniNet.Tests
             UniNetEnvironment.SetServer(server);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             server.SetPlayerObject(ch.UniNetConnId, 77UL);
             server.SetPlayerObject(ch.UniNetConnId, 0);   // 0 = remove
@@ -83,7 +86,9 @@ namespace UniNet.Tests
             var chA = new RecordingChannel();
             var chB = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             chA.Clear();
             chB.Clear();

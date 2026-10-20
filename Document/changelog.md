@@ -5,6 +5,13 @@
 
 ## [2026-10-20]
 
+### Added (연결 승인 수명주기 — CON-001, 패키지 0.6.0)
+
+- **미선언 연결의 게임 데이터 유보·타임아웃 킥** (CON-001 ·[[0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보]]·[[features/connection-lifecycle|connection-lifecycle]]) — ADR-0028은 불일치만 거부했고 '선언 자체를 안 함' 경로가 맹점이었다(미검증 연결이 소유권·캐치업·복제·게임 RPC 전체 사용)
+- **근본 수정 5계층** — ① `ServerConnection.VersionApproved`(빈 기대버전=즉시 동기 승인, 현행 완전 호환) ② 승인 전 보류: 재배정 후보·수신·캐치업·복제 틱·스폰/파괴·LoadScene·씬 게이트·ClientConnected에서 미승인 제외(Welcome·시스템 와이어 7/8/10/12는 생존), 미승인 해제는 이벤트·유예 생략 ③ 승인 시 보류 작업 기존 순서 1회 실행(`RunPostApproval` 멱등, 재선언 무연산, 불일치 기존 킥 유지) ④ 생성 허브 게임 ServerRpc 디스패치에 `IsVersionApproved` 게이트 — 조용 기각 + `UnapprovedServerRpcDrops` 카운터(제너레이터 0.2.9, 레이트리밋 앞) ⑤ `UniNetEndpointOptions.VersionDeclareTimeoutMs`(기본 10000·0=비활성) → 드라이버 틱 `SweepGraceSessions` 동일 캐던스 `SweepUnapprovedConnections` → 기존 VersionMismatch 킥 경로
+- **테스트** — EditMode `ConnectionApprovalTests` 7종(빈 기대버전 즉시 승인·미선언 보류(소유권/캐치업/이벤트/통보/복제)·승인 시 순서 실행(소유권→상태 기준선 순서 계약 포함)·재선언 멱등·RPC 게이트 카운터·타임아웃 킥·타임아웃 0 비활성) + 기존 attach 100개 지점에 실제 클라와 동일한 선언 호출 추가(계약 정합화 — 실제 클라는 자동 선언). PlayMode `ConnectionApprovalPlayTests`(실RUDP 서버·실제 클라 자동 선언 승인 왕복·미선언 SilentChannel 유보·드라이버 캐던스 타임아웃 킥 — 원시 소켓 미선언 클라는 세션 팩토리 한계로 채널 대체, 정직 범위 표기)
+- **패키지 0.6.0** — 와이어 무변경, 제너레이터 0.2.9(디스패치 게이트만 추가). 마이그레이션 불필요(실제 클라 자동 선언·새 옵션 기본값) — 커스텀 채널/테스트 더블만 선언 모델링 필요
+
 ### Added (이동 소유권 전이 스트림 리셋·epoch — MOV-001, 패키지 0.5.0)
 
 - **소유권 전이 후 새 소유자의 이동 입력 스트림 즉시 채택** (MOV-001 ·[[0042-이동-소유권-전이-스트림-리셋-에포크]]·[[features/movement-prediction|movement-prediction]]) — `MoveSimulation.AdoptInput`의 시퀀스 가드가 임기를 몰라 소유권 이전 시 새 소유자 seq 1이 구 seq 아래로 기각(probe-1), 이상적 리셋 후에도 이전 임기 지연 패킷 seq 900이 재오염(probe-2)했다. 부모 2회 실기 반례(`.pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe{,-2}.json`)

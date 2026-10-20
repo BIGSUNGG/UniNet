@@ -76,6 +76,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "wire-resume-ok");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             string token = server.SnapshotConnections()[0].SessionToken;
             long victimOwner = server.GetOwner(player.NetId);
@@ -86,6 +87,7 @@ namespace UniNet.Tests
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             byte[] payload = EncodeToken(token);
@@ -106,6 +108,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "wire-resume-bad");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             string token = server.SnapshotConnections()[0].SessionToken;
             long victimOwner = server.GetOwner(player.NetId);
@@ -114,6 +117,7 @@ namespace UniNet.Tests
 
             var chProbe = new RecordingChannel();
             server.AttachConnection(chProbe);
+            server.OnClientVersionDeclared(chProbe.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             long probeConn = chProbe.UniNetConnId;
 
@@ -144,6 +148,7 @@ namespace UniNet.Tests
             // the session survived every probe — a genuine request from a live connection still resumes
             var chGenuine = new RecordingChannel();
             server.AttachConnection(chGenuine);
+            server.OnClientVersionDeclared(chGenuine.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             byte[] genuine = EncodeToken(token);
             InvokeResume(handler, chGenuine.UniNetConnId, genuine, "이후 정상 요청");

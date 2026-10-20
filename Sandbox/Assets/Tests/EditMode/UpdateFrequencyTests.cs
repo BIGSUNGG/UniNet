@@ -21,6 +21,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             ch.Clear();
 
@@ -47,6 +48,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             ch.Clear();
 
@@ -64,6 +66,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             ch.Clear();
 
@@ -86,6 +89,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             ch.Clear();
 

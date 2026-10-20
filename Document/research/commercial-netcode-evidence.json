@@ -575,7 +575,13 @@
         "transcript": ".pi-subagents/artifacts/7be084eb_reviewer_transcript.jsonl",
         "output": ".pi-subagents/artifacts/7be084eb_reviewer_output.md",
         "history": [
-          {"round": 1, "verdict": "ISSUES (1 recommended — hot-path allocation)", "metadata": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_meta.json", "output": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_output.md", "disposition": "accepted — single-allocation encoder fix applied and fully revalidated"}
+          {
+            "round": 1,
+            "verdict": "ISSUES (1 recommended — hot-path allocation)",
+            "metadata": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_meta.json",
+            "output": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_output.md",
+            "disposition": "accepted — single-allocation encoder fix applied and fully revalidated"
+          }
         ]
       },
       "release": {
@@ -593,6 +599,144 @@
         "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-remote-tag.txt",
         "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-remote-package.json",
         "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-staged-paths.json"
+      }
+    },
+    {
+      "id": "CON-001",
+      "status": "validated_pending_review_and_release",
+      "kind": "connection-approval-gate",
+      "packageVersion": "0.6.0",
+      "generatorVersion": "0.2.9",
+      "wireSystemMessagesChanged": false,
+      "breakingChanges": [
+        "A client that never declares its protocol version (wire 7) now receives no game data and is kicked after VersionDeclareTimeoutMs (default 10 s; 0 = hold). Generated clients always declare, so same-package consumers are unaffected; hand-rolled non-declaring clients lose the undocumented bypass."
+      ],
+      "adr": "Document/decisions/0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보.md",
+      "featureDocument": "Document/features/connection-lifecycle.md",
+      "worker": {
+        "model": "zai/glm-5.3",
+        "resolvedModelWithThinking": "zai/glm-5.3:high",
+        "implementationRunId": "07b84d4c",
+        "continuationRunIds": [
+          "b5b98a41",
+          "20162879",
+          "35e7df42",
+          "7eacf2ea"
+        ],
+        "metadata": ".pi-subagents/artifacts/07b84d4c_worker_meta.json"
+      },
+      "regressionsFoundDuringValidation": [
+        {
+          "defect": "AttachConnection stamped the approval clock via UniNetTime.LocalClock() on the DRPC accept thread — in Unity that is Time.unscaledTimeAsDouble, which throws UnityException off the main thread, silently aborting every real attach (22/29 PlayMode failures; EditMode fake channels run on the main thread and hid it)",
+          "fix": "Unstamped NaN sentinel + main-queue lambda stamps before Welcome + sweep skips unstamped + a thread-safety regression test"
+        },
+        {
+          "defect": "The rebuilt generator 0.2.9 DLL was never actually copied into the analyzers folder (byte-identical to 0.2.8; the worker's ASCII grep verification was invalid because .NET stores user strings as UTF-16LE)",
+          "fix": "Actual deployment verified by SHA-256 210455604c6f5f00e63118f5c248d4648b5b9d282f489163d31dc54cd9d659f2 (old a43b0d18…)"
+        }
+      ],
+      "regressionTests": [
+        "UniNet.Tests.ConnectionApprovalTests.빈_기대버전은_즉시_승인되어_현행_동작을_유지한다",
+        "UniNet.Tests.ConnectionApprovalTests.미선언_연결은_소유권_캐치업_이벤트_복제에서_제외된다",
+        "UniNet.Tests.ConnectionApprovalTests.승인_선언_도착_시_보류_작업이_순서대로_실행된다",
+        "UniNet.Tests.ConnectionApprovalTests.재선언은_멱등이다_보류_작업_재실행_없음",
+        "UniNet.Tests.ConnectionApprovalTests.미승인_발신_게임_RPC는_조용히_기각되고_카운터에_관측된다",
+        "UniNet.Tests.ConnectionApprovalTests.미선언_타임아웃은_VersionMismatch_킥으로_마감한다",
+        "UniNet.Tests.ConnectionApprovalTests.타임아웃_0은_스윕을_비활성화한다",
+        "UniNet.Tests.ConnectionApprovalTests.AttachConnection은_네트워크_스레드에서도_안전하다"
+      ],
+      "arenaExample": {
+        "kind": "PlayMode test with real loopback RUDP",
+        "entry": "UniNet.Tests.ConnectionApprovalPlayTests.실제_클라는_자동_선언으로_승인되고_미선언_연결은_유보_후_타임아웃_킥된다",
+        "scope": "Real server (500 ms timeout): the real client's automatic declaration is approved round-trip; a silent channel is held and then kicked at the driver cadence. A raw non-declaring socket client was not constructible in-process (DRPC hub session factory), so the undeclared path uses a real attach with a silent channel — documented honestly."
+      },
+      "validation": [
+        {
+          "kind": "targeted EditMode",
+          "jobId": "a1a9ce57bf974839a21767d1dac2939a",
+          "total": 8,
+          "passed": 8,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full EditMode",
+          "jobId": "a402419823144308b3243254ab33a9c6",
+          "total": 163,
+          "passed": 163,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full PlayMode",
+          "jobId": "0268b9d1bb454eacbdcaaead1b2e3795",
+          "total": 29,
+          "passed": 29,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "package validation",
+          "command": "bash Package/tools/validate-package.sh --tag v0.6.0",
+          "exitCode": 0,
+          "log": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation.log"
+        }
+      ],
+      "validationHistory": [
+        {
+          "phase": "targeted EditMode",
+          "jobId": "488d35a5d4494b1f88518a650602684d",
+          "failed": 1,
+          "resolution": "Idempotency test expected one owner notice where the standard adoption-broadcast + catch-up-baseline pair legitimately produces two; test aligned to assert no re-send"
+        },
+        {
+          "phase": "full PlayMode",
+          "jobId": "2e1446875735430b87e058c23e6b8e8d",
+          "failed": 22,
+          "resolution": "Accept-thread UnityException regression (above); fixed and fully revalidated"
+        },
+        {
+          "phase": "full PlayMode",
+          "jobId": "9c4814704d0a4d18841eec6b29724464",
+          "failed": 1,
+          "resolution": "Nondeterministic Welcome-wait flake in a different test each run; clean 29/29 on re-run (aa920d4c)"
+        },
+        {
+          "phase": "full PlayMode",
+          "jobId": "92828173f57f4b03b3a5c081eb1f4d2c",
+          "failed": 1,
+          "resolution": "MovementOwnershipPlayTests guest channel never declared (the very blind spot CON-001 closes) — declaration inserted, revalidated"
+        },
+        {
+          "phase": "post-review hot-path fix",
+          "change": "ConcurrentDictionary approval index replaces per-RPC SnapshotConnections allocation",
+          "revalidated": "targeted 8/8, EditMode 163/163, PlayMode 29/29"
+        }
+      ],
+      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/con001-validation-events.jsonl",
+      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/con001-validation-input-blobs.json",
+      "generatorDllSha256": "210455604c6f5f00e63118f5c248d4648b5b9d282f489163d31dc54cd9d659f2",
+      "review": {
+        "model": "zai/glm-5.3-flash",
+        "round": 2,
+        "verdict": "CLEAN",
+        "metadata": ".pi-subagents/artifacts/a704226d_reviewer_meta.json",
+        "transcript": ".pi-subagents/artifacts/a704226d_reviewer_transcript.jsonl",
+        "output": ".pi-subagents/artifacts/a704226d_reviewer_output.md",
+        "history": [
+          {
+            "round": 1,
+            "verdict": "ISSUES (1 recommended — per-RPC allocation in approval lookup)",
+            "metadata": ".pi-subagents/artifacts/725364af_reviewer_meta.json",
+            "output": ".pi-subagents/artifacts/725364af_reviewer_output.md",
+            "disposition": "accepted — ConcurrentDictionary approval index applied and fully revalidated"
+          }
+        ]
+      },
+      "release": {
+        "status": "not_published",
+        "version": "0.6.0",
+        "tag": "v0.6.0"
       }
     }
   ],

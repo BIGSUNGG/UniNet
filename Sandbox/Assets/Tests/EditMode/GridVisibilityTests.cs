@@ -25,6 +25,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // catch-up — no viewer set → both relevant (fail-open) → full state + seed
             ch.Clear();
 
@@ -55,6 +56,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // catch-up — no viewer → fail-open (always relevant) → receives full state + seed
             ch.Clear();
 
@@ -72,6 +74,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // catch-up — no viewer → fail-open → full state + seed
             ch.Clear();
 

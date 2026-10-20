@@ -146,6 +146,7 @@ namespace UniNet.Tests
             try
             {
                 server.AttachConnection(ch);
+                server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 UniNetEnvironment.PumpMain();
 
                 ulong netId = server.RegisterDynamicObject(comps);

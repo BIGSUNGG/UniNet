@@ -30,7 +30,9 @@ namespace UniNet.Tests
             var chA = new RecordingChannel();
             var chB = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // welcome + ownership (single object — first connection owns it)
             chA.Clear();
             chB.Clear();
@@ -61,6 +63,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "setowner-release");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.AreNotEqual(0, server.GetOwner(player.NetId), "초기 — 소유자 배정됨");
 
@@ -70,6 +73,7 @@ namespace UniNet.Tests
             // A new connection triggers the reassignment pass — the orphan is adopted round-robin
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.AreNotEqual(0, server.GetOwner(player.NetId), "재배정 통과 후 입양 — 다시 소유자 배정");
         }

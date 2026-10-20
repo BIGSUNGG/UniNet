@@ -24,6 +24,7 @@ namespace UniNet.Tests
 
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             Assert.AreEqual(0, connected, "발화는 메인 큐 예약 — AttachConnection 즉시가 아니다");
 
             UniNetEnvironment.PumpMain();
@@ -45,7 +46,9 @@ namespace UniNet.Tests
             var ch1 = new RecordingChannel();
             var ch2 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(ch2);
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.AreEqual(ch1.UniNetConnId, server.GetEntry(player.NetId).OwnerConnId, "라운드로빈 — 첫 연결이 소유");
 
@@ -69,6 +72,7 @@ namespace UniNet.Tests
             server.ClientConnected += _ => counterRan = true;   // guaranteed to run even if the first subscriber throws
 
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.QueueOnMain(() => pumped = true);
 
             // the exception propagates out of the pump after every subscriber has run — logging is the Unity layer's job (protects the driver pump)
@@ -89,7 +93,9 @@ namespace UniNet.Tests
             var ch1 = new RecordingChannel();
             var ch2 = new RecordingChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(ch2);
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.AreEqual(ch1.UniNetConnId, server.GetEntry(player.NetId).OwnerConnId, "라운드로빈 — 첫 연결이 소유");
 

@@ -31,7 +31,9 @@ namespace UniNet.Tests
             var chA = new RecordingChannel();
             var chB = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             chA.Clear();
             chB.Clear();
@@ -51,6 +53,7 @@ namespace UniNet.Tests
             UniNetEnvironment.SetServer(server);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             Assert.IsFalse(server.DisconnectClient(ch.UniNetConnId + 100), "미지 연결 id — 거짓");
@@ -64,7 +67,9 @@ namespace UniNet.Tests
             var chA = new RecordingChannel();
             var chB = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             server.BroadcastDisconnectNotice(UniNetDisconnectReason.ServerShutdown);

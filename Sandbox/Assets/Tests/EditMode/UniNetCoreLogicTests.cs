@@ -54,7 +54,9 @@ namespace UniNet.Tests
             var ch1 = new FakeChannel();
             var ch2 = new FakeChannel();
             server.AttachConnection(ch1);
+            server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             server.AttachConnection(ch2);
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // run the deferred Welcome/reassignment batch (against the final set of 2 connections)
 
             Assert.AreEqual(1, server.GetEntry(100).OwnerConnId, "첫 오브젝트는 첫 연결 소유");

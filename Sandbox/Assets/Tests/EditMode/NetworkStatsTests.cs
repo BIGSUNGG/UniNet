@@ -50,6 +50,7 @@ namespace UniNet.Tests
             var b = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "stats-budget-b");
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();   // catch-up (outside the budget policy)
             ch.Clear();
 

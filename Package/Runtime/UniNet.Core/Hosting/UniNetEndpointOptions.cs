@@ -21,6 +21,14 @@ namespace UniNet.Core.Hosting
         /// </summary>
         public string ProtocolVersion { get; set; }
 
+        /// <summary>
+        /// Server-only — how long an undeclared connection may stay attached before a VersionMismatch kick (CON-001), in ms.
+        /// Default 10000; 0 disables the sweep (an undeclared connection stays attached but receives no game data —
+        /// ownership reassignment, catch-up, ClientConnected, replication, spawns, and game ServerRpcs are all held
+        /// until its wire-7 version declaration is accepted). Applies only while ProtocolVersion checking is active.
+        /// </summary>
+        public int VersionDeclareTimeoutMs { get; set; } = 10000;
+
         /// <summary>Connect timeout in ms (0 = default, about 5 seconds).</summary>
         public int ConnectTimeoutMs { get; set; }
 

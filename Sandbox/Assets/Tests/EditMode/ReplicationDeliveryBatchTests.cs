@@ -25,6 +25,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, name);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             ch.Clear();
             return (server, ch, player);
@@ -64,6 +65,7 @@ namespace UniNet.Tests
                 players[i] = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, $"split-{i}");
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             ch.Clear();
 

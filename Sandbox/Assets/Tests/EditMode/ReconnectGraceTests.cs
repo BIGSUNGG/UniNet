@@ -33,6 +33,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-keep");
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             long oldOwner = server.GetOwner(player.NetId);
             Assert.AreNotEqual(0, oldOwner, "초기 소유자 배정");
@@ -51,6 +52,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-reattach");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             long oldOwner = server.GetOwner(player.NetId);
 
@@ -60,6 +62,7 @@ namespace UniNet.Tests
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.AreNotEqual(0, server.GetOwner(player.NetId), "재접속 후 소유자 존재");
 
@@ -76,6 +79,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-expire");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             string token2 = server.SnapshotConnections()[0].SessionToken;
@@ -91,6 +95,7 @@ namespace UniNet.Tests
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.AreNotEqual(0, server.GetOwner(player.NetId), "만료 후 재배정 — 새 연결이 입양");
         }
@@ -103,12 +108,14 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-off");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             server.DetachConnection(chA);
             UniNetEnvironment.PumpMain();
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "유예 없음 — 즉시 재배정");
         }
@@ -125,6 +132,7 @@ namespace UniNet.Tests
             {
                 var ch = new RecordingChannel();
                 server.AttachConnection(ch);
+                server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 UniNetEnvironment.PumpMain();
                 tokens.Add(server.SnapshotConnections()[i].SessionToken);
             }
@@ -148,6 +156,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-forge");
             var chVictim = new RecordingChannel();
             server.AttachConnection(chVictim);
+            server.OnClientVersionDeclared(chVictim.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             long victimOwner = server.GetOwner(player.NetId);
             string realToken = server.SnapshotConnections()[0].SessionToken;
@@ -160,6 +169,7 @@ namespace UniNet.Tests
             // attacker joins and presents forged guesses (neighbor-style: all-zero base64, mutated real token, empty)
             var chAttacker = new RecordingChannel();
             server.AttachConnection(chAttacker);
+            server.OnClientVersionDeclared(chAttacker.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             long attackerConn = chAttacker.UniNetConnId;
 
@@ -185,6 +195,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-badconn");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             string token = server.SnapshotConnections()[0].SessionToken;
             long victimOwner = server.GetOwner(player.NetId);
@@ -197,6 +208,7 @@ namespace UniNet.Tests
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.IsTrue(server.ResumeSession(token, chB.UniNetConnId), "이후 올바른 연결로 재개 — 토큰 미소진");
             Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "소유권 이전");
@@ -210,6 +222,7 @@ namespace UniNet.Tests
             var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-dup");
             var chA = new RecordingChannel();
             server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             string token = server.SnapshotConnections()[0].SessionToken;
             server.DetachConnection(chA);
@@ -217,11 +230,13 @@ namespace UniNet.Tests
 
             var chB = new RecordingChannel();
             server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.IsTrue(server.ResumeSession(token, chB.UniNetConnId), "1차 재개 성공");
 
             var chC = new RecordingChannel();
             server.AttachConnection(chC);
+            server.OnClientVersionDeclared(chC.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
             Assert.IsFalse(server.ResumeSession(token, chC.UniNetConnId), "동일 토큰 재사용(토큰 재생) — 거부");
             Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "재생 거부 후 소유권 불변");

@@ -56,6 +56,11 @@ namespace UniNet.Core.Hosting
         private readonly System.Collections.Concurrent.ConcurrentDictionary<long, RpcRateWindow> _rpcWindows = new();
         private long _rateLimitedDrops;
 
+        // CON-001 — O(1) approval index for the game-ServerRpc dispatch hot path (no lock/copy per call, unlike
+        // SnapshotConnections). Added on approval (inactive-checking attach, accepted declaration), removed on
+        // detach — detached/unknown connIds report unapproved, matching the old snapshot-based lookup.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<long, byte> _approvedConns = new();
+
         // ADR-0034 — grace sessions: disconnected connections whose objects+ownership are preserved for reattach.
         // Keyed by opaque session token (issued in Welcome, ADR-0041). Guarded by _gate: issuance runs on the transport
         // accept thread (AttachConnection) while save/resume/sweep run on the main queue — the registry lock arbitrates both
@@ -226,6 +231,26 @@ namespace UniNet.Core.Hosting
             /// <summary>Whether the Welcome has been sent (guards LoadScene broadcast from racing attach).</summary>
             public bool WelcomeSent { get; internal set; }
 
+            /// <summary>
+            /// Whether this connection's protocol version was accepted (CON-001) — true immediately when version
+            /// checking is inactive (empty ExpectedProtocolVersion), otherwise set when the client's wire-7 declaration
+            /// matches. Until true the server holds ownership reassignment, catch-up, the ClientConnected event, and
+            /// all game-data sends; system wires (7/8/10/12) stay live so the handshake itself can complete.
+            /// Volatile-backed: written on the dispatch thread, read by the tick and dispatch filters.
+            /// </summary>
+            public bool VersionApproved
+            {
+                get => System.Threading.Volatile.Read(ref _versionApproved) != 0;
+                internal set => System.Threading.Volatile.Write(ref _versionApproved, value ? 1 : 0);
+            }
+            private int _versionApproved;
+
+            /// <summary>Clock reading stamped on the main queue when the Welcome is sent (UniNetTime.LocalClock domain — same as the grace sweep) — NaN until then; drives the undeclared-connection timeout (CON-001). Stamped off the attach thread on purpose: Unity's clock throws off the main thread.</summary>
+            public double AttachedAtClock { get; internal set; } = double.NaN;
+
+            /// <summary>The post-approval attach work already ran — makes approval idempotent under any main-queue ordering (CON-001).</summary>
+            internal bool PostApprovalRun;
+
             /// <summary>Session token issued in the Welcome (ADR-0034/0041) — opaque Base64 string identifying the connection for
             /// grace-session reattach. Empty = not issued (inactive; grace saving treats it as no session).</summary>
             public string SessionToken { get; internal set; } = string.Empty;
@@ -294,7 +319,7 @@ namespace UniNet.Core.Hosting
             foreach (var set in _everVisible.Values) set.Remove(netId);
 
             foreach (var conn in SnapshotConnections())
-                if (!conn.Disconnected)
+                if (!conn.Disconnected && conn.VersionApproved)   // CON-001 — undeclared connections never saw the spawn; approval catch-up carries current state
                     conn.Channel.SendDestroy(netId);
             return true;
         }
@@ -308,7 +333,7 @@ namespace UniNet.Core.Hosting
             GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
             foreach (var conn in SnapshotConnections())
             {
-                if (conn.Disconnected) continue;
+                if (conn.Disconnected || !conn.VersionApproved) continue;   // CON-001 — undeclared connections receive no game data; approval delivers spawn baselines via catch-up
                 if (!IsRelevant(entry, conn, netId)) continue;   // irrelevant connection — skip the spawn (sent when it becomes relevant)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
@@ -394,7 +419,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>Attaches a new connection — schedules connection ID assignment, ownership reassignment, and catch-up of existing state onto the main queue.</summary>
+        /// <summary>Attaches a new connection — schedules the Welcome; the remaining attach work (ownership reassignment, catch-up, the ClientConnected event) runs at approval (CON-001): immediately when version checking is inactive (empty <see cref="ExpectedProtocolVersion"/>), otherwise once the client's wire-7 declaration matches. An undeclared connection receives no game data and is swept by <see cref="SweepUnapprovedConnections"/>.</summary>
         public long AttachConnection(IUniNetSystemChannel channel)
         {
             lock (_gate)
@@ -402,21 +427,44 @@ namespace UniNet.Core.Hosting
                 var conn = new ServerConnection(_nextConnId++, channel);
                 channel.UniNetConnId = conn.ConnId;
                 conn.SessionToken = IssueSessionToken();   // ADR-0034 — grace-session reattach identity
+                // CON-001 — AttachedAtClock stays NaN here: this section runs on the DRPC ACCEPT thread and
+                // UniNetTime.LocalClock is Unity's Time.unscaledTimeAsDouble, which throws off the main thread —
+                // stamping here would abort the attach entirely. The queued main lambda stamps it instead.
+                if (string.IsNullOrEmpty(ExpectedProtocolVersion))
+                {
+                    conn.VersionApproved = true;   // CON-001 — checking inactive: immediate synchronous approval, exact legacy behavior
+                    _approvedConns[conn.ConnId] = 1;   // hot-path index — kept in sync with the approval flag
+                }
                 _connections.Add(conn);
                 var connId = conn.ConnId;
                 var sessionToken = conn.SessionToken;
                 UniNetEnvironment.QueueOnMain(() =>
                 {
-                    channel.SendWelcome(connId, ExpectedProtocolVersion, sessionToken);
+                    conn.AttachedAtClock = UniNetTime.LocalClock();   // CON-001 — main-thread stamp: the undeclared-timeout window starts once the Welcome is dispatchable (the client can declare from then on)
+                    channel.SendWelcome(connId, ExpectedProtocolVersion, sessionToken);   // always — the client needs the server version + session token to declare
                     conn.WelcomeSent = true;
-                    if (_pendingScene != null)
-                        channel.SendLoadScene(_pendingScene);   // ADR-0035 — late joiner participates in the in-flight transition
-                    ReassignOwnership();
-                    SendCatchup(conn);
-                    RaiseLifecycle(ClientConnected, connId);   // after catch-up — spawns raised here never race the catch-up
+                    RunPostApproval(conn);
                 });
                 return conn.ConnId;
             }
+        }
+
+        /// <summary>
+        /// Runs the post-approval attach work exactly once (CON-001) in the legacy order: pending scene join,
+        /// ownership reassignment, catch-up, then the ClientConnected event. Held while the connection is
+        /// unapproved — the wire-7 acceptance re-enters here via the main queue. Queue-order agnostic (a declaration
+        /// can land before the attach lambda pumps): the per-connection flag makes re-entry a no-op.
+        /// </summary>
+        private void RunPostApproval(ServerConnection conn)
+        {
+            if (conn.Disconnected || conn.PostApprovalRun) return;
+            if (!conn.VersionApproved) return;   // held — no game data, no reassignment, no event yet
+            conn.PostApprovalRun = true;
+            if (_pendingScene != null)
+                conn.Channel.SendLoadScene(_pendingScene);   // ADR-0035 — late joiner participates in the in-flight transition
+            ReassignOwnership();
+            SendCatchup(conn);
+            RaiseLifecycle(ClientConnected, conn.ConnId);   // after catch-up — spawns raised here never race the catch-up
         }
 
         /// <summary>Detaches a connection (observed when the hub disconnects).</summary>
@@ -430,7 +478,9 @@ namespace UniNet.Core.Hosting
                     {
                         var conn = _connections[i];
                         conn.Disconnected = true;
+                        _approvedConns.TryRemove(conn.ConnId, out _);   // CON-001 — the approval index dies with the connection (unknown → unapproved)
                         _connections.RemoveAt(i);
+                        bool wasApproved = conn.VersionApproved;   // CON-001 — a never-approved connection never surfaced to the game (no event, no grace session); it owns nothing
                         UniNetEnvironment.QueueOnMain(() =>
                         {
                             _viewerPositions.Remove(conn.ConnId);   // P3/P4 cleanup — same main thread as the tick
@@ -439,13 +489,14 @@ namespace UniNet.Core.Hosting
                             _gridRelevant.Remove(conn.ConnId);   // clears the P4 grid sets too
                             try
                             {
-                                RaiseLifecycle(ClientDisconnected, conn.ConnId);   // before reassignment — the game can identify and handle owned objects
+                                if (wasApproved)
+                                    RaiseLifecycle(ClientDisconnected, conn.ConnId);   // before reassignment — the game can identify and handle owned objects
                             }
                             finally
                             {
                                 // Always runs regardless of subscriber exceptions — server invariant that keeps dead connections from
                                 // staying owners (letting a rethrown exception skip the rest of this lambda would lose OwnerOnly delta receivers)
-                                if (SessionGraceSeconds > 0)
+                                if (wasApproved && SessionGraceSeconds > 0)
                                     SaveGraceSession(conn.ConnId, conn.SessionToken);
                                 else
                                     ReassignOwnership();
@@ -467,17 +518,68 @@ namespace UniNet.Core.Hosting
             lock (_gate) return _connections.ToArray();
         }
 
-        /// <summary>Applies a client's version declaration (ADR-0028 — generated server hub, wire message 7). Returns whether the version was
-        /// accepted; a mismatch kicks the connection with the VersionMismatch reason (the generated hub logs the rejection).</summary>
+        /// <summary>Applies a client's version declaration (ADR-0028 wire 7 — generated server hub). Returns whether the version was
+        /// accepted; a mismatch kicks the connection with the VersionMismatch reason (the generated hub logs the rejection).
+        /// CON-001: an accepted declaration approves the connection and releases the held attach work (main queue); a
+        /// redeclaration by an already-approved connection is idempotent (accepted, nothing re-runs).</summary>
         public bool OnClientVersionDeclared(long connId, string version)
         {
             if (string.IsNullOrEmpty(ExpectedProtocolVersion) || version == ExpectedProtocolVersion)
+            {
+                if (!string.IsNullOrEmpty(ExpectedProtocolVersion))
+                {
+                    foreach (var conn in SnapshotConnections())
+                        if (conn.ConnId == connId && !conn.Disconnected && !conn.VersionApproved)
+                        {
+                            conn.VersionApproved = true;
+                            _approvedConns[conn.ConnId] = 1;   // hot-path index — kept in sync with the approval flag
+                            UniNetEnvironment.QueueOnMain(() => RunPostApproval(conn));   // dispatch thread — held work runs in order on the main queue
+                        }
+                }
                 return true;
+            }
             bool kicked = DisconnectClient(connId, UniNetDisconnectReason.VersionMismatch);
             if (!kicked)
                 UniNetEnvironment.LogFault(new InvalidOperationException(
                     $"Version-mismatch kick found no connection {connId} — declaration raced attachment (ADR-0028). The mismatched client may survive this check."));   // surfaced instead of a silent false — the accept callback attaches synchronously so this window is theoretical, but never silent
             return false;
+        }
+
+        /// <summary>Whether the connection has declared an accepted protocol version (CON-001) — the generated dispatch gate for game ServerRpcs. O(1) index lookup; unknown and detached connections report unapproved (safe default).</summary>
+        public bool IsVersionApproved(long connId) => _approvedConns.ContainsKey(connId);
+
+        /// <summary>Records one game ServerRpc dropped at the approval gate (CON-001) — called by the generated dispatch; <see cref="UnapprovedServerRpcDrops"/> is the only observable (quiet by design, no log flood).</summary>
+        public void ReportUnapprovedServerRpc(long connId) => System.Threading.Interlocked.Increment(ref _unapprovedRpcDrops);
+
+        private long _unapprovedRpcDrops;
+
+        /// <summary>Total game ServerRpc calls dropped because the sender never declared an accepted protocol version (CON-001; all connections, since server start).</summary>
+        public long UnapprovedServerRpcDrops => System.Threading.Interlocked.Read(ref _unapprovedRpcDrops);
+
+        /// <summary>
+        /// How long an undeclared connection may stay attached before it is kicked with VersionMismatch (CON-001), in
+        /// milliseconds. Default 10000; 0 disables the sweep (undeclared connections stay held — still no game data).
+        /// Only applies while version checking is active (non-empty ExpectedProtocolVersion). Set from
+        /// UniNetEndpointOptions.VersionDeclareTimeoutMs by UniNetManager.ServerAsync.
+        /// </summary>
+        public int VersionDeclareTimeoutMs { get; set; } = 10000;
+
+        /// <summary>
+        /// Kicks connections that never declared an accepted protocol version within VersionDeclareTimeoutMs (CON-001) —
+        /// VersionMismatch notice then close, reusing the existing kick path. Call from the driver tick alongside
+        /// SweepGraceSessions; the time argument shares UniNetTime.LocalClock's domain (the attach reading).
+        /// </summary>
+        public void SweepUnapprovedConnections(double time)
+        {
+            if (VersionDeclareTimeoutMs <= 0 || string.IsNullOrEmpty(ExpectedProtocolVersion)) return;
+            double timeout = VersionDeclareTimeoutMs / 1000.0;
+            foreach (var conn in SnapshotConnections())
+            {
+                if (conn.Disconnected || conn.VersionApproved) continue;
+                if (double.IsNaN(conn.AttachedAtClock)) continue;   // Welcome not yet dispatched — the timeout window has not started (thread-safe stamping, CON-001)
+                if (time - conn.AttachedAtClock > timeout)
+                    DisconnectClient(conn.ConnId, UniNetDisconnectReason.VersionMismatch);
+            }
         }
 
         /// <summary>Applies a client's RTT report from its ping probe (ADR-0029 wire 8 — client-measured EMA, piggybacked on each ping).</summary>
@@ -579,7 +681,7 @@ namespace UniNet.Core.Hosting
             _sceneReadyConnections.Clear();
             foreach (var conn in SnapshotConnections())
             {
-                if (conn.Disconnected || !conn.WelcomeSent) continue;   // pre-Welcome — AttachConnection catchup covers
+                if (conn.Disconnected || !conn.WelcomeSent || !conn.VersionApproved) continue;   // pre-Welcome — AttachConnection catchup covers; undeclared — the approval path delivers the pending scene (CON-001)
                 conn.Channel.SendLoadScene(sceneName);   // wire 11
             }
         }
@@ -603,7 +705,7 @@ namespace UniNet.Core.Hosting
         {
             if (_pendingScene == null) return;
             foreach (var conn in SnapshotConnections())
-                if (!conn.Disconnected && !_sceneReadyConnections.Contains(conn.ConnId)) return;   // someone not ready
+                if (!conn.Disconnected && conn.VersionApproved && !_sceneReadyConnections.Contains(conn.ConnId)) return;   // someone not ready — undeclared connections cannot report (they receive the scene at approval, CON-001)
             var scene = _pendingScene;
             _pendingScene = null;
             AllClientsSceneLoaded?.Invoke(scene);
@@ -662,8 +764,8 @@ namespace UniNet.Core.Hosting
                 if (entry == null) continue;
                 entry.OwnerConnId = newConnId;
                 foreach (var conn in SnapshotConnections())
-                    if (!conn.Disconnected)
-                        conn.Channel.SendOwnerUpdate(netId, newConnId);
+                    if (!conn.Disconnected && conn.VersionApproved)
+                        conn.Channel.SendOwnerUpdate(netId, newConnId);   // CON-001 — undeclared connections receive the baseline at approval instead
             }
             if (session.PlayerObjectNetId != 0)
                 _playerObjects[newConnId] = session.PlayerObjectNetId;
@@ -741,7 +843,7 @@ namespace UniNet.Core.Hosting
             if (entry == null) return false;
             entry.OwnerConnId = ownerConnId;
             foreach (var conn in SnapshotConnections())   // all connections — same propagation as ReassignOwnership (clients without the object ignore the notice harmlessly)
-                if (!conn.Disconnected)
+                if (!conn.Disconnected && conn.VersionApproved)   // CON-001 — undeclared connections receive the notice at approval instead
                     conn.Channel.SendOwnerUpdate(netId, ownerConnId);
             return true;
         }
@@ -829,7 +931,14 @@ namespace UniNet.Core.Hosting
             if (connections.Count == 0 || objects.Count == 0) return;
 
             var live = new HashSet<long>();
-            foreach (var conn in connections) live.Add(conn.ConnId);
+            var candidates = new List<ServerConnection>();
+            foreach (var conn in connections)
+                if (!conn.Disconnected && conn.VersionApproved)   // CON-001 — undeclared connections neither take nor receive ownership
+                {
+                    live.Add(conn.ConnId);
+                    candidates.Add(conn);
+                }
+            if (candidates.Count == 0) return;   // nobody approved yet — orphans stay ownerless until an approval re-runs this pass
 
             var sorted = new List<(ulong NetId, ServerObjectEntry Entry)>(objects);
             sorted.Sort((a, b) => a.NetId.CompareTo(b.NetId));
@@ -840,10 +949,10 @@ namespace UniNet.Core.Hosting
                 if (entry.OwnerConnId != 0 && live.Contains(entry.OwnerConnId)) continue;
                 if (entry.OwnerConnId != 0 && IsInGraceSession(entry.OwnerConnId)) continue;   // ADR-0034 — grace-held   // 살아 있는 소유자는 그대로
 
-                long owner = connections[rr++ % connections.Count].ConnId;
+                long owner = candidates[rr++ % candidates.Count].ConnId;
                 if (owner == entry.OwnerConnId) continue;
                 entry.OwnerConnId = owner;
-                foreach (var conn in connections)
+                foreach (var conn in candidates)
                     conn.Channel.SendOwnerUpdate(netId, owner);
             }
         }
@@ -1056,7 +1165,7 @@ namespace UniNet.Core.Hosting
                 for (int i = 0; i < connections.Count; i++)
                 {
                     var conn = connections[i];
-                    if (conn.Disconnected) continue;
+                    if (conn.Disconnected || !conn.VersionApproved) continue;   // CON-001 — undeclared connections receive no replication until approval
                     bool relevant = i < 64
                         ? (item.RelevantMask & (1ul << i)) != 0
                         : IsRelevant(entry, conn, item.NetId);   // >64 connections — re-evaluate at send time (rare large topology)

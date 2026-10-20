@@ -28,6 +28,7 @@ namespace UniNet.Tests
             UniNetEnvironment.SetServer(server);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             for (int i = 0; i < 100; i++)
@@ -42,6 +43,7 @@ namespace UniNet.Tests
             UniNetEnvironment.SetServer(server);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             int allowed = 0;
@@ -61,6 +63,7 @@ namespace UniNet.Tests
             UniNetEnvironment.SetServer(server);
             var ch = new RecordingChannel();
             server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
             UniNetEnvironment.PumpMain();
 
             Assert.IsTrue(server.AllowsServerRpc(ch.UniNetConnId), "1번째");

@@ -1,3 +1,25 @@
+## 0.6.0
+
+**Connection approval lifecycle: game data is held until an accepted version declaration (CON-001, ADR-0043).** ADR-0028 rejected *mismatched* versions but a connection that never declared wire 7 at all was accepted unconditionally — it received ownership, catch-up, replication, and could invoke game ServerRpcs without ever proving a compatible protocol.
+
+### Changed
+
+- **Undeclared connections are held.** While version checking is active (non-empty `ProtocolVersion`, the default), a connection receives nothing but the Welcome until its wire-7 declaration is accepted: no ownership reassignment (neither as candidate nor receiver), no catch-up, no replication/spawn/destroy sends, no `LoadScene` broadcast, no scene-gate participation, no `ClientConnected` event, and no game ServerRpc execution. System wires (7/8/10/12) stay live so the handshake itself completes. A disconnect before approval raises no `ClientDisconnected` and saves no grace session (the game never saw the connection).
+- **Accepting a declaration releases the held work in the legacy order** (pending scene join → reassignment → catch-up → `ClientConnected`), exactly once per connection under any queue ordering; a redeclaration is idempotent. A mismatch still kicks with `VersionMismatch`.
+- **Generator 0.2.9** — the generated server hub's game-ServerRpc dispatch checks `NetworkServer.IsVersionApproved(sender)` before the rate limit and quietly drops unapproved calls (`NetworkServer.UnapprovedServerRpcDrops` is the only observable).
+- **Empty `ProtocolVersion` keeps the exact legacy behavior** (immediate synchronous approval at attach).
+
+### Added
+
+- **`UniNetEndpointOptions.VersionDeclareTimeoutMs` / `NetworkServer.VersionDeclareTimeoutMs`** (server-only, default 10000, 0 = hold indefinitely without kicking) — undeclared connections are swept at the driver tick cadence and kicked with `VersionMismatch` (the existing kick path). Set from `UniNetManager.ServerAsync`.
+- **`NetworkServer.IsVersionApproved(connId)` / `UnapprovedServerRpcDrops`** — approval query and the quiet-drop counter.
+
+### Migration
+
+- Real clients need nothing — generated client hubs have declared automatically since 0.2.3 (ADR-0028).
+- Custom channels / test doubles that expect game data must model the declaration (`server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion)`), exactly what a real client does.
+- No wire-format change; the generator bump only adds the dispatch gate.
+
 ## 0.5.0
 
 **Movement ownership transfer: stream reset + epoch (breaking — MOV-001, ADR-0042).** An ownership transfer (SetOwner, reassignment adoption, session resume) used to leave the movement engine's sequence guard stuck on the previous owner's stream — the new owner's first inputs were rejected until they climbed past the old tenure's last sequence, and a stale in-flight packet from the previous owner re-poisoned a reset stream.

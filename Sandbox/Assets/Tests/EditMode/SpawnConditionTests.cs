@@ -166,7 +166,9 @@ namespace UniNet.Tests
             try
             {
                 server.AttachConnection(ch1);
+                server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 server.AttachConnection(ch2);
+                server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 UniNetEnvironment.PumpMain();   // runs Welcome/reassignment — settles both connections
 
                 ulong netId = server.RegisterDynamicObject(new object[] { player });
@@ -202,7 +204,9 @@ namespace UniNet.Tests
             try
             {
                 server.AttachConnection(ch1);
+                server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 server.AttachConnection(ch2);
+                server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 UniNetEnvironment.PumpMain();
 
                 ulong netId = server.RegisterDynamicObject(new object[] { player });
@@ -230,6 +234,7 @@ namespace UniNet.Tests
             try
             {
                 server.AttachConnection(ch1);
+                server.OnClientVersionDeclared(ch1.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 UniNetEnvironment.PumpMain();   // settles the first connection
 
                 player.Score = 77;
@@ -239,6 +244,7 @@ namespace UniNet.Tests
 
                 // late join — catch-up delivers the existing dynamic object as a spawn
                 server.AttachConnection(late);
+                server.OnClientVersionDeclared(late.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
                 UniNetEnvironment.PumpMain();
 
                 Assert.AreEqual(1, late.Spawns.Count, "후발 접속 — 동적 오브젝트 스폰 1회");

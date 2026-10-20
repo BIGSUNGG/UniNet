@@ -123,6 +123,7 @@ namespace UniNet.Tests
                 // reassignment adoption — a new attach triggers the pass; the first live connection re-gains the marker
                 var guest = new GuestChannel();
                 UniNetEnvironment.Server.AttachConnection(guest);
+                UniNetEnvironment.Server.OnClientVersionDeclared(guest.UniNetConnId, UniNetEnvironment.Server.ExpectedProtocolVersion);   // CON-001 — a fake channel never sends wire 7; model the real client's automatic declaration so the reassignment pass runs (same as the EditMode channels)
                 UniNetEnvironment.PumpMain();
                 yield return WaitUntil(() => client.GetOwner(nt.NetId) == ownerConn, 5, "재배정 입양 — 같은 클라 재획득");
                 uint epoch1 = GetU(nt, "_moveEpoch");
