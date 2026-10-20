@@ -764,7 +764,7 @@
     },
     {
       "id": "REC-001",
-      "status": "validated_pending_release",
+      "status": "closed",
       "kind": "resume-result-notification",
       "packageVersion": "0.7.0",
       "generatorVersion": "0.2.10",
@@ -800,7 +800,8 @@
         {"kind": "targeted EditMode", "jobId": "99f01a14e3f149619f1e823a6554e45b", "total": 12, "passed": 12, "failed": 0, "skipped": 0},
         {"kind": "full EditMode", "jobId": "0891be1e6ae44921b6969422a5afe026", "total": 167, "passed": 167, "failed": 0, "skipped": 0},
         {"kind": "full PlayMode", "jobId": "4880fda06c574e1f85dfdd47aadb6c2d", "total": 30, "passed": 30, "failed": 0, "skipped": 0},
-        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.7.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation.log"}
+        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.7.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation.log", "precommitLog": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation-precommit.log"},
+        {"kind": "fresh Unity install from committed local Git URL", "command": "timeout 600 bash Package/tools/verify-install.sh", "exitCode": 0, "commit": "206fecf28a2cbc5345baa169c435bced9872abf7", "sampleCompiled": true, "log": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local.log", "unityLog": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local-unity.log", "packageLock": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local-packages-lock.json", "note": "Local-Git gate; the final public-tag install gate remains."}
       ],
       "validationHistory": [
         {"phase": "compile", "issues": ["DIM override (CS0115)"], "resolution": "explicit interface implementation"},
@@ -821,7 +822,22 @@
         "output": ".pi-subagents/artifacts/b0bcca71_reviewer_output.md",
         "residualRiskResolved": "Reviewer flagged ResumeSession's LocalClock call thread-safety as unverified; parent confirmed the generated wire-10 handler wraps ResumeSession in QueueOnMain (Emitter.cs:289) — main-thread execution, safe."
       },
-      "release": {"status": "not_published", "version": "0.7.0", "tag": "v0.7.0"}
+      "release": {
+        "status": "published",
+        "version": "0.7.0",
+        "tag": "v0.7.0",
+        "implementationCommit": "206fecf28a2cbc5345baa169c435bced9872abf7",
+        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.7.0",
+        "publishedAt": "2026-10-20T05:40:21Z",
+        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39376117381",
+        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39376116865",
+        "ciConclusion": "success",
+        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-ci-runs.json",
+        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-release.json",
+        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-remote-tag.txt",
+        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-remote-package.json",
+        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-staged-paths.json"
+      }
     }
   ],
   "finalValidation": {

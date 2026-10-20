@@ -12,6 +12,10 @@
 - **테스트** — EditMode `ResumeResultTests` 4종(종결 사유별 wire 14 전달·경합 재시도 수렴(스텁 송신기로 0.5s 간격·종결 후 중단 단얜)·이중 소비 패자 UnknownToken·실제 생성 wire 14 수신기 경유 클라 적용+이벤트) + 기존 `ReconnectGraceTests` 9곳 bool→열거형 정확 갱신(완화 아님). PlayMode `ResumeResultPlayTests` 실RUDP(진짜 토큰 재부착 이벤트·위조 토큰 SessionNotFound 거절 관측 — 토큰 보존은 SEC-001 진단과 동일한 테스트 주입 절차)
 - **패키지 0.7.0** — 와이어 14 신규·제너레이터 0.2.10. 마이그레이션: `ResumeSession` 직접 호출자 bool→enum, 재접속 관측은 `ResumeResultReceived` 구독
 
+### Changed (REC-001 개별 배포 확인)
+
+- **v0.7.0 게시 완료** — 구현 `206fecf`·[GitHub Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.7.0), main/tag CI success·원격 태그와 패키지 0.7.0 일치 확인. 회귀 4종·타깝 12/12·EditMode 167/167·PlayMode 30/30·실RUDP(진짜 토큰 재부착·위조 거절 결과 관측)·신규 로컬 Git 설치/샘플 컴파일 PASS, Flash r1 CLEAN(잔여 리스크로 지목된 ResumeSession 스레드 안전성은 생성 핸들러 QueueOnMain 래핑 실증으로 해소). 검증 중 발견 결함 4건 — 툼스톤 분기 순서(소진/폐기 토큰이 SessionNotFound로 오인)·스윕 툼스톤 수명 0(같은 스윕의 정리가 즉시 삭제)·DIM override 불가·PlayMode 이벤트 구독 인스턴스 교체 — 모두 수정·원시 이력 보존. REC-001 CLOSED, 사용자 자산 해시 보존·커밋 제외 확인.
+
 ### Changed (CON-001 개별 배포 확인)
 
 - **v0.6.0 게시 완료** — 구현 `c2d4c8e`·[GitHub Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.6.0), main/tag CI success·원격 태그와 패키지 0.6.0 일치 확인. 회귀 8종·타깝 8/8·EditMode 163/163·PlayMode 29/29·실경로 최소 재현·Arena 실RUDP·신규 로컬 Git 설치/샘플 컴파일 PASS, Flash r1 권장(핫패스 할당) 수용 후 r2 CLEAN. 검증 중 발견된 치명 회귀 2건 — attach 스레드에서 Unity Time API 호출로 실제 클라 attach 전면 중단(22/29 실패, 백그라운드 스레드 LocalClock throw 실증으로 규명)·생성기 0.2.9 DLL 미배포(UTF-16 문자열 grep 오검증) — 모두 수정·원시 이력 보존 후 전수 재검증. CON-001 CLOSED, 사용자 자산 해시 보존·커밋 제외 확인.
