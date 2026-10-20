@@ -12,6 +12,10 @@
 - **테스트** — `OwnerBaselineTests` 8종 신규(초기 스폰 순서·씬/동적 후발 KEEP·가시성 재진입 씬+동적·소유자 0 스테일 덮기·다중 서브 객체별 기준선·실제 생성 수신기 재생으로 캐시/IsOwner/RepNotify 순서). `RecordingChannel`에 교차 메시지 순서 로그 추가. Arena 진단 `Diag/OWN-001 후발 소유권 기준선`(실서버/클라 RUDP·사이드 포트·단일 프로세스 마커 기반 — 유예 KEEP 경로 재현, 다중 프로세스는 별도 단계. 재진입 관측은 타임드 틱 + 진단용 스테일 캐시 주입 → 실제 와이어 복원). 수정 전 실패 확인: 부모 사전 재현(`.pi-subagents/artifacts/commercial-netcode/own001-pre-fix-probe.json` — 후발 `Owners.Count=0`)
 - **패키지 0.4.1** — wire 무변경으로 생성기 재빌드 불필요. 기본 ProtocolVersion 핸드셰이크는 패키지 버전 비교이므로 양단 함께 업데이트(0.4.0↔0.4.1 불일치 거부). 감사 OWN-001은 부모 실기·CLEAN·배포 전까지 OPEN 유지
 
+### Changed (OWN-001 개별 배포 확인)
+
+- **v0.4.1 게시 완료** — 구현 `380b2b4`·[GitHub Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.1), main/tag CI success·원격 태그와 패키지 버전 0.4.1 일치 확인. 회귀 8/8·EditMode 146/146·PlayMode 27/27·Arena RUDP 진단·최종 Flash r3 CLEAN·커밋된 로컬 Git URL 신규 Unity 설치/샘플 컴파일 PASS. 초기 0/0 수집·테스트 helper 2실패·기존 통보 횟수 1실패도 원시 이력에 보존하고 모두 교정·전수 재실행했다. OWN-001 CLOSED, 사용자 자산 3개 해시 보존·커밋 제외 확인. 최종 전용 서버+클라 2개·공개 태그 설치는 아직 별도 미완이다.
+
 ### Changed (Windows 전용 서버 빌드 모듈 설치)
 
 - 사용자 승인 후 공식 Unity Hub CLI로 현재 Unity 6000.0.83f1의 `windows-server` 모듈 설치. Hub 선택 상태·서버 variation 12개·Win64 Mono 실행 파일/DLL 실체와 해시 확인, 지정 GLM-5.3-Flash 환경 리뷰 CLEAN. 에디터 종료·씬 저장 없이 기존 Arena/BlackMaterial 자산 해시 보존. 설치 원시 로그/전후 상태/리뷰는 증거대장의 `environmentChanges` 참조. 모듈 설치는 전용 서버 빌드·다중 프로세스 통신 검증 완료를 뜻하지 않는다.
