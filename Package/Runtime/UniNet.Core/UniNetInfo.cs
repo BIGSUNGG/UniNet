@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.4.1";   // 0.4.1 — ownership baseline on catch-up/visibility entry (OWN-001, no wire change)
+        public const string Version = "0.5.0";   // 0.5.0 — movement ownership transfer: stream reset + epoch (MOV-001, envelope layout change)
     }
 }

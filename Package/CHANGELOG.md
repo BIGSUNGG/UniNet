@@ -1,3 +1,23 @@
+## 0.5.0
+
+**Movement ownership transfer: stream reset + epoch (breaking — MOV-001, ADR-0042).** An ownership transfer (SetOwner, reassignment adoption, session resume) used to leave the movement engine's sequence guard stuck on the previous owner's stream — the new owner's first inputs were rejected until they climbed past the old tenure's last sequence, and a stale in-flight packet from the previous owner re-poisoned a reset stream.
+
+### Changed (breaking)
+
+- **`INetworkMoveSimulation` gains `ResetOwnershipStream()`** — implementers of the interface (fully custom movement engines) must add it. It clears the server input queue, the owner-client history, and the sequence guards while PRESERVING the authoritative game state and the latest input — the deliberate contract difference from `OnTeleport`, which also resets state (a jump arc must not resume after a teleport; an ownership handoff keeps velocity/cooldowns so authority continues seamlessly). Users of `MoveSimulation<TInput,TState>` + `NetworkTransform` need no code change.
+- **Movement input envelope layout gains an epoch prefix** — `UniNetBlobEnvelope.Data` for movement inputs is now `[uint epoch][int length][byte[] input]` (MessageProtocol standard codecs). The `RpcSubmitMove` signature, the envelope message type, and all system messages are unchanged, so no generator rebuild is needed; code that hand-builds/parses the movement envelope must add the prefix (+8 bytes per input). With the default `ProtocolVersion` the handshake compares package versions (ADR-0028) — update both ends together (0.4.x ↔ 0.5.0 mismatch rejects the client).
+
+### Added
+
+- **`NetworkClient.OwnershipChanged(netId, prev, next)`** — Core event raised only when an object's owner value actually changes (first assignment is a baseline and does not fire; repeated same-owner notices are silent). Raised on the DRPC dispatch thread: Unity subscribers must marshal via `UniNetEnvironment.QueueOnMain` and null-guard their local netId lookup (notices arrive for unregistered objects too).
+- **Movement ownership epoch** — `NetworkTransform` now replicates a server-authoritative `[Replicated(OwnerOnly)] uint` movement epoch, bumped on every tenure→tenure owner change (direct transfer, or release) and paired with the stream reset; adoption from unowned (0 → conn) is a timing-independent baseline — no bump, no reset (a virgin initial stream, or a release whose bump already cut the boundary while the ownership gate blocks senders). The owner stamps the epoch onto every input; the server quietly drops epoch-mismatched inputs (`NetworkTransform.MoveEpochMismatches` counter is the observable) so a stale in-flight packet from a previous tenure cannot poison the new stream even when it passes the current-owner gate. The owner client rebinds its session (sequence restart, accumulator/history clear, authoritative re-anchor) on BOTH the ownership event and the epoch replication — the epoch delta (unreliable + quiescence resend, ADR-0039) is the self-healing backstop for a missed event. Predicted state converges on the first ack rollback. Host (authority) instances skip the client-side reset (double-reset guard).
+
+### Migration
+
+- Direct `INetworkMoveSimulation` implementers: add `ResetOwnershipStream()` (clear queues/history/sequence guards, keep state; see `MoveSimulation<TInput,TState>` for reference).
+- Custom code touching the movement envelope layout: write `[epoch][length][bytes]` and verify the epoch server-side before adoption.
+- Everyone else: no action; both ends of the connection must be 0.5.0 (default version handshake).
+
 ## 0.4.1
 
 **Late-joiners learn existing ownership (OWN-001 — no wire change).** Late-join catch-up and scene-object relevancy re-entry omitted ownership notices (dynamic re-entry already sent them, but after spawn and only for nonzero owners) — a late-joining client's owner cache stayed 0 (0 = unassigned), so `IsOwner` and owner-only behavior were wrong until some later ownership change happened to broadcast.

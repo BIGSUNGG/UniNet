@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using NUnit.Framework;
 using UniNet.Core.Hosting;
@@ -78,8 +79,88 @@ namespace UniNet.Tests
         public void Cleanup()
         {
             UniNetEnvironment.SetClient(null);
-            foreach (var go in Object.FindObjectsByType<NetworkTransform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-                Object.DestroyImmediate(go.gameObject);
+            UniNetEnvironment.SetServer(_prevServer);   // restore the ambient server (other fixtures/user state stay untouched)
+            foreach (var go in UnityEngine.Object.FindObjectsByType<NetworkTransform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                UnityEngine.Object.DestroyImmediate(go.gameObject);
+        }
+
+        private static NetworkServer _server;
+        private static NetworkServer _prevServer;
+
+        /// <summary>Authority instance — real server entry + server registration flag (the watch polls Server.GetOwner).</summary>
+        private static NetworkTransform NewAuthority(out MoveSimulation<TIn, TSt> sim)
+        {
+            var go = new GameObject("nt-authority");
+            var nt = go.AddComponent<NetworkTransform>();
+            sim = new MoveSimulation<TIn, TSt>(Step, WriteInput, ReadInput, WriteState, ReadState, StepHz);
+            nt.Simulation = sim;
+
+            var server = new NetworkServer();
+            server.RegisterSceneObject(nt.NetId, new object[] { nt });
+            typeof(NetworkBehaviour).GetMethod("MarkServerRegistered", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(nt, null);
+            _prevServer = UniNetEnvironment.Server;
+            _server = server;
+            UniNetEnvironment.SetServer(server);
+            return nt;
+        }
+
+        /// <summary>Feeds a move input through the real server implementation using the production envelope layout.</summary>
+        private static void SubmitMove(NetworkTransform nt, uint seq, uint epoch)
+        {
+            var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
+            WriteInput(ref w, new TIn { Dx = 1 });
+            byte[] data = (byte[])typeof(NetworkTransform).GetMethod("EncodeMoveInput", BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, new object[] { epoch, w.ToArray() });
+            typeof(NetworkTransform).GetMethod("RpcSubmitMove_Implementation", BindingFlags.NonPublic | BindingFlags.Instance)
+                .Invoke(nt, new object[] { seq, new UniNetBlobEnvelope { Data = data } });
+        }
+
+        /// <summary>Drives one authoritative step via the component Update (accumulator ≥ one interval).</summary>
+        private static void TickOnce(NetworkTransform nt)
+        {
+            SetField(nt, "_accumulator", 1f / StepHz);
+            InvokeUpdate(nt);
+        }
+
+        private static uint GetU(NetworkTransform nt, string name)
+            => (uint)typeof(NetworkTransform).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(nt);
+
+        private static void SetU(NetworkTransform nt, string name, uint value)
+            => typeof(NetworkTransform).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(nt, value);
+
+        // System wire messages (1~12, e.g. OwnerUpdate) live in the generated hubs' MethodCallActions — NOT in the
+        // general UniNetDispatch client table. Mirror OwnerBaselineTests: locate the emitted UniNetClientHub.__OwnerUpdate_Requested
+        // by reflection and invoke what runs in production.
+        private static MethodInfo _ownerUpdateHandler;
+
+        private static MethodInfo FindOwnerUpdateHandler()
+        {
+            if (_ownerUpdateHandler != null) return _ownerUpdateHandler;
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type hub = null;
+                try
+                {
+                    foreach (var t in asm.GetTypes())
+                        if (t.Name == "UniNetClientHub") { hub = t; break; }
+                }
+                catch (ReflectionTypeLoadException) { continue; }
+                if (hub == null) continue;
+                var m = hub.GetMethod("__OwnerUpdate_Requested", BindingFlags.NonPublic | BindingFlags.Static);
+                if (m != null) return _ownerUpdateHandler = m;
+            }
+            Assert.Fail("생성 UniNetClientHub.__OwnerUpdate_Requested 미발견 — 생성기 출력 확인 필요");
+            return null;
+        }
+
+        /// <summary>Feeds an OwnerUpdate through the actual generated wire-2 receiver (same envelope the sender writes).</summary>
+        private static void ReplayOwnerUpdate(ulong netId, long owner)
+        {
+            var w = MessageProtocol.Serialize.MessageBufferWriter.Create();
+            w.WriteUInt64(netId);
+            w.WriteInt64(owner);
+            var task = (System.Threading.Tasks.Task<byte[]>)FindOwnerUpdateHandler().Invoke(null, new object[] { w.ToArray() });
+            Assert.IsTrue(task.Wait(1000), "실제 생성 수신기 — 완료 미반환");
         }
 
         [Test]
@@ -167,7 +248,164 @@ namespace UniNet.Tests
             Assert.DoesNotThrow(() => InvokeUpdate(nt), "복제전용 업데이트 무결");
             Assert.AreEqual(7f, nt.transform.position.x, 0.01f, "권위 좌표 렌더");
             Assert.AreEqual(9f, nt.transform.position.z, 0.01f);
-            Object.DestroyImmediate(go);
+            UnityEngine.Object.DestroyImmediate(go);
+        }
+
+        [Test]
+        public void 이전_임기_지연_입력은_epoch_불일치로_기각되고_새_스트림이_채택된다()
+        {
+            var nt = NewAuthority(out var sim);
+            var isim = (INetworkMoveSimulation)sim;
+
+            // tenure-1 assignment BEFORE the first watch observation — 0→conn is an adoption baseline, no bump
+            // (the watch detects transitions, not assignments; timing-independent by design)
+            _server.SetOwner(nt.NetId, 1);
+            TickOnce(nt);
+            Assert.AreEqual(0u, GetU(nt, "_moveEpoch"), "초기 입양 — 베이스라인 (무범프)");
+
+            SubmitMove(nt, 900, 0);   // tenure 1 ran to seq 900 (epoch 0)
+            TickOnce(nt);
+            Assert.AreEqual(900u, isim.LastAdoptedSeq, "1차 임기 입력 채택");
+
+            // A → B → A across frames: tenure→tenure transfers bump + reset (probe-2 reproduction)
+            _server.SetOwner(nt.NetId, 2);
+            TickOnce(nt);   // 1→2 — bump 1 + reset
+            _server.SetOwner(nt.NetId, 1);
+            TickOnce(nt);   // 2→1 — bump 2 + reset
+            Assert.AreEqual(2u, GetU(nt, "_moveEpoch"), "임기→임기 이전 2회 — epoch 2 (리셋과 짝)");
+            Assert.AreEqual(0u, isim.LastAdoptedSeq, "서버 스트림 리셋 — 시퀀스 가드 0");
+
+            // stale in-flight input from the OLD tenure: the current owner passes any ownership gate — it must die at the epoch gate
+            SubmitMove(nt, 900, 0);
+            TickOnce(nt);
+            Assert.AreEqual(0u, isim.LastAdoptedSeq, "구 epoch seq 900 — 기각 (probe-2 반례 수정 증명)");
+            Assert.AreEqual(1L, nt.MoveEpochMismatches, "불일치 카운터 관측");
+
+            // the new tenure's fresh stream is adopted normally
+            SubmitMove(nt, 1, 2);
+            TickOnce(nt);
+            Assert.AreEqual(1u, isim.LastAdoptedSeq, "새 임기 seq 1 채택");
+            SubmitMove(nt, 2, 2);
+            TickOnce(nt);
+            Assert.AreEqual(2u, isim.LastAdoptedSeq, "이어지는 스트림 채택");
+        }
+
+        [Test]
+        public void 소유자_값_불변시_epoch_범프_없이_스트림이_유지된다()
+        {
+            var nt = NewAuthority(out var sim);
+            var isim = (INetworkMoveSimulation)sim;
+
+            // tenure-1 assignment BEFORE the first watch observation — 0→conn is an adoption baseline, no bump
+            _server.SetOwner(nt.NetId, 1);
+            TickOnce(nt);
+            uint epoch = GetU(nt, "_moveEpoch");
+            Assert.AreEqual(0u, epoch, "초기 입양 — 베이스라인 (무범프)");
+
+            SubmitMove(nt, 5, 0);
+            TickOnce(nt);
+            Assert.AreEqual(5u, isim.LastAdoptedSeq, "1차 임기 스트림");
+
+            // same value — the broadcast still goes out (redundant SetOwner / re-sent baseline), but no bump, no reset
+            _server.SetOwner(nt.NetId, 1);
+            TickOnce(nt);
+            Assert.AreEqual(epoch, GetU(nt, "_moveEpoch"), "동일 소유자 재전파 — 범프 없음");
+            Assert.AreEqual(5u, isim.LastAdoptedSeq, "리셋 없음 — 스트림 연속");
+
+            SubmitMove(nt, 6, epoch);
+            TickOnce(nt);
+            Assert.AreEqual(6u, isim.LastAdoptedSeq, "현재 epoch 입력 통과 — 스트림 연속");
+            Assert.AreEqual(0L, nt.MoveEpochMismatches, "불일치 없음");
+        }
+
+        [Test]
+        public void 실제_OwnerUpdate_수신기_경유_소유권_획득시_클라_스트림이_재바인딩된다()
+        {
+            var nt = NewOwner(out var sim);
+            var isim = (INetworkMoveSimulation)sim;
+            var client = UniNetEnvironment.Client;
+
+            SetField(nt, "_accumulator", -10000f);   // edit-mode Time.deltaTime is not guaranteed 0 — guarantee no steps
+            InvokeUpdate(nt);   // binds the ownership subscription (client instance)
+            client.ApplyOwner(nt.NetId, 7);   // value change → event fires, but owner 7 ≠ local 1: the marshalled reset is inert
+            UniNetEnvironment.PumpMain();
+
+            // seed a stale stream from the previous tenure
+            sim.SetInput(new TIn { Dx = 1 });
+            float hx = 5f, hy = 0f, hz = 0f;
+            isim.PredictStep(41, ref hx, ref hy, ref hz);
+            isim.PredictStep(42, ref hx, ref hy, ref hz);
+            SetU(nt, "_clientSeq", 42u);
+            SetField(nt, "_predX", 5f);
+            SetField(nt, "_px", 0f);
+
+            ReplayOwnerUpdate(nt.NetId, 1);   // actual generated wire-2 receiver — the local connection GAINS ownership
+            UniNetEnvironment.PumpMain();     // the marshalled rebinding runs
+
+            Assert.AreEqual(0u, GetU(nt, "_clientSeq"), "클라 시퀀스 재시작 (다음 전송 1)");
+            Assert.AreEqual(0, isim.PendingCount, "히스토리 클리어");
+            Assert.AreEqual(0f, GetField(nt, "_predX"), 1e-6f, "권위 좌표 재앵커");
+
+            // unknown-object notices ride the same event — the netId guard drops them harmlessly
+            client.ApplyOwner(999999ul, 3);
+            ReplayOwnerUpdate(999999ul, 5);
+            Assert.DoesNotThrow(() => UniNetEnvironment.PumpMain(), "미등록 netId — 널가드 안전");
+        }
+
+        [Test]
+        public void 호스트_권위_인스턴스는_이벤트로_이중_리셋하지_않는다()
+        {
+            var nt = NewAuthority(out var sim);
+            var client = new NetworkClient();
+            client.SetLocalConnId(1);
+            client.ApplyOwner(nt.NetId, 1);   // first assign — baseline, no event
+            UniNetEnvironment.SetClient(client);
+            typeof(NetworkBehaviour).GetMethod("MarkClientRegistered", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(nt, null);
+
+            // the host instance never auto-subscribes (authority branch) — bind like a swapped-in client to prove the guard still holds
+            typeof(NetworkTransform).GetMethod("BindOwnershipEvent", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(nt, null);
+
+            SubmitMove(nt, 10, 0);
+            TickOnce(nt);
+            SetU(nt, "_clientSeq", 42u);
+            Assert.AreEqual(10u, ((INetworkMoveSimulation)sim).LastAdoptedSeq, "서버 스트림 진행");
+
+            client.ApplyOwner(nt.NetId, 2);   // value changes on the client cache (loopback notice equivalent)
+            client.ApplyOwner(nt.NetId, 1);   // back to local — a GAIN, but this instance IS the authority
+            UniNetEnvironment.PumpMain();
+
+            Assert.AreEqual(42u, GetU(nt, "_clientSeq"), "권위 인스턴스 — 클라측 재설정 스킵 (이중 리셋 가드)");
+        }
+
+        [Test]
+        public void 다른_객체의_소유권_변화는_이_스트림을_건드리지_않는다()
+        {
+            var a = NewOwner(out _);
+            var client = UniNetEnvironment.Client;
+
+            var go = new GameObject("nt-other");
+            var b = go.AddComponent<NetworkTransform>();
+            b.Simulation = new MoveSimulation<TIn, TSt>(Step, WriteInput, ReadInput, WriteState, ReadState, StepHz);
+            client.Register(b.NetId, new object[] { b });
+            typeof(NetworkBehaviour).GetMethod("MarkClientRegistered", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(b, null);
+            client.ApplyOwner(b.NetId, 1);   // the local connection owns both
+
+            SetField(a, "_accumulator", -10000f);
+            SetField(b, "_accumulator", -10000f);
+            InvokeUpdate(a);
+            InvokeUpdate(b);   // both bind subscriptions
+            SetU(a, "_clientSeq", 42u);
+            SetU(b, "_clientSeq", 42u);
+
+            client.ApplyOwner(b.NetId, 9);   // loss — no reset expected anywhere
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(42u, GetU(a, "_clientSeq"), "손실 통보 — 무간섭");
+            Assert.AreEqual(42u, GetU(b, "_clientSeq"), "손실은 재바인딩 아님");
+
+            client.ApplyOwner(b.NetId, 1);   // b re-gains → ONLY b rebinds
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(42u, GetU(a, "_clientSeq"), "다른 객체 소유권 변화 — 무간섭");
+            Assert.AreEqual(0u, GetU(b, "_clientSeq"), "본인 객체 획득 — 재바인딩");
         }
     }
 }

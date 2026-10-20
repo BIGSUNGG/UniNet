@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using UniNet.Core.Hosting;
 using UniNet.Unity;
@@ -286,6 +287,33 @@ namespace UniNet.Tests
             foreach (var e in ch.Order)
                 if (e.StartsWith("replicate:" + netId + ":")) list.Add(e);
             return list;
+        }
+
+        [Test]
+        public void ApplyOwner_이벤트는_값이_실제로_바뀔_때만_발화한다()
+        {
+            var client = new NetworkClient();
+            var fired = new System.Collections.Generic.List<(ulong NetId, long Prev, long Next)>();
+            client.OwnershipChanged += (netId, prev, next) => fired.Add((netId, prev, next));
+
+            client.ApplyOwner(7001, 5);   // first-ever assignment — a baseline, not a change
+            client.ApplyOwner(7001, 5);   // repeated same-owner notice (re-sent baseline / redundant SetOwner broadcast)
+            Assert.AreEqual(0, fired.Count, "첫 배정·동일값 재전파 — 미발화");
+
+            client.ApplyOwner(7001, 0);   // actual value change — release
+            client.ApplyOwner(7001, 2);   // actual value change — adopt
+            Assert.AreEqual(2, fired.Count, "값 변경마다 1회 발화");
+            Assert.AreEqual((7001ul, 5L, 0L), fired[0], "발화 인자 — (netId, prev, next) 해제");
+            Assert.AreEqual((7001ul, 0L, 2L), fired[1], "발화 인자 — 입양");
+            Assert.AreEqual(2, client.GetOwner(7001), "캐시 최종값");
+
+            // notices for objects this client never registered follow the same contract: the FIRST assignment (registered
+            // or not) is a baseline and does not fire; only a later value change fires — subscribers still null-guard lookups
+            client.ApplyOwner(999999, 3);   // first assignment — baseline, silent
+            client.ApplyOwner(999999, 7);   // actual change on an unregistered netId — fires
+            Assert.AreEqual(3, fired.Count, "미등록 netId도 값 변경은 발화 (첫 배정은 미발화)");
+            Assert.AreEqual((999999ul, 3L, 7L), fired[2], "미등록 netId 실제 변경 — (netId, prev, next) 발화");
+            Assert.IsNull(client.Get(999999), "미등록 객체 조회 — null (구독자 널가드 계약)");
         }
 
         // System wire messages (1~12, e.g. OwnerUpdate) live in the generated hubs' MethodCallActions — NOT in the

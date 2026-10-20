@@ -6,7 +6,7 @@
 ## 소비자 설치
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.1"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.5.0"
 ```
 
 - Unity `6000.0+` 필요. 의존성 전부 패키지 동봉 — 추가 설정 없음.

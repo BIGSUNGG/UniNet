@@ -5,6 +5,13 @@
 
 ## [2026-10-20]
 
+### Added (이동 소유권 전이 스트림 리셋·epoch — MOV-001, 패키지 0.5.0)
+
+- **소유권 전이 후 새 소유자의 이동 입력 스트림 즉시 채택** (MOV-001 ·[[0042-이동-소유권-전이-스트림-리셋-에포크]]·[[features/movement-prediction|movement-prediction]]) — `MoveSimulation.AdoptInput`의 시퀀스 가드가 임기를 몰라 소유권 이전 시 새 소유자 seq 1이 구 seq 아래로 기각(probe-1), 이상적 리셋 후에도 이전 임기 지연 패킷 seq 900이 재오염(probe-2)했다. 부모 2회 실기 반례(`.pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe{,-2}.json`)
+- **근본 수정 3계층** — ① `NetworkClient.OwnershipChanged(netId, prev, next)` Core 이벤트: 값이 실제로 바뀔 때만 발화(첫 배정·동일값 재전파 무시), 디스패치 스레드 발화 — 구독자 `QueueOnMain` 마셜·미등록 netId 널가드 계약 ② `INetworkMoveSimulation.ResetOwnershipStream()`: 큐·히스토리·`_lastSeenSeq`·`LastAdoptedSeq` 클리어, **권위 TState·최신 입력 보존**(`OnTeleport`와 계약 차이 — 텔레포트는 상태 리셋, 전이는 이어받기) ③ 이동 소유권 epoch: `NetworkTransform`에 `[Replicated(OwnerOnly, Notify)] uint _moveEpoch`, 서버는 임기→임기 이전 시에만 범프+리셋 짝(0→비0 입양은 타이밍 독립 베이스라인 — 무범프·무리셋), 봉투 `UniNetBlobEnvelope.Data`에 `[uint epoch][int len][byte[] 입력]` 접두 — **RPC 시그니처·시스템 메시지 불변·생성기 재빌드 불필요**. 서버 epoch 불일치 조용 기각 + `MoveEpochMismatches` 카운터. 클라는 소유권 획득 이벤트·OwnerOnly epoch 수신 양경로에서 세션 재바인딩(`_clientSeq=0`·accumulator·히스토리 클리어·권위 좌표 재앵커, 예측 상태는 첫 ack 롤백 수렴). 호스트 권위 인스턴스는 이벤트 재설정 스킵(이중 리셋 가드). epoch 델타는 놓친 이벤트의 자가치유 백스톱
+- **테스트** — EditMode `MoveSimulationTests` 3종(리셋 후 seq1 채택·`OnTeleport` 대용 불가(probe-1)·권위 TState 보존)·`NetworkTransformComponentTests` 5종(probe-2 재현 — 실제 `SetOwner` A→B→A + 프레임 분리로 구 epoch 기각·새 스트림 채택, 값 불변 무범프, wire-2 실제 생성 수신기 재생 재바인딩, 호스트 이중 리셋 방지, 다중 객체 무간섭)·`OwnerBaselineTests` 1종(이벤트 값변경 전용·미등록 안전). PlayMode `MovementOwnershipPlayTests`(사이드 포트 +9·HostAsync 실RUDP·소유권 사이클: 해제→재배정 입양 재획득→구 epoch 기각→새 스트림 채택·ack 재개 실API 단얜)
+- **파괴 변경 (마이그레이션)** — `INetworkMoveSimulation` 직접 구현자는 `ResetOwnershipStream` 추가 필수. 이동 봉투를 직접 인/디코딩하는 커스텀 경로는 epoch 접두 반영(입장당 +8바이트). `MoveSimulation<TInput,TState>`·`NetworkTransform` 조합 사용자는 무변경. 기본 ProtocolVersion 핸드셰이크로 0.4.x↔0.5.0 불일치 거부 — 양단 함께 업데이트
+
 ### Fixed (후발 접속 소유권 기준선 — OWN-001, 패키지 0.4.1)
 
 - **캐치업·가시성 진입 경로의 객체별 소유권 기준선** (OWN-001 ·[[research/commercial-netcode-audit|commercial-netcode-audit]]·[[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]]·[[features/replication-p3-policy|replication-p3-policy]]) — `SendCatchup`은 상태/스폰만 보내 소유권 통보가 없었고, `ReassignOwnership`은 살아 있는 기존 소유자를 KEEP하므로 후발 클라의 소유자 캐시가 0으로 남아 `IsOwner`·소유자 분기가 왜곡됐다. 씬 가시성 재진입 경로에도 통보가 없었다(동적 재진입은 0이 아닐 때만 스폰 뒤 전송)

@@ -253,6 +253,20 @@ namespace UniNet.Core.Hosting
             _hCount = 0;
         }
 
+        /// <inheritdoc />
+        public void ResetOwnershipStream()
+        {
+            _qHead = 0;
+            _qCount = 0;
+            _hHead = 0;
+            _hCount = 0;
+            _lastSeenSeq = 0;      // the tenure guard restarts — the new owner's stream may begin at seq 1 (MOV-001)
+            LastAdoptedSeq = 0;
+            // deliberately NOT touching _state (authoritative game state survives the handoff — the contract
+            // difference from OnTeleport above) nor _input (extrapolation continues until the new owner's first
+            // input — input-expiry is MOV-003, out of scope here)
+        }
+
         // ── internals ─────────────────────────────────────────────
 
         private bool ContainsSeq(uint seq)

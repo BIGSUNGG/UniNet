@@ -99,7 +99,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 기능 | 게임 내 사용 | 위치 |
 | --- | --- | --- |
 | TimeSync 시간 동기화 | 드라이버 1초 주기 브로드캐스트 — 클라가 서버 시각 역을 유지 | 라이브러리 (UniNetTime — 게임은 자동 활용) |
-| 클라 이동 예측 | 게임 정의 입력·상태 구조체(MoveSimulation) 고정 스텝(60Hz) 시뮬 — ack 수신 시 롤백+상태 복원+미승인 입력 재시뮬 (ADR-0038) | ArenaPlayer + ArenaMovement + NetworkTransform |
+| 클라 이동 예측 | 게임 정의 입력·상태 구조체(MoveSimulation) 고정 스텝(60Hz) 시뮬 — ack 수신 시 롤백+상태 복원+미승인 입력 재시뮬 (ADR-0038). 소유권 전이 시 스트림 리셋·epoch 기각(ADR-0042·MOV-001) — PlayMode `MovementOwnershipPlayTests`가 실RUDP 사이클(해제→입양→구 epoch 기각→새 스트림 ack 재개)로 단얜 | ArenaPlayer + ArenaMovement + NetworkTransform |
 | 인터폴레이션 버퍼 | 리모트 플레이어를 Now − 0.12s 시점으로 렌더 (지터 흡수·적용 시점 제어) | NetworkTransform (SnapshotBuffer) |
 | 히트스캔 + 래그 컴펜세이션 | 발사 시 발신자 조준 시각(hitTime) 전송 — 서버가 대상을 리와인드(클램프 [Now−1s, Now])해 선분 판정 | ArenaPlayer.RpcFire |
 | 리와인드 히스토리 | 플레이어 위치를 서버 틱마다 기록 (옵트인) | ArenaPlayer (NetworkRewindHistory) |

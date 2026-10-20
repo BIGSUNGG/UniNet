@@ -86,6 +86,7 @@
 - [[0039-복제-배칭과-신뢰성-분리]] — 틱별 신뢰성별 배치(wire 13)·오브젝트별 전송 신뢰성(Unreliable=Sequenced)·정지 재전송·휴면 플러시 신뢰 강제
 - [[0040-복제-주기-기본값-30Hz]] — NetworkUpdateFrequencyHz 기본 0(무제한)→30. 0 설정으로 매 틱 옵트인
 - [[0041-세션-토큰-암호학적-난수-전환]] — SEC-001: 세션 토큰을 256비트 암호학적 난수 opaque Base64로 전환(와이어 1/10 string화·파싱 전 상한·재개 3조건 소비·추측/오류로 세션 미소진·비밀 미출력)
+- [[0042-이동-소유권-전이-스트림-리셋-에포크]] — MOV-001: NetworkClient.OwnershipChanged 값변경 이벤트·MoveSimulation.ResetOwnershipStream(TState 보존)·이동 소유권 epoch(봉투 접두·불일치 기각)로 소유권 전이 후 새 스트림 즉시 채택 (0.5.0)
 
 ### deployment — 배포
 
@@ -97,6 +98,8 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-20 — **MOV-001 v0.5.0 구현 — 이동 소유권 전이 스트림 리셋·epoch** (ADR-0042·[[features/movement-prediction]] 갱신. `NetworkClient.OwnershipChanged` 값변경 이벤트(디스패치 스레드→QueueOnMain)·`MoveSimulation.ResetOwnershipStream`(권위 TState 보존)·`NetworkTransform` 이동 epoch([Replicated(OwnerOnly)]·봉투 `[uint epoch][int len][byte[]]` 접두·RPC 시그니처·시스템 메시지 불변·생성기 재빌드 불필요)·불일치 조용 기각+`MoveEpochMismatches` 카운터·클라 양경로 재바인딩·호스트 이중 리셋 가드. 파괴 변경 2종(인터페이스 메서드·봉투 레이아웃). EditMode 회귀 9종·PlayMode 실RUDP `MovementOwnershipPlayTests`. 실기·배포·감사 CLOSED 전환은 부모 진행 중)
 
 - 2026-10-20 — **OWN-001 v0.4.1 개별 배포 완료** (캐치업/가시성 재진입/초기 스폰의 owner-before-state·0 포함·와이어 무변경. 회귀 8/8·EditMode 146/146·PlayMode 27/27·Arena RUDP·신규 로컬 Git 설치 PASS, 최종 Flash CLEAN·main/tag CI 성공. 구현 `380b2b4`, 증거대장 연결·OWN-001 CLOSED)
 - 2026-10-20 — **SEC-001 v0.4.0 개별 배포 완료** (구현 `ca13ee7`·소스/문서 CLEAN·신규 로컬 Git 설치 PASS·원격 태그/Release·main/tag CI 성공 확인. 증거대장 연결, SEC-001 CLOSED. 상용 전체 점검은 계속 진행 중)

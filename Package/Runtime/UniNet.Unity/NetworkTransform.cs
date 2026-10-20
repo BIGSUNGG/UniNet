@@ -55,6 +55,12 @@ namespace UniNet.Unity
         // MessageSerializer.SerializeToWriter throws on null.
         [Replicated(ReplicateCondition.OwnerOnly)] private UniNetBlobEnvelope _ackState = new UniNetBlobEnvelope { Data = new byte[0] };
         [Replicated(ReplicateCondition.OwnerOnly, Notify = nameof(OnAckSeqChanged))] private uint _ackSeq;
+        // MOV-001 movement-ownership epoch — server-authoritative, replicated to the owner only. Bumped on every
+        // tenure→tenure owner change (direct transfer, or release) and paired with the input-stream reset; the owner
+        // stamps it onto every move input so a stale in-flight packet from a PREVIOUS tenure is rejected even when
+        // its sequence number would pass. Adoption from unowned (0 → conn) is a baseline: no bump, no reset.
+        // After _ackSeq: its notify is independent of the ack fields (declaration order is wire-apply order within a delta).
+        [Replicated(ReplicateCondition.OwnerOnly, Notify = nameof(OnMoveEpochChanged))] private uint _moveEpoch;
 
         private float _accumulator;      // fixed-step remainder (seconds) since the last executed step
         private float _predX;            // predicted position (owning client)
@@ -64,6 +70,10 @@ namespace UniNet.Unity
         private float _prevPredY;
         private float _prevPredZ;
         private uint _clientSeq;         // owner input sequence
+        private uint _clientEpoch;       // epoch of the input stream this owner is currently sending (MOV-001)
+        private long _watchedOwner;      // server — owner value at the last watch observation (tenure watch, MOV-001)
+        private long _epochMismatches;   // server — inputs dropped because their embedded epoch is stale (MOV-001 observability)
+        private NetworkClient _subscribedClient;   // client instance currently subscribed for ownership notices (replaced on reconnect)
         private readonly UniNetBlobEnvelope _env = new UniNetBlobEnvelope();   // reused wire envelope — the payload array it references is swapped per send (encode is synchronous)
 
         private readonly SnapshotBuffer<float> _bufX = new(32, LerpF);
@@ -121,6 +131,11 @@ namespace UniNet.Unity
             var sim = Simulation;
             bool isAuthority = IsServer;
             bool isPredictor = !IsServer && IsOwner && IsClient;
+
+            if (isAuthority)
+                WatchServerOwnership();   // MOV-01 — bump the epoch + reset the stream BEFORE this frame's steps so stale-tenure inputs die at the gate
+            else
+                BindOwnershipEvent();     // MOV-01 — client instance: hook ownership notices (dispatch-thread event, marshalled inside)
 
             if (isAuthority || isPredictor)
             {
@@ -206,7 +221,7 @@ namespace UniNet.Unity
                     _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
                     uint seq = ++_clientSeq;
                     byte[] payload = sim.PredictStep(seq, ref _predX, ref _predY, ref _predZ);
-                    _env.Data = payload;
+                    _env.Data = EncodeMoveInput(_clientEpoch, payload);   // MOV-01 — epoch-prefixed envelope payload
                     RpcSubmitMove(seq, _env);
                 }
             }
@@ -310,21 +325,145 @@ namespace UniNet.Unity
             _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;   // reset the render baseline — never lerp from the pre-rollback position
         }
 
+        // ---- movement ownership tenure (MOV-001: stream reset + epoch gate) ----
+
+        /// <summary>
+        /// Server-side ownership watch — bumps the movement epoch and resets the input stream only on a TENURE→TENURE
+        /// change (the previously observed owner was nonzero and differs: a direct transfer, or a release). Adoption
+        /// from unowned (0 → conn) is a baseline — no bump, no reset: an initial spawn's stream is virgin, and after a
+        /// release the release-time bump already cut the boundary (the ownership gate blocks senders while unowned).
+        /// This rule is timing-independent: whatever owner the first observation sees is a baseline, so a dynamic
+        /// spawn whose owning connection attaches AFTER the first Update no longer bumps on its initial adoption.
+        /// Frame-granular; a same-frame A→B→A flip is observed as no change — documented ceiling in ADR-0042.
+        /// </summary>
+        private void WatchServerOwnership()
+        {
+            long owner = UniNetEnvironment.Server?.GetOwner(NetId) ?? 0;
+            if (owner == _watchedOwner) return;
+            long prev = _watchedOwner;
+            _watchedOwner = owner;
+            if (prev == 0) return;   // adoption baseline (includes the very first observation — _watchedOwner starts at 0)
+            _moveEpoch++;
+            Simulation?.ResetOwnershipStream();
+        }
+
+        /// <summary>Subscribes this client instance to ownership notices — lazy: the environment client appears after
+        /// component enable and is replaced on reconnect. A stale subscription to a dead client is inert (its
+        /// connection is gone), and a fresh client's first assignment is a baseline (no event), so no ownership
+        /// transition can be lost in the swap.</summary>
+        private void BindOwnershipEvent()
+        {
+            var client = UniNetEnvironment.Client;
+            if (client == null || ReferenceEquals(client, _subscribedClient)) return;
+            if (_subscribedClient != null) _subscribedClient.OwnershipChanged -= OnClientOwnershipChanged;
+            _subscribedClient = client;
+            client.OwnershipChanged += OnClientOwnershipChanged;
+        }
+
+        /// <summary>Ownership notice arrived (dispatch thread — marshalled above). Only a GAIN by the local
+        /// connection rebinds this instance; the authority instance (host) skips — the server-side watch already
+        /// owns its stream and a client-side reset here would clear the server queue (the double-reset guard).
+        /// Notices for other netIds (including objects this client never registered) drop at the netId guard.</summary>
+        private void OnClientOwnershipChanged(ulong netId, long prevOwner, long newOwner)
+        {
+            UniNetEnvironment.QueueOnMain(() =>
+            {
+                if (this == null || IsServer || netId != NetId) return;
+                var client = UniNetEnvironment.Client;
+                if (client == null || newOwner == 0 || newOwner != client.LocalConnId) return;
+                ResetOwnerStream();
+            });
+        }
+
+        /// <summary>Replicated movement epoch changed (owner client) — the server bumped it at an ownership boundary:
+        /// adopt it as this stream's session epoch and rebind. Idempotent per value: catch-up/visibility baselines
+        /// re-apply the same epoch without resetting. Also the self-healing backstop for a missed ownership event —
+        /// the epoch delta reaches the CURRENT owner (unreliable + quiescence resend) even when the notice raced
+        /// component enable; handoff-window inputs sent with the stale epoch are rejected until it arrives.</summary>
+        private void OnMoveEpochChanged(uint prev)
+        {
+            if (IsServer || !IsOwner || !IsClient) return;
+            if (_moveEpoch == _clientEpoch) return;
+            _clientEpoch = _moveEpoch;
+            ResetOwnerStream();
+        }
+
+        /// <summary>Owner-client rebinding — restarts the local input stream at seq 1 and re-anchors on the
+        /// authoritative replicated position. The predicted game state is deliberately NOT restored here: there is
+        /// no state echo for the new tenure yet, so prediction converges through the first ack rollback (a hard snap
+        /// when that ack predates the new history).</summary>
+        private void ResetOwnerStream()
+        {
+            _clientSeq = 0;
+            _accumulator = 0f;
+            _predX = _px; _predY = _py; _predZ = _pz;
+            _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
+            Simulation?.ResetOwnershipStream();
+        }
+
+        /// <summary>Server-side diagnostic (MOV-01) — movement inputs dropped because their embedded epoch did not
+        /// match the current ownership epoch. Includes the brief handoff window where a legitimate new owner has not
+        /// yet received the bumped epoch (its stale-epoch inputs land here until the OwnerOnly delta arrives).</summary>
+        public long MoveEpochMismatches => System.Threading.Interlocked.Read(ref _epochMismatches);
+
+        private void OnDestroy()
+        {
+            if (_subscribedClient != null)   // null-conditional -= is illegal on events (CS0079) — event field access is not a value
+                _subscribedClient.OwnershipChanged -= OnClientOwnershipChanged;
+        }
+
         // ---- Input ServerRpc (ADR-0038 — sequenced move stream; ownership auto-enforced per ADR-0016) ----
 
         /// <summary>Client-to-server movement input — one sequenced payload per simulation step.</summary>
         [ServerRpc(Validate = true)]
         private partial void RpcSubmitMove(uint seq, UniNetBlobEnvelope envelope);
 
+        /// <summary>Movement-input envelope layout (MOV-01, breaking envelope change): [uint epoch][int length][bytes input]
+        /// — the epoch prefixes the game payload inside UniNetBlobEnvelope.Data. The RPC signature, the envelope
+        /// message type, and all system messages are unchanged (no generator rebuild needed). Standard MessageProtocol
+        /// codecs, so endianness matches the rest of the wire.</summary>
+        private static byte[] EncodeMoveInput(uint epoch, byte[] input)
+        {
+            // one allocation per send — the synchronous prefix copy right before the generated encoder call is the
+            // floor (a reusable scratch buffer would violate _env.Data's array-lives-until-send contract).
+            // Little-endian verified against MessageProtocol's reader (WriteUInt32 0x01020304 → 04 03 02 01).
+            var data = new byte[8 + input.Length];
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0, 4), epoch);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(4, 4), input.Length);
+            Buffer.BlockCopy(input, 0, data, 8, input.Length);
+            return data;
+        }
+
         private Task<bool> RpcSubmitMove_Validate(uint seq, UniNetBlobEnvelope envelope)
             => Task.FromResult(Simulation != null
                                && envelope != null
                                && envelope.Data != null
-                               && envelope.Data.Length <= Simulation.InputCapacityBytes);   // cap — oversized payloads are rejected before parsing
+                               && envelope.Data.Length <= sizeof(uint) + sizeof(int) + Simulation.InputCapacityBytes);   // envelope prefix overhead (epoch + length); the input payload itself is capped again at adoption
 
         private void RpcSubmitMove_Implementation(uint seq, UniNetBlobEnvelope envelope)
         {
-            Simulation?.AdoptInput(seq, envelope?.Data);
+            var sim = Simulation;
+            var data = envelope?.Data;
+            if (sim == null || data == null) return;
+            uint epoch;
+            byte[] input;
+            try
+            {
+                var r = new MessageProtocol.Serialize.MessageBufferReader(data);
+                epoch = r.ReadUInt32();
+                input = r.ReadBytes(r.ReadInt32()).ToArray();
+            }
+            catch (Exception ex)
+            {
+                UniNetEnvironment.LogFault(ex);   // malformed envelope — dropped, observable (same containment contract as AdoptInput)
+                return;
+            }
+            if (epoch != _moveEpoch)
+            {
+                System.Threading.Interlocked.Increment(ref _epochMismatches);   // quiet drop — the counter is the only observable
+                return;
+            }
+            sim.AdoptInput(seq, input);
         }
     }
 }

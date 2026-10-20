@@ -298,5 +298,67 @@ namespace UniNet.Tests
             isim.TickServer(ref x, ref y, ref z);
             Assert.AreEqual(0u, isim.LastAdoptedSeq, "버려진 입력은 채택되지 않음");
         }
+
+        [Test]
+        public void 소유권_스트림_리셋_후_새_소유자_seq1이_채택된다()
+        {
+            var sim = NewSim();
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+
+            isim.AdoptInput(900, Serialize(new TIn { Dx = 1 }));   // previous tenure ran far
+            isim.TickServer(ref x, ref y, ref z);
+            Assert.AreEqual(900u, isim.LastAdoptedSeq, "이전 임기 — 구 시퀀스 채택");
+
+            isim.ResetOwnershipStream();
+
+            isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));   // the new owner starts at seq 1
+            isim.TickServer(ref x, ref y, ref z);
+            Assert.AreEqual(1u, isim.LastAdoptedSeq, "리셋 후 새 소유자의 seq 1 채택 (MOV-001)");
+        }
+
+        [Test]
+        public void OnTeleport는_스트림_리셋_대용이_될_수_없다()
+        {
+            var sim = NewSim();
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+
+            isim.AdoptInput(900, Serialize(new TIn { Dx = 1 }));
+            isim.TickServer(ref x, ref y, ref z);
+
+            isim.OnTeleport();   // the ONLY pre-existing reset — the pre-fix probe showed it cannot substitute for the ownership reset
+
+            isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));
+            isim.TickServer(ref x, ref y, ref z);
+            Assert.AreEqual(900u, isim.LastAdoptedSeq, "OnTeleport는 시퀀스 가드를 지우지 않는다 — 새 owner seq 1은 여전히 기각 (probe-1 반례)");
+        }
+
+        [Test]
+        public void 스트림_리셋은_권위_게임_상태를_보존한다()
+        {
+            var sim = NewSim();
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+
+            isim.AdoptInput(1, Serialize(new TIn { Jump = true }));   // build live state — mid-jump velocity
+            isim.TickServer(ref x, ref y, ref z);
+            isim.AdoptInput(2, Serialize(default));
+            isim.TickServer(ref x, ref y, ref z);
+            float vyBefore = ReadStateVy(isim.WriteState());
+            Assert.AreNotEqual(0f, vyBefore, "점프 진행 — 상태가 살아 있다", 1e-6f);   // NUnit float overload: (expected, actual, message, delta)
+
+            isim.ResetOwnershipStream();
+
+            Assert.AreEqual(vyBefore, ReadStateVy(isim.WriteState()), 1e-6f, "권위 TState 보존 (OnTeleport와의 계약 차이)");
+            Assert.AreEqual(0u, isim.LastAdoptedSeq, "시퀀스 가드 리셋");
+            Assert.AreEqual(0, isim.PendingCount, "히스토리 클리어");
+        }
+
+        private static float ReadStateVy(byte[] blob)
+        {
+            var r = new MessageBufferReader(blob);
+            return ReadState(ref r).Vy;
+        }
     }
 }

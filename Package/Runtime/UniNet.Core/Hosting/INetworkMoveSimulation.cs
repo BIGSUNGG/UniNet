@@ -50,5 +50,15 @@ namespace UniNet.Core.Hosting
 
         /// <summary>Teleport/respawn reset — clears the input queue, history, and state (a jump arc must not resume after a teleport).</summary>
         void OnTeleport();
+
+        /// <summary>
+        /// Ownership tenure boundary reset (MOV-001) — clears the server input queue, the owner-client history, and
+        /// the sequence guards (the next owner's stream starts at seq 1), while PRESERVING the game state and the
+        /// latest input. Contract difference from <see cref="OnTeleport"/>: a teleport also resets state (a jump
+        /// arc must not resume at the destination); an ownership handoff does not — the object keeps its velocity,
+        /// cooldowns, and windows, so authority continues seamlessly for the next owner. Server: call on every actual
+        /// owner change, paired with the movement-epoch bump. Owner client: call when (re)gaining ownership.
+        /// </summary>
+        void ResetOwnershipStream();
     }
 }

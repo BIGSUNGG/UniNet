@@ -149,16 +149,64 @@
           "status": "passed",
           "transport": "actual RUDP loopback in Unity Editor",
           "rawEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
-          "assertions": ["two forged tokens rejected", "victim marker ownership unchanged", "genuine resume succeeds after forgery attempts", "player mapping restored", "diagnostic runtime cleaned up"]
+          "assertions": [
+            "two forged tokens rejected",
+            "victim marker ownership unchanged",
+            "genuine resume succeeds after forgery attempts",
+            "player mapping restored",
+            "diagnostic runtime cleaned up"
+          ]
         }
       },
       "validation": [
-        {"kind": "targeted EditMode", "jobId": "b28cdbfe217f4116a9db19375a4efde1", "total": 10, "passed": 10, "failed": 0, "skipped": 0},
-        {"kind": "full EditMode", "jobId": "b3af36a5ae554620ab7f71c4e3d920b2", "total": 138, "passed": 138, "failed": 0, "skipped": 0},
-        {"kind": "full PlayMode", "jobId": "12ff2e92346b46d8b97ba90bef5d2a74", "total": 27, "passed": 27, "failed": 0, "skipped": 0},
-        {"kind": "CodeGenerator Release build", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-codegen-build-r2.log", "warning": "NU5128 analyzer-only package layout warning; no compiler errors"},
-        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.4.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation.log", "precommitLog": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation-precommit.log"},
-        {"kind": "fresh Unity install from committed local Git URL", "command": "timeout 600 bash Package/tools/verify-install.sh", "exitCode": 0, "commit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21", "sampleCompiled": true, "log": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local.log", "unityLog": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-unity.log", "packageLock": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-packages-lock.json", "note": "This is the existing local-Git installation gate, not the final public-UPM-tag gate tracked by INSTALL-001."}
+        {
+          "kind": "targeted EditMode",
+          "jobId": "b28cdbfe217f4116a9db19375a4efde1",
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full EditMode",
+          "jobId": "b3af36a5ae554620ab7f71c4e3d920b2",
+          "total": 138,
+          "passed": 138,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full PlayMode",
+          "jobId": "12ff2e92346b46d8b97ba90bef5d2a74",
+          "total": 27,
+          "passed": 27,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "CodeGenerator Release build",
+          "exitCode": 0,
+          "log": ".pi-subagents/artifacts/commercial-netcode/sec001-codegen-build-r2.log",
+          "warning": "NU5128 analyzer-only package layout warning; no compiler errors"
+        },
+        {
+          "kind": "package validation",
+          "command": "bash Package/tools/validate-package.sh --tag v0.4.0",
+          "exitCode": 0,
+          "log": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation.log",
+          "precommitLog": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation-precommit.log"
+        },
+        {
+          "kind": "fresh Unity install from committed local Git URL",
+          "command": "timeout 600 bash Package/tools/verify-install.sh",
+          "exitCode": 0,
+          "commit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21",
+          "sampleCompiled": true,
+          "log": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local.log",
+          "unityLog": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-unity.log",
+          "packageLock": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-packages-lock.json",
+          "note": "This is the existing local-Git installation gate, not the final public-UPM-tag gate tracked by INSTALL-001."
+        }
       ],
       "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
       "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/sec001-validated-input-blobs.json",
@@ -170,8 +218,18 @@
         "metadata": ".pi-subagents/artifacts/7a9d082e_reviewer_meta.json",
         "output": ".pi-subagents/artifacts/7a9d082e_reviewer_output.md",
         "history": [
-          {"round": 1, "verdict": "ISSUES", "metadata": ".pi-subagents/artifacts/4dee4939_reviewer_0_meta.json", "output": ".pi-subagents/artifacts/4dee4939_reviewer_0_output.md"},
-          {"round": 2, "verdict": "ISSUES", "metadata": ".pi-subagents/artifacts/105f3c09_reviewer_0_meta.json", "output": ".pi-subagents/artifacts/105f3c09_reviewer_0_output.md"}
+          {
+            "round": 1,
+            "verdict": "ISSUES",
+            "metadata": ".pi-subagents/artifacts/4dee4939_reviewer_0_meta.json",
+            "output": ".pi-subagents/artifacts/4dee4939_reviewer_0_output.md"
+          },
+          {
+            "round": 2,
+            "verdict": "ISSUES",
+            "metadata": ".pi-subagents/artifacts/105f3c09_reviewer_0_meta.json",
+            "output": ".pi-subagents/artifacts/105f3c09_reviewer_0_output.md"
+          }
         ],
         "documentationCheck": {
           "status": "passed",
@@ -219,7 +277,10 @@
       "packageVersion": "0.4.1",
       "generatorVersion": "0.2.8",
       "wireFormatChanged": false,
-      "featureDocuments": ["Document/features/monobehaviour-rpc-replicate.md", "Document/features/replication-p3-policy.md"],
+      "featureDocuments": [
+        "Document/features/monobehaviour-rpc-replicate.md",
+        "Document/features/replication-p3-policy.md"
+      ],
       "worker": {
         "model": "zai/glm-5.3",
         "resolvedModelWithThinking": "zai/glm-5.3:high",
@@ -237,25 +298,89 @@
       },
       "preFixProbe": ".pi-subagents/artifacts/commercial-netcode/own001-pre-fix-probe.json",
       "regressionFixture": "UniNet.Tests.OwnerBaselineTests",
-      "regressionCoverage": ["live-owner scene and dynamic late join", "scene and dynamic relevance re-entry", "explicit zero owner replaces stale metadata", "object-level baseline precedes multi-sub state", "actual generated owner/replication receivers and Notify", "initial BroadcastSpawn owner-before-spawn"],
+      "regressionCoverage": [
+        "live-owner scene and dynamic late join",
+        "scene and dynamic relevance re-entry",
+        "explicit zero owner replaces stale metadata",
+        "object-level baseline precedes multi-sub state",
+        "actual generated owner/replication receivers and Notify",
+        "initial BroadcastSpawn owner-before-spawn"
+      ],
       "validation": [
-        {"kind": "targeted EditMode", "jobId": "12835612689e438b96f73fe1d9f5b824", "total": 8, "passed": 8, "failed": 0, "skipped": 0},
-        {"kind": "full EditMode", "jobId": "cfa15005754a46ae8d356c6b57cd9558", "total": 146, "passed": 146, "failed": 0, "skipped": 0},
-        {"kind": "full PlayMode", "jobId": "13d6c4af7c1c47ea8b2ed08db11ef4f3", "total": 27, "passed": 27, "failed": 0, "skipped": 0},
-        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.4.1", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation.log", "precommitLog": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation-precommit.log"},
-        {"kind": "fresh Unity install from committed local Git URL", "command": "timeout 600 bash Package/tools/verify-install.sh", "exitCode": 0, "commit": "380b2b44e5c30aea5fb3eec617f4fe50e3bc6614", "sampleCompiled": true, "log": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local.log", "unityLog": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-unity.log", "packageLock": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-packages-lock.json", "note": "Local-Git gate, not the final public tag installation gate."}
+        {
+          "kind": "targeted EditMode",
+          "jobId": "12835612689e438b96f73fe1d9f5b824",
+          "total": 8,
+          "passed": 8,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full EditMode",
+          "jobId": "cfa15005754a46ae8d356c6b57cd9558",
+          "total": 146,
+          "passed": 146,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full PlayMode",
+          "jobId": "13d6c4af7c1c47ea8b2ed08db11ef4f3",
+          "total": 27,
+          "passed": 27,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "package validation",
+          "command": "bash Package/tools/validate-package.sh --tag v0.4.1",
+          "exitCode": 0,
+          "log": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation.log",
+          "precommitLog": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation-precommit.log"
+        },
+        {
+          "kind": "fresh Unity install from committed local Git URL",
+          "command": "timeout 600 bash Package/tools/verify-install.sh",
+          "exitCode": 0,
+          "commit": "380b2b44e5c30aea5fb3eec617f4fe50e3bc6614",
+          "sampleCompiled": true,
+          "log": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local.log",
+          "unityLog": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-unity.log",
+          "packageLock": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-packages-lock.json",
+          "note": "Local-Git gate, not the final public tag installation gate."
+        }
       ],
       "validationHistory": [
-        {"jobId": "d4aa4c63c6a542529d8521f1a1c84086", "total": 0, "acceptedAsPass": false, "reason": "New script was not imported by scripts-only refresh; force-all asset refresh required."},
-        {"jobId": "7ff6b5f2a16f44dfb5ad6235d6cef3b8", "total": 7, "failed": 2, "reason": "Test helper looked up system wire 2 in general dispatch dictionary; fixed by invoking actual generated private handler."},
-        {"jobId": "daab037afc02444bbdbceee3439ed1ac", "total": 146, "failed": 1, "reason": "Legacy ownership test did not count new catch-up notices; replaced with exact per-receiver, per-object and owner-value assertions, not a skip."}
+        {
+          "jobId": "d4aa4c63c6a542529d8521f1a1c84086",
+          "total": 0,
+          "acceptedAsPass": false,
+          "reason": "New script was not imported by scripts-only refresh; force-all asset refresh required."
+        },
+        {
+          "jobId": "7ff6b5f2a16f44dfb5ad6235d6cef3b8",
+          "total": 7,
+          "failed": 2,
+          "reason": "Test helper looked up system wire 2 in general dispatch dictionary; fixed by invoking actual generated private handler."
+        },
+        {
+          "jobId": "daab037afc02444bbdbceee3439ed1ac",
+          "total": 146,
+          "failed": 1,
+          "reason": "Legacy ownership test did not count new catch-up notices; replaced with exact per-receiver, per-object and owner-value assertions, not a skip."
+        }
       ],
       "arenaDiagnostic": {
         "entry": "ArenaBootstrap context menu: Diag/OWN-001 후발 소유권 기준선 (기존 세션 정지 후)",
         "status": "passed",
         "successLog": "[UNINET-VERIFY] OWN-001 DIAG PASS",
         "scope": "Actual RUDP, one real client at a time: first client disconnects, grace keeps owner, fresh late client receives old owner. Timed relevance exit/re-entry restores a deliberately stale local zero-owner cache through the actual wire. Non-dynamic marker; not simultaneous two-client or avatar recovery or final three-process validation.",
-        "assertions": ["first client baseline received", "existing grace owner preserved on late join", "stale-cache fault injection restored by actual re-entry wire", "diagnostic runtime cleaned up"],
+        "assertions": [
+          "first client baseline received",
+          "existing grace owner preserved on late join",
+          "stale-cache fault injection restored by actual re-entry wire",
+          "diagnostic runtime cleaned up"
+        ],
         "sceneSaved": false
       },
       "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/own001-validation-events.jsonl",
@@ -269,12 +394,32 @@
         "transcript": ".pi-subagents/artifacts/d4872728_reviewer_transcript.jsonl",
         "output": ".pi-subagents/artifacts/d4872728_reviewer_output.md",
         "history": [
-          {"round": 1, "verdict": "ISSUES", "metadata": ".pi-subagents/artifacts/1066ab2f-47bd-42b0-b050-b7c4839a191e_reviewer_meta.json"},
-          {"round": 2, "verdict": "CLEAN", "metadata": ".pi-subagents/artifacts/40d65728_reviewer_meta.json", "scope": "Before the final legacy notification-count assertion adjustment"}
+          {
+            "round": 1,
+            "verdict": "ISSUES",
+            "metadata": ".pi-subagents/artifacts/1066ab2f-47bd-42b0-b050-b7c4839a191e_reviewer_meta.json"
+          },
+          {
+            "round": 2,
+            "verdict": "CLEAN",
+            "metadata": ".pi-subagents/artifacts/40d65728_reviewer_meta.json",
+            "scope": "Before the final legacy notification-count assertion adjustment"
+          }
         ],
         "finalTestAndDocumentationCheck": "passed"
       },
-      "synchronizedDocs": ["Document/features/monobehaviour-rpc-replicate.md", "Document/features/replication-p3-policy.md", "Document/changelog.md", "Document/00-INDEX.md", "Document/examples/arena-shooter.md", "Document/deployment.md", "Document/research/commercial-netcode-audit.md", "Package/CHANGELOG.md", "README.md", "skills/uninet/SKILL.md"],
+      "synchronizedDocs": [
+        "Document/features/monobehaviour-rpc-replicate.md",
+        "Document/features/replication-p3-policy.md",
+        "Document/changelog.md",
+        "Document/00-INDEX.md",
+        "Document/examples/arena-shooter.md",
+        "Document/deployment.md",
+        "Document/research/commercial-netcode-audit.md",
+        "Package/CHANGELOG.md",
+        "README.md",
+        "skills/uninet/SKILL.md"
+      ],
       "release": {
         "status": "published",
         "version": "0.4.1",
@@ -290,6 +435,141 @@
         "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-remote-tag.txt",
         "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-remote-package.json",
         "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-commit-scope.json"
+      }
+    },
+    {
+      "id": "MOV-001",
+      "status": "validated_pending_review_and_release",
+      "kind": "movement-ownership-stream-fix",
+      "packageVersion": "0.5.0",
+      "generatorVersion": "0.2.8",
+      "wireSystemMessagesChanged": false,
+      "breakingChanges": [
+        "INetworkMoveSimulation.ResetOwnershipStream added to the public interface (custom engine implementers must add the member)",
+        "RpcSubmitMove envelope layout now [uint epoch][int length][bytes] — same-package ends only; the package-version handshake rejects mixed versions"
+      ],
+      "adr": "Document/decisions/0042-이동-소유권-전이-스트림-리셋-에포크.md",
+      "featureDocument": "Document/features/movement-prediction.md",
+      "worker": {
+        "model": "zai/glm-5.3",
+        "resolvedModelWithThinking": "zai/glm-5.3:high",
+        "implementationRunId": "621e0bde-0ea0-4100-ba1c-5a14a4802ab9",
+        "continuationRunIds": [
+          "3d829458",
+          "f9048c73",
+          "fb62aa94",
+          "618033f1",
+          "95a9ab14",
+          "2a060ecb",
+          "d3533f35",
+          "93543fba"
+        ],
+        "metadata": ".pi-subagents/artifacts/621e0bde-0ea0-4100-ba1c-5a14a4802ab9_worker_meta.json"
+      },
+      "preFixProbes": [
+        ".pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe.json",
+        ".pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe-2.json"
+      ],
+      "integrationDefectFoundDuringValidation": {
+        "defect": "Dynamic spawn whose owning connection attaches after the component's first Update: 0→nonzero adoption was misread as a tenure change (spurious epoch bump + reset), killing the first tenure's inputs during the handoff window",
+        "reproduced": "full-suite PlayMode failures (2 runs); passed in isolation",
+        "fix": "Tenure rule — bump+reset only on nonzero→different transitions (direct transfer, release); 0→nonzero adoption is a timing-independent baseline"
+      },
+      "regressionTests": [
+        "UniNet.Tests.MoveSimulationTests.소유권_스트림_리셋_후_새_소유자_seq1이_채택된다",
+        "UniNet.Tests.MoveSimulationTests.OnTeleport는_스트림_리셋_대용이_될_수_없다",
+        "UniNet.Tests.MoveSimulationTests.스트림_리셋은_권위_게임_상태를_보존한다",
+        "UniNet.Tests.NetworkTransformComponentTests.이전_임기_지연_입력은_epoch_불일치로_기각되고_새_스트림이_채택된다",
+        "UniNet.Tests.NetworkTransformComponentTests.소유자_값_불변시_epoch_범프_없이_스트림이_유지된다",
+        "UniNet.Tests.NetworkTransformComponentTests.실제_OwnerUpdate_수신기_경유_소유권_획득시_클라_스트림이_재바인딩된다",
+        "UniNet.Tests.NetworkTransformComponentTests.호스트_권위_인스턴스는_이벤트로_이중_리셋하지_않는다",
+        "UniNet.Tests.NetworkTransformComponentTests.다른_객체의_소유권_변화는_이_스트림을_건드리지_않는다",
+        "UniNet.Tests.OwnerBaselineTests.ApplyOwner_이벤트는_값이_실제로_바뀔_때만_발화한다"
+      ],
+      "arenaExample": {
+        "kind": "PlayMode test with real loopback RUDP",
+        "entry": "UniNet.Tests.MovementOwnershipPlayTests.소유권_사이클_후_이전_임기_입력은_epoch로_기각되고_새_스트림_ack가_재개된다",
+        "successLog": "[UNINET-VERIFY] MovementOwnership PASS",
+        "scope": "Real ownership cycle (release → reassignment adoption → same client re-gains) over loopback RUDP; stale-tenure input rejected at the epoch gate past the ownership gate; fresh stream adopted with acknowledgements resumed. Host topology single client — client prediction rebinding is covered by EditMode regressions; not two simultaneous clients or avatar recovery."
+      },
+      "validation": [
+        {
+          "kind": "targeted EditMode",
+          "jobId": "ea0a6feb90e54952954d480673318177",
+          "total": 28,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full EditMode",
+          "jobId": "5f87c48ba17b4bdda7a28eb2ea524314",
+          "total": 155,
+          "passed": 155,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "full PlayMode",
+          "jobId": "196c505e110448c89a06bb59dee8b267",
+          "total": 28,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "kind": "package validation",
+          "command": "bash Package/tools/validate-package.sh --tag v0.5.0",
+          "exitCode": 0,
+          "log": ".pi-subagents/artifacts/commercial-netcode/mov001-package-validation.log"
+        }
+      ],
+      "validationHistory": [
+        {
+          "phase": "compile",
+          "issues": [
+            "missing using System (NetworkClient)",
+            "null-conditional event unsubscription (CS0079)",
+            "NUnit AreNotEqual overload misuse"
+          ],
+          "resolution": "fixed by the same worker; in-editor compile errors 0 verified"
+        },
+        {
+          "phase": "targeted EditMode",
+          "jobId": "4f5a4e19c6f3496585985130226a0c79",
+          "total": 28,
+          "failed": 4,
+          "resolution": "Envelope encoder omitted the length prefix (MessageProtocol WriteBytes is raw) — fixed with WriteInt32; one test expectation aligned with the documented first-assignment-no-event contract"
+        },
+        {
+          "phase": "full PlayMode",
+          "jobId": "8e9e959a6abb44a895b611135fe52549",
+          "failed": 1,
+          "resolution": "Reproduced the attach-race adoption misread; fixed by the tenure rule (history kept)"
+        },
+        {
+          "phase": "post-review allocation fix",
+          "change": "EncodeMoveInput single-allocation rewrite (BinaryPrimitives + BlockCopy) after review recommendation",
+          "revalidated": "targeted 28/28, EditMode 155/155, PlayMode 28/28, compile errors 0"
+        }
+      ],
+      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/mov001-validation-events.jsonl",
+      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/mov001-validation-input-blobs.json",
+      "review": {
+        "model": "zai/glm-5.3-flash",
+        "round": 2,
+        "verdict": "CLEAN",
+        "metadata": ".pi-subagents/artifacts/7be084eb_reviewer_meta.json",
+        "transcript": ".pi-subagents/artifacts/7be084eb_reviewer_transcript.jsonl",
+        "output": ".pi-subagents/artifacts/7be084eb_reviewer_output.md",
+        "history": [
+          {"round": 1, "verdict": "ISSUES (1 recommended — hot-path allocation)", "metadata": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_meta.json", "output": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_output.md", "disposition": "accepted — single-allocation encoder fix applied and fully revalidated"}
+        ]
+      },
+      "release": {
+        "status": "not_published",
+        "version": "0.5.0",
+        "tag": "v0.5.0"
       }
     }
   ],

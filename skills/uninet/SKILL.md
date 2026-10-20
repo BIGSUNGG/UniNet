@@ -152,6 +152,17 @@ var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
 - **Ghost prevention** — a registered object destroyed with plain `Destroy` is detected and the destroy is propagated. Prefer `NetworkDestroy` (propagation is immediate and intentional, not detected after the fact).
 - **Multiple `NetworkBehaviour`s per object** — two-level identity gives each component its own SubId slot (up to 255 per object, same-type duplicates allowed). **Never add/remove `NetworkBehaviour`s at runtime** — slot order must match on both ends.
 - **Ownership** — `NetworkInstantiate(original, ownerConnId)` spawns pre-owned; `ReassignOwnership` keeps live owners intact and reassigns only orphans, so reconnections and restarts cannot steal ownership.
+- **Ownership-change event (0.5.0)** — `NetworkClient.OwnershipChanged(netId, prev, next)` fires only when the owner value actually changes (first assignment is a baseline — silent; repeated same-owner notices are silent). It fires on the **DRPC dispatch thread**: marshal with `UniNetEnvironment.QueueOnMain` before touching Unity state, and null-guard your local netId lookup (notices arrive for objects this client has not registered):
+
+    ```csharp
+    client.OwnershipChanged += (netId, prev, next) =>
+        UniNetEnvironment.QueueOnMain(() => {
+            var mine = client.Get(netId)?[0] as MyBehaviour;   // unregistered netIds arrive here too
+            if (mine != null && next == client.LocalConnId) { /* I gained this object */ }
+        });
+    ```
+
+- **Movement objects survive ownership transfers (0.5.0)** — a `NetworkTransform` with an injected simulation bumps a server-authoritative movement epoch on every tenure→tenure owner change (direct transfer, or release) and resets the input stream (sequence guards included, **authoritative state preserved** — the new owner's stream starts at seq 1 immediately; a stale in-flight packet from the previous owner is dropped at the epoch gate, observable via `NetworkTransform.MoveEpochMismatches` on the server). Adoption from unowned (0 → conn — initial spawn, post-release reassignment) is a baseline: no bump, no reset. Nothing to opt in; `SetOwner`/reassignment/resume all benefit.
 - Transform is propagated **once at spawn**. Ongoing movement is your job: `[Replicated]` fields or the `NetworkTransform` component (see Advanced).
 
 ### Connection lifecycle & shutdown
@@ -448,6 +459,8 @@ Checklist for a production dedicated server: set `ConnectionKey`, `MaxConnection
 - Ownership reassignment on disconnect is guaranteed even if a disconnect subscriber throws (server invariant: no orphaned owners).
 
 ## Known Limitations
+
+- **Movement ownership epoch (0.5.0)** — the epoch bumps only on tenure→tenure changes (previous observed owner nonzero and different); adoption from unowned is a silent baseline, and the rule is timing-independent (a dynamic spawn whose owning connection attaches after the first Update does not bump). A same-frame A→B→A flip (two `SetOwner` calls in one frame on the same object) is observed as no change, so the restarted stream is adopted only after it climbs past the old tenure's last sequence (bounded, self-healing — seconds at 60 Hz). Spread transfers across frames if a game needs instant flip-flops. Also: right after gaining ownership, a client's inputs carry a stale (or absent) epoch until the OwnerOnly epoch delta reaches it (~1 replication tick for a continuing owner; up to the ~0.25 s quiescence resend for a first-time adoptee) and are rejected in that window (`MoveEpochMismatches` includes them).
 
 - No transform/hierarchy parenting sync for dynamic objects — spawn flat objects and parent on each client yourself.
 - No direct collection RPC parameters — wrap in `[Message]`.

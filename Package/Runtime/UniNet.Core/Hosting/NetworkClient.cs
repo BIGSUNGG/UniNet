@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace UniNet.Core.Hosting
@@ -85,10 +86,30 @@ namespace UniNet.Core.Hosting
         /// <summary>Applies the Welcome message — sets this client's connection ID (called by the generated client hub).</summary>
         public void SetLocalConnId(long connId) => LocalConnId = connId;
 
-        /// <summary>Applies an ownership update (OwnerUpdate) — called by the generated client hub.</summary>
+        /// <summary>
+        /// Raised when an object's owner actually changes (MOV-001) — (netId, previous owner, new owner). Fires on the
+        /// DRPC dispatch thread (from the generated OwnerUpdate receiver): Unity subscribers MUST marshal to the main
+        /// thread (<see cref="UniNetEnvironment.QueueOnMain"/>) before touching engine state, and look the netId up
+        /// locally — notices can arrive for objects this client has not registered (null guard). Not raised for a
+        /// first-ever assignment (spawn/catch-up baselines — a fresh simulation needs no ownership reset) nor for a
+        /// repeated same-owner notice.
+        /// </summary>
+        public event Action<ulong, long, long> OwnershipChanged;
+
+        /// <summary>Applies an ownership update (OwnerUpdate) — called by the generated client hub. Raises
+        /// <see cref="OwnershipChanged"/> only when the owner value actually changes (a repeated same-owner notice,
+        /// e.g. a re-sent baseline or a redundant SetOwner broadcast, applies silently).</summary>
         public void ApplyOwner(ulong netId, long ownerConnId)
         {
-            lock (_gate) _owners[netId] = ownerConnId;
+            long prev;
+            bool changed;
+            lock (_gate)
+            {
+                changed = _owners.TryGetValue(netId, out prev) && prev != ownerConnId;   // first-ever assignment is a baseline, not a change — no event
+                _owners[netId] = ownerConnId;
+            }
+            if (changed)
+                OwnershipChanged?.Invoke(netId, prev, ownerConnId);   // outside the gate — subscribers may re-enter freely
         }
 
         /// <summary>Returns the owner connection of an object (0 = unassigned).</summary>
