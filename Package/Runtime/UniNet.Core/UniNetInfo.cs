@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.12.0";   // 0.12.0 — destroy-time owner-cache cleanup (OWN-003): Unregister clears the netId's cached owner so GetOwner returns 0 ("unassigned") after a network destroy
+        public const string Version = "0.13.0";   // 0.13.0 — death-gate pending-history cleanup (MOV-002): INetworkMoveSimulation.DropPendingHistory DIM; NetworkTransform drops the owner's unacknowledged prediction history on the SimulationEnabled true→false edge (MoveSimulation keeps state/input), so death-window acks hard-snap and respawn re-anchors via the existing pending==0 path
     }
 }

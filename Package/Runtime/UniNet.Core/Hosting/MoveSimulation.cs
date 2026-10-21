@@ -267,6 +267,21 @@ namespace UniNet.Core.Hosting
             // input — input-expiry is MOV-003, out of scope here)
         }
 
+        /// <inheritdoc />
+        void INetworkMoveSimulation.DropPendingHistory()
+        {
+            // Death-gate cleanup (MOV-002) — clears ONLY the server queue cursors and the owner history ring.
+            // _state/_input are deliberately preserved (the contract difference from OnTeleport above): the gate
+            // (death cutscene) must not erase live game state (e.g. the paused velocity a cutscene resumes into),
+            // and the owner's position self-aligns afterwards — a death-window ack misses the empty ring and
+            // hard-snaps, and pending==0 on re-enable lets the unchanged teleport re-anchor adopt the respawn
+            // position.
+            _qHead = 0;
+            _qCount = 0;
+            _hHead = 0;
+            _hCount = 0;
+        }
+
         // ── internals ─────────────────────────────────────────────
 
         private bool ContainsSeq(uint seq)

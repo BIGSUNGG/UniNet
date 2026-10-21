@@ -60,5 +60,16 @@ namespace UniNet.Core.Hosting
         /// owner change, paired with the movement-epoch bump. Owner client: call when (re)gaining ownership.
         /// </summary>
         void ResetOwnershipStream();
+
+        /// <summary>
+        /// Death-gate cleanup (MOV-002) — drops the unacknowledged prediction history when the game gates the
+        /// simulation off (death, cutscene) while predicted inputs are still pending. Contract difference from
+        /// <see cref="OnTeleport"/>: OnTeleport is the full reset (queue, history, state, input — a jump arc must
+        /// not resume); this hook only guarantees the PENDING history is gone and leaves whether the game state
+        /// and the latest input survive the gate to the implementation. The default falls back to the full
+        /// <see cref="OnTeleport"/> wipe; <see cref="MoveSimulation{TInput,TState}"/> overrides it to keep both
+        /// (the position re-converges via the death-window ack hard snap and the respawn re-anchor).
+        /// </summary>
+        void DropPendingHistory() => OnTeleport();
     }
 }

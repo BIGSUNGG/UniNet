@@ -71,6 +71,7 @@ namespace UniNet.Unity
         private float _prevPredZ;
         private uint _clientSeq;         // owner input sequence
         private uint _clientEpoch;       // epoch of the input stream this owner is currently sending (MOV-001)
+        private bool _prevGate = true;   // MOV-002 — the predictor's last observed SimulationEnabled (death-gate edge detection)
         private long _watchedOwner;      // server — owner value at the last watch observation (tenure watch, MOV-001)
         private long _epochMismatches;   // server — inputs dropped because their embedded epoch is stale (MOV-001 observability)
         private NetworkClient _subscribedClient;   // client instance currently subscribed for ownership notices (replaced on reconnect)
@@ -139,6 +140,9 @@ namespace UniNet.Unity
 
             if (isAuthority || isPredictor)
             {
+                if (isPredictor && sim != null)
+                    TrackGateEdge(sim);   // MOV-002 — before the step block: the entry edge drops pending history, the exit edge re-anchors so this frame's step starts from the respawn position (r17 ISSUE-1)
+
                 if (sim == null)
                 {
                     // replication-only contract (ADR-0013) — nothing to step; render branches below apply the position
@@ -167,16 +171,7 @@ namespace UniNet.Unity
 
                 // Teleport re-anchor (ADR-0037 lineage) — no pending inputs + server position jumped: the ack path
                 // never fires (no further adoptions while the sender is idle/gated), so adopt the server state here.
-                if (sim.PendingCount == 0)
-                {
-                    float ddx = _predX - _px, ddy = _predY - _py, ddz = _predZ - _pz;
-                    if (ddx * ddx + ddy * ddy + ddz * ddz > SnapThreshold * SnapThreshold)
-                    {
-                        sim.OnTeleport();
-                        _predX = _px; _predY = _py; _predZ = _pz;
-                        _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
-                    }
-                }
+                TryReAnchor(sim);
 
                 // Render between the last two predicted steps — smooth at any frame rate while the simulation stays fixed-rate
                 float interval = sim.StepIntervalSeconds;
@@ -323,6 +318,42 @@ namespace UniNet.Unity
             }
             sim.Rollback(_ackSeq, _ackState?.Data, _px, _py, _pz, ref _predX, ref _predY, ref _predZ);
             _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;   // reset the render baseline — never lerp from the pre-rollback position
+        }
+
+        // ---- simulation gate (MOV-002: death-gate pending-history cleanup) ----
+
+        /// <summary>
+        /// Owner-client death-gate edge detection — on SimulationEnabled turning OFF (death, cutscene), drops the
+        /// pending prediction history: acks arriving during the death window miss the empty ring and hard-snap the
+        /// predictor onto the authoritative position (self-alignment), and pending==0 on re-enable lets the
+        /// UNCHANGED teleport re-anchor adopt the respawn position. Edge-triggered deliberately — a level check
+        /// would keep re-clearing a game that legitimately predicts inside the gate. Whether state/input survive
+        /// the gate is the simulation's choice (<see cref="INetworkMoveSimulation.DropPendingHistory"/>).
+        /// </summary>
+        private void TrackGateEdge(INetworkMoveSimulation sim)
+        {
+            if (_prevGate == SimulationEnabled) return;
+            bool wasEnabled = _prevGate;
+            _prevGate = SimulationEnabled;
+            if (wasEnabled && !SimulationEnabled)
+                sim?.DropPendingHistory();
+            else if (!wasEnabled && SimulationEnabled)
+                TryReAnchor(sim);   // revive: re-anchor before the revive frame's step (r17 ISSUE-1)
+        }
+
+        /// <summary>Teleport re-anchor (ADR-0037 lineage): with no pending inputs and a server position
+        /// beyond the snap threshold, adopt the server state — the ack path never fires while the sender
+        /// is idle/gated. Called mid-life and on the death-gate exit edge (MOV-002).</summary>
+        private void TryReAnchor(INetworkMoveSimulation sim)
+        {
+            if (sim.PendingCount != 0) return;
+            float ddx = _predX - _px, ddy = _predY - _py, ddz = _predZ - _pz;
+            if (ddx * ddx + ddy * ddy + ddz * ddz > SnapThreshold * SnapThreshold)
+            {
+                sim.OnTeleport();
+                _predX = _px; _predY = _py; _predZ = _pz;
+                _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
+            }
         }
 
         // ---- movement ownership tenure (MOV-001: stream reset + epoch gate) ----

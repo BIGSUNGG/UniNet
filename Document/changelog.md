@@ -5,6 +5,12 @@
 
 ## [2026-10-21]
 
+### Fixed (MOV-002 — 사망 게이트 pending 예측 정리, v0.13.0)
+
+- `NetworkTransform.SimulationEnabled` 게이트가 예측 스텝만 멈췄다 재개할 뿐 게이트 진입 시 미승인(pending) 예측 히스토리를 정리하지 않아, 사망→원격 리스폰→재활성화에서 사망 직전 예측 좌표가 렌더되고 첫 ack 롤백이 죽은 시대 입력을 재시뮬했다(되감기 아티팩트; 링 128 초과 시에야 수렴). 수정: `INetworkMoveSimulation.DropPendingHistory()` DIM 추가(기본=`OnTeleport()` 전체 소거; `MoveSimulation`은 큐+링만 비우고 권위 TState·최신 입력 보존), 게이트 진입 에지에서 1회 호출 — 사망 중 ack는 하드 스냅으로 자기정렬, 재활성화 시 기존(무변경) 텔레포트 재앵커가 리스폰 좌표 채택. 에지 트리거라 게이트 중 재소거 없음(게이트 내 예측하는 게임 보호). 리뷰 r17에서 재활성화 프레임의 스텝→재앵커 순서로 재앵커가 우회될 수 있는 문제(Medium)가 지적돼 `TrackGateEdge`를 스텝 블록 앞으로 이동하고 퇴장 에지에서 재앵커를 선실행하도록 보강(RED job `0bbdb4dd`의 T2c → GREEN). 재앵커·롤백·ADR-0042 임기 계약 무변경, 와이어·생성기(0.2.13) 무변경. 검증: RED job `b0d852be`(drop 중화 시 T2/T3 결함 실패·T5 통과), EditMode 240/240(job `3d35f74c`)·PlayMode 41/41(job `7c564c88`) PASS — 신규 `Mov002DeathGateTests` 5종+`DeathGatePlayTests` 1종. ADR-0049, 계획 `.pi-subagents/artifacts/commercial-netcode/mov002-plan.md`. 잔여: NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화된 것 — diff 무관 확인).
+
+## [2026-10-21]
+
 ### Fixed (OWN-003 — 파괴 시 owner 캐시 정리, v0.12.0)
 
 - `NetworkClient.Unregister`가 객체 사전(`_objects`)만 정리하고 owner 캐시(`_owners`)를 남겨, 파괴된 netId에 대해 `GetOwner`가 마지막 소유자를 계속 반환했다(문서 계약 "0 = unassigned" 위반). `NetworkBehaviour.IsOwner`도 파괴 직후 잔존값으로 true를 유지할 수 있었고, 캐시는 세션 내 스폰/파괴 반복마다 무한 증가했다(느린 누수; 세션 간은 연결 시작 시 `new NetworkClient()`로 폐기돼 영향 없음). 수정: Unregister가 동일 lock 안에서 `_owners.Remove(netId)`를 수행해 파괴 후 `GetOwner`가 0을 반환하고 잔존 엔트리가 누적되지 않는다. 반환값 계약("등록되어 있었는지")은 불변. **동작 변화**(이전 결함 상태에 의존한 코드는 영향): 파괴된 netId의 `GetOwner`가 스테일 값 → 0. `OwnershipChanged`는 파괴 시 발화하지 않는다 — 이벤트는 살아있는 객체의 재배정 통보 전용이며, 파괴 후 늦게 도착하는 OwnerUpdate는 기존 ApplyOwner 시맨틱대로 first baseline으로 조용히 적용된다(와이어 2/3/4 동일 ReliableOrdered 채널 순서 보장 + 파괴 netId 재통보 서버 경로 부재로 재삽입 위험은 낮음). 공개 API·와이어·생성기(0.2.13) 무변경, 파괴적 변경 없음. 검증: 플래너 계획 `.pi-subagents/artifacts/commercial-netcode/own003-plan.md`, EditMode T1~T4(OwnerBaselineTests — 100회 스폰/파괴 후 `_owners` 0엔트리 반사 단정 포함)·PlayMode T5~T8(신규 DestroyOwnershipPlayTests — 실RUDP 파괴 왕복, 10사이클, 호스트 모드, Arena식 퇴장 `DestroyObjectsOwnedBy` 후 생존 관찰자 캐시 정리+씬 객체 생존) 추가, EditMode 234/234(job `34a0e2d3…`, `5d52fe8b…`)·PlayMode 40/40(job `fe631b90…`, `bfaefb5c…`) PASS, 리뷰 r15 ISSUES(T3 누적 단정 보강)→r16 CLEAN.

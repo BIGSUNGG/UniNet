@@ -1,3 +1,13 @@
+## 0.13.0
+
+**Death-gate pending prediction cleanup (MOV-002, ADR-0049 — no wire/generator/public-surface change beyond one DIM).** The `NetworkTransform.SimulationEnabled` gate paused prediction but never cleared the unacknowledged history: a death -> remote respawn -> re-enable rendered the pre-death predicted position and the first ack replayed dead-era inputs (rollback artifact).
+
+### Fixed
+
+- New `INetworkMoveSimulation.DropPendingHistory()` (default-interface member; default = `OnTeleport()`, i.e. clear everything). The engine's `MoveSimulation` override clears the input queue + history ring only — authoritative `TState` and the latest input survive (cutscene pause keeps velocity; position converges via re-anchor/ack).
+- `NetworkTransform` drops the pending history once on the gate-entry edge (edge-triggered — a game legitimately predicting inside the gate is not perpetually cleared). Death-window acks hard-snap onto the authoritative position; the revive edge re-anchors BEFORE that frame's first step (so even a frame that runs a prediction step starts from the respawn position), via the unchanged teleport re-anchor.
+- Tests: EditMode `Mov002DeathGateTests` (unit contract, edge guard, revive re-anchor, dead-window ack hard-snap, pending==0 voice contrast) + PlayMode `DeathGatePlayTests` (host-loopback death->respawn->revive integration). RED evidence: dropping the call fails the regression at the defect point.
+
 ## 0.12.0
 
 **Destroy-time owner-cache cleanup (OWN-003 — no wire/generator/public-API change).** `NetworkClient.Unregister` removed the object from the registry but left its entry in the client's owner cache, so `GetOwner` kept returning the last owner for a destroyed `netId` (violating the documented "0 = unassigned" contract) and the cache grew unboundedly across spawn/destroy cycles within a session.
