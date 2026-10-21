@@ -1493,6 +1493,57 @@
         "NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화 — diff 무관 확인, 최종 전수에서 통과)",
         "와이어 포함 2프로세스 소유자 레그 통합 테스트는 의도적 후속"
       ]
+    },
+    {
+      "id": "MOV-003",
+      "title": "서버 입력 만료 정책 옵트인 (MoveSimulation.inputExpirySteps, 기본 0=hold-last 불변)",
+      "version": "0.14.0",
+      "commit": "5556842",
+      "tag": "v0.14.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.14.0",
+      "ciRunIds": [
+        39666784938
+      ],
+      "adr": "Document/decisions/0050-입력-만료-옵트인.md",
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/mov003-plan.md",
+      "plannerAgent": "agent_mvii263s_ebfcef04_p",
+      "workerAgent": "agent_mvii85yd_5a14a53f_q",
+      "reviews": [
+        {
+          "round": "r19",
+          "agent": "agent_mviilcbz_3d6c8296_r",
+          "verdict": "ISSUES",
+          "issues": [
+            "Medium: SetInput 갱신이 만료 카운터를 리셋하지 않음 — 리슨서버 호스트 살아있는 입력 만료 위험 -> SetInput에서 _idleSteps=0 (전용 서버 무영향)",
+            "Low: 음수 ctor 검증 무테스트 -> T7 추가"
+          ]
+        },
+        {
+          "round": "r20",
+          "agent": "agent_mvij8975_512c86fa_s",
+          "verdict": "CLEAN",
+          "notes": "T6 결정적 핀(미수정 시 10틱째 정지 — 반드시 실패), 문서 5곳 반영 확인"
+        }
+      ],
+      "tests": {
+        "editmodeJobs": [
+          "91e29bbd12664d2c84de7f14eb733de2",
+          "bc2bff5eedc140188247c1ad8d58f6ea"
+        ],
+        "playmodeJobs": [
+          "31770d294cc24b39bdff81ed6c2b63b6",
+          "bbb62f3dbee84ea8a2a41f800d9ba23b",
+          "e3c949a285bf416eba1d6f30295e378a"
+        ],
+        "summary": "EditMode 248/248 x2, PlayMode 41/41 x3(1회는 RTT 플레이크 외 40/41); T1~T7"
+      },
+      "verifyInstall": {
+        "result": "PASS",
+        "log": ".pi-subagents/artifacts/commercial-netcode/mov003-fresh-install-unity.log"
+      },
+      "residuals": [
+        "NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화 — diff 무관, green 런에서 통과)"
+      ]
     }
   ],
   "finalValidation": {
