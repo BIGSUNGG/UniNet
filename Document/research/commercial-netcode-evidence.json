@@ -1179,6 +1179,109 @@
      ".pi-subagents/artifacts/commercial-netcode/rec002-fresh-install-unity.log"
     ]
    }
+  },
+  {
+   "id": "CON-002",
+   "status": "closed",
+   "kind": "connection-approval-callback",
+   "adr": "Document/decisions/0047-게임-접속-승인-콜백-와이어7-자격증명.md",
+   "featureDocument": "Document/features/connection-lifecycle.md",
+   "packageVersion": "0.10.0",
+   "generatorVersion": "0.2.13",
+   "wireSystemMessagesChanged": true,
+   "wireChanged": "wire 7 payload extended to [version string][credential string] — conditional read (legacy-compatible), 4096-byte pre-parse discard",
+   "breakingChanges": [],
+   "planner": {
+    "model": "zai/glm-5.3-flash",
+    "planDocument": ".pi-subagents/artifacts/commercial-netcode/con002-plan.md",
+    "runs": [
+     "agent_mvi7ec52_376f7170_8"
+    ]
+   },
+   "worker": {
+    "model": "zai/glm-5.3-flash",
+    "runs": [
+     "agent_mvi7twfc_f6849da5_9"
+    ]
+   },
+   "regressionTests": [
+    "UniNet.Tests.ConnectionApprovalTests (EditMode 11종 — 승인 순서·거부 킥+유예 없음·미설정 불변·검사 비활성+approver·콜백 인자·비동기 유보·예외 LogFault+거부·재선언 멱등·대기 중 RPC 게이트·총예산 킥·페이로드 상한 계약)",
+    "UniNet.Tests.ConnectionApprovalPlayTests (PlayMode 4종 — 실RUDP 자동 선언 승인+미선언 유보/타임아웃 킥·credential 승인 왕복·ApprovalRejected 수신·초과 페이로드 조용 폐기+연결 유지)"
+   ],
+   "validation": [
+    {
+     "kind": "full EditMode",
+     "jobId": "2443884706d547a49fe82cbb122e0735",
+     "total": 221,
+     "passed": 221,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "cbd2a6adeb504c6eb986694dad617ea2",
+     "total": 34,
+     "passed": 34,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode (after oversized-payload test)",
+     "jobId": "d7551a1b0fea45c782db2d7398326545",
+     "total": 35,
+     "passed": 35,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "R1 probe",
+     "note": "MessageBufferReader.Remaining confirmed in DS_MessageProtocol source (line 47) — conditional credential read adopted, no fallback needed"
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "2c3095c",
+     "sampleCompiled": true,
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/con002-fresh-install-unity.log",
+     "note": "Local-Git gate; the final public-tag install gate is ledger item INSTALL-001."
+    }
+   ],
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "rounds": [
+     {
+      "round": "r11 (full CON-002 change)",
+      "runId": "agent_mvi9bo7e_c50f69d5_a",
+      "verdict": "ISSUES",
+      "issues": "프로덕션 Core에 리더 디버그 트레이스 5곳 잔존(필수 — 와이어 7 플러딩 시 로그 I/O 증폭) + Arena credential 값 로깅·초과 페이로드 미테스트·XML 문구(권장/선택). 구현 구조·보안·정확성은 통과"
+     },
+     {
+      "round": "r12 (4-fix limited re-verification)",
+      "runId": "agent_mvi9ubqp_f94dfede_b",
+      "verdict": "CLEAN",
+      "issues": "4곳 모두 반영 확인 — 트레이스 0건·credential 존재 여부 로깅·초과 페이로드 테스트(파싱 전 폐기 검증 구조)·XML 정정"
+     }
+    ]
+   },
+   "leaderDebugIncident": "리뷰 r11이 리더의 임시 디버그 트레이스(Console.WriteLine 5곳, UnityEngine 미참조 Core에 삽입)를 배포 게이트 위반으로 잡았다 — Core 로깅 계약은 UniNetEnvironment.LogFault 훅뿐. 트레이스는 디버깅 후 제거 의무.",
+   "release": {
+    "status": "published",
+    "version": "0.10.0",
+    "tag": "v0.10.0",
+    "implementationCommit": "ab82e10",
+    "changelogCommit": "2c3095c",
+    "note": "첫 태그 CI 실패(Package/CHANGELOG 0.10.0 섹션 누락 — validate-package.sh 정적 검증) → changelog 추가 후 재태그. 원 태그는 Release 미생성 상태로 치환(무해)",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.10.0",
+    "ciTagRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39627631269",
+    "ciMainRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39627616464",
+    "ciConclusion": "success",
+    "receipts": [
+     ".pi-subagents/artifacts/commercial-netcode/con002-release.json",
+     ".pi-subagents/artifacts/commercial-netcode/con002-ci-runs.json",
+     ".pi-subagents/artifacts/commercial-netcode/con002-fresh-install-unity.log"
+    ]
+   }
   }
  ],
  "finalValidation": {
