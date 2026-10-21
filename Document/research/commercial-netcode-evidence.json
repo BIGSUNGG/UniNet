@@ -1438,6 +1438,61 @@
       "residuals": [
         "음성 대조 미실시 (OWN-002와 동일 잔여)"
       ]
+    },
+    {
+      "id": "MOV-002",
+      "title": "사망 게이트 진입 시 미승인 예측 히스토리 소거 (DropPendingHistory DIM + 게이트 에지 훅 + 퇴장 에지 재앵커 선실행)",
+      "version": "0.13.0",
+      "commit": "2a77605",
+      "tag": "v0.13.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.13.0",
+      "ciRunIds": [
+        39660695568
+      ],
+      "adr": "Document/decisions/0049-사망-게이트의-미승인-예측-히스토리-소거-DropPendingHistory.md",
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/mov002-plan.md",
+      "plannerAgent": "agent_mvif6ehr_4adeeaf3_l",
+      "workerAgent": "agent_mvifh2y9_0b495150_m",
+      "reviews": [
+        {
+          "round": "r17",
+          "agent": "agent_mvih0nmm_f01a8727_n",
+          "verdict": "ISSUES",
+          "issues": [
+            "Medium: 재활성화 프레임 스텝→재앵커 순서로 재앵커 우회 가능 -> TrackGateEdge 스텝 선행 이동 + 퇴장 에지 TryReAnchor 선실행 (T2c RED 0bbdb4dd -> GREEN)",
+            "Low: T4 호스트 모드 커버리지 과장 주석 -> 정정, 2프로세스 후속 명시"
+          ]
+        },
+        {
+          "round": "r18",
+          "agent": "agent_mvihl37c_da9e4454_o",
+          "verdict": "CLEAN",
+          "notes": "r17 수정 한정 재확인 통과; 중생 재앵커·재앵커 로직 무손상 확인"
+        }
+      ],
+      "tests": {
+        "editmodeJobs": [
+          "17a4efdf9be6444b8a90079112f8fee1",
+          "cb9288d1c0d94d0394f88e752912892b"
+        ],
+        "playmodeJobs": [
+          "6c6090acbed34a27b373bf0b4dc6ab98",
+          "cfb0e6951ee04584b400408c262e907c"
+        ],
+        "redJobs": [
+          "b0d852be1adf4ebdb6aef68dbe9131a0",
+          "0bbdb4dd02e0404aa7c3ed1940e5d576"
+        ],
+        "summary": "EditMode 241/241 x2, PlayMode 41/41 x2 (RTT 포함); 신규 Mov002DeathGateTests 6종 + DeathGatePlayTests 1종; 음성 대조 RED 2건"
+      },
+      "verifyInstall": {
+        "result": "PASS",
+        "log": ".pi-subagents/artifacts/commercial-netcode/mov002-fresh-install-unity.log"
+      },
+      "residuals": [
+        "NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화 — diff 무관 확인, 최종 전수에서 통과)",
+        "와이어 포함 2프로세스 소유자 레그 통합 테스트는 의도적 후속"
+      ]
     }
   ],
   "finalValidation": {
