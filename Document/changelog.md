@@ -5,6 +5,10 @@
 
 ## [2026-10-21]
 
+### Added (MOV-003 — 서버 입력 만료 옵트인, v0.14.0)
+
+- `MoveSimulation.TickServer`는 입력 큐가 비면 마지막 입력을 무기한 재적용(hold-last — 기존 문서 계약)이라, 클라 전송 중단·ADR-0034 유예 세션(유예 소유자는 재배정에서 건너뛰므로 오브젝트가 소유자 있음으로 계속 시뮬)에서 마지막 전진 입력이 유예/단절 내내 재적용됐다(의도치 않은 무한 주동). 추가: `MoveSimulation` 생성자 옵션 `inputExpirySteps`(기본 0=비활성 — 기존 동작 바이트 동일, ADR-0034 `SessionGraceSeconds` 패턴). 입력 공급이 그 스텝 수만큼 끊기면 `_input`을 `default(TInput)`으로 정확히 1회 스왑 후 새 입력 채택까지 적용(멱등); `OnTeleport`·`ResetOwnershipStream`·`DropPendingHistory` 경계에서 타이머 0화. hold-last 기본 유지(파괴적 변경 없음), decay-to-zero 기각(TInput 의미는 게임 소유·결정론 계약 — ADR-0038). 리뷰 r19에서 SetInput 갱신이 만료 카운터를 리셋하지 않아 리슨서버 호스트의 살아있는 입력이 만료되는 문제(Medium)가 지적돼 `SetInput`도 타이머를 0화하도록 보강 + 핀 테스트 T6·T7(음수 거부) 추가. 인터페이스·NetworkTransform·와이어·생성기(0.2.13) 무변경. 검증: EditMode 248/248(job `91e29bbd` — T6·T7 포함)·PlayMode 41/41(job `31770d29` — r19 수정 포함) PASS — T1(기본 600틱 hold-last 고정)·T2(만료 컷오프)·T3(재공급 리셋)·T4(10,000틱 멱등)·T5(경계 리셋). ADR-0050, 계획 `.pi-subagents/artifacts/commercial-netcode/mov003-plan.md`.
+
 ### Fixed (MOV-002 — 사망 게이트 pending 예측 정리, v0.13.0)
 
 - `NetworkTransform.SimulationEnabled` 게이트가 예측 스텝만 멈췄다 재개할 뿐 게이트 진입 시 미승인(pending) 예측 히스토리를 정리하지 않아, 사망→원격 리스폰→재활성화에서 사망 직전 예측 좌표가 렌더되고 첫 ack 롤백이 죽은 시대 입력을 재시뮬했다(되감기 아티팩트; 링 128 초과 시에야 수렴). 수정: `INetworkMoveSimulation.DropPendingHistory()` DIM 추가(기본=`OnTeleport()` 전체 소거; `MoveSimulation`은 큐+링만 비우고 권위 TState·최신 입력 보존), 게이트 진입 에지에서 1회 호출 — 사망 중 ack는 하드 스냅으로 자기정렬, 재활성화 시 기존(무변경) 텔레포트 재앵커가 리스폰 좌표 채택. 에지 트리거라 게이트 중 재소거 없음(게이트 내 예측하는 게임 보호). 리뷰 r17에서 재활성화 프레임의 스텝→재앵커 순서로 재앵커가 우회될 수 있는 문제(Medium)가 지적돼 `TrackGateEdge`를 스텝 블록 앞으로 이동하고 퇴장 에지에서 재앵커를 선실행하도록 보강(RED job `0bbdb4dd`의 T2c → GREEN). 재앵커·롤백·ADR-0042 임기 계약 무변경, 와이어·생성기(0.2.13) 무변경. 검증: RED job `b0d852be`(drop 중화 시 T2/T3 결함 실패·T5 통과), EditMode 240/240(job `3d35f74c`)·PlayMode 41/41(job `7c564c88`) PASS — 신규 `Mov002DeathGateTests` 5종+`DeathGatePlayTests` 1종. ADR-0049, 계획 `.pi-subagents/artifacts/commercial-netcode/mov002-plan.md`. 잔여: NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화된 것 — diff 무관 확인).

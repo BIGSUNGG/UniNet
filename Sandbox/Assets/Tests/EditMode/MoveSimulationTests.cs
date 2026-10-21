@@ -76,8 +76,8 @@ namespace UniNet.Tests
         private static TSt ReadState(ref MessageBufferReader r)
             => new TSt { Vy = r.ReadSingle(), DashCd = r.ReadSingle() };
 
-        private static MoveSimulation<TIn, TSt> NewSim()
-            => new(Step, WriteInput, ReadInput, WriteState, ReadState, 60f);
+        private static MoveSimulation<TIn, TSt> NewSim(int inputExpirySteps = 0)
+            => new(Step, WriteInput, ReadInput, WriteState, ReadState, 60f, inputExpirySteps: inputExpirySteps);
 
         private static byte[] Serialize(in TIn i)
         {
@@ -355,10 +355,199 @@ namespace UniNet.Tests
             Assert.AreEqual(0, isim.PendingCount, "히스토리 클리어");
         }
 
+        // ── MOV-003 — 옵트인 서버 입력 만료 (hold-last의 시간 경계) ─────────────────
+
+        [Test]
+        public void 만료_0_기본은_600틱_동안_hold_last_전진을_유지한다()
+        {
+            // 기존 계약 고정: 만료 옵션 미설정(0, 기본 오버로드)이면 기아 중에도 hold-last가 무기한 지속 —
+            // MOV-003 해결이 기본 경로를 전혀 건드리지 않음을 증명한다 (옵트인 계약).
+            var sim = NewSim();
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+
+            isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));   // 1틱째 채택 후 스트림 단절
+            isim.TickServer(ref x, ref y, ref z);
+            for (int t = 2; t <= 600; t++)
+            {
+                float before = x;
+                isim.TickServer(ref x, ref y, ref z);
+                Assert.Greater(x, before, $"틱 {t}: 만료 0(기본)에서는 큐가 비어도 hold-last가 계속 전진한다");
+            }
+
+            Assert.AreEqual(600f * RunSpeed * Dt, x, 1e-2f, "600틱 전부 이동 — 기본값 경로는 오늘과 동일");
+        }
+
+        [Test]
+        public void 만료_60이면_61틱부터_위치가_불변한다()
+        {
+            var sim = NewSim(inputExpirySteps: 60);
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+
+            isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));   // 1틱째 채택 후 스트림 단절
+            for (int t = 1; t <= 60; t++)
+                isim.TickServer(ref x, ref y, ref z);            // 채택 1틱 + hold 59틱 — 창(60) 안에서는 전진
+            Assert.Greater(x, 0f, "만료 창 안에서는 hold-last로 전진한다");
+
+            float xAtExpiry = x;
+            for (int t = 61; t <= 120; t++)
+            {
+                isim.TickServer(ref x, ref y, ref z);
+                Assert.AreEqual(xAtExpiry, x, 1e-6f, $"틱 {t}: 만료 후 default 입력 적용 — 위치 불변");
+            }
+        }
+
+        [Test]
+        public void 만료_후_입력_재공급은_hold_last를_재개하고_창을_다시_연다()
+        {
+            var sim = NewSim(inputExpirySteps: 60);
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+
+            isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));
+            for (int t = 0; t < 61; t++)
+                isim.TickServer(ref x, ref y, ref z);            // 만료 통과
+            float frozen = x;
+
+            isim.AdoptInput(2, Serialize(new TIn { Dx = 1 }));   // 만료 후 신규 입력 — hold-last 재개 + 타이머 리셋
+            for (int t = 1; t <= 60; t++)
+            {
+                float before = x;
+                isim.TickServer(ref x, ref y, ref z);
+                Assert.Greater(x, before, $"재공급 후 틱 {t}: 만료 타이머가 리셋되어 hold-last가 재개된다");
+            }
+
+            float afterWindow = x;
+            isim.TickServer(ref x, ref y, ref z);
+            Assert.AreEqual(afterWindow, x, 1e-6f, "재공급 후 61틱째 — 창이 다시 닫혀 위치 불변");
+            Assert.Greater(afterWindow, frozen, "재공급 구간 동안 실제로 전진했다");
+        }
+
+        [Test]
+        public void 만료_후_만_틱은_위치와_상태가_완전히_불변이다()
+        {
+            // 멱등 계약: 스왑은 경계 도달 시 1회뿐 — 이후 기아 틱은 같은 default를 적용할 뿐 상태를 다시 쓰지 않는다.
+            var sim = NewSim(inputExpirySteps: 60);
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+
+            isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));
+            for (int t = 0; t < 70; t++)
+                isim.TickServer(ref x, ref y, ref z);            // 만료 + 상태 정착 여유
+
+            float fx = x, fy = y, fz = z;
+            byte[] state = isim.WriteState();
+            for (int t = 0; t < 10_000; t++)
+                isim.TickServer(ref x, ref y, ref z);
+
+            Assert.AreEqual(fx, x, 1e-6f, "10,000틱 후 x 불변");
+            Assert.AreEqual(fy, y, 1e-6f, "10,000틱 후 y 불변");
+            Assert.AreEqual(fz, z, 1e-6f, "10,000틱 후 z 불변");
+            CollectionAssert.AreEqual(state, isim.WriteState(), "10,000틱 후 TState 불변 — 스왑 1회, 이후 적용만 반복(멱등)");
+        }
+
+        [Test]
+        public void 경계_리셋은_만료_타이머를_0으로_돌린다()
+        {
+            // ResetOwnershipStream / DropPendingHistory: held 입력은 경계에서 보존되므로 타이머 0화가 직접 관측된다 —
+            // 리셋 직후 첫 틱부터 이미 기아 틱이지만(큐 소거) 창 전체(60틱)가 다시 열려 59틱을 전진하고 60틱째 멈춘다.
+            // OnTeleport는 held 입력까지 소거하므로 "만료 상태가 경계를 넘어 끌려오지 않음"으로 관측한다.
+
+            // — ResetOwnershipStream —
+            {
+                var sim = NewSim(inputExpirySteps: 60);
+                var isim = (INetworkMoveSimulation)sim;
+                float x = 0f, y = 0f, z = 0f;
+                isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));
+                for (int t = 0; t < 56; t++) isim.TickServer(ref x, ref y, ref z);   // 채택 1틱 + 기아 55틱
+                isim.ResetOwnershipStream();
+                float xAtReset = x;
+
+                for (int t = 1; t <= 59; t++)
+                {
+                    float before = x;
+                    isim.TickServer(ref x, ref y, ref z);
+                    Assert.Greater(x, before, $"리셋 후 틱 {t}: 타이머 0화로 신선한 창이 열렸다");
+                }
+                Assert.AreEqual(59f * RunSpeed * Dt, x - xAtReset, 1e-2f, "리셋 후 창 하나만큼 재hold");
+                isim.TickServer(ref x, ref y, ref z);
+                Assert.AreEqual(59f * RunSpeed * Dt, x - xAtReset, 1e-2f, "60틱째 — 재시작한 창이 닫혀 불변");
+            }
+
+            // — DropPendingHistory —
+            {
+                var sim = NewSim(inputExpirySteps: 60);
+                var isim = (INetworkMoveSimulation)sim;
+                float x = 0f, y = 0f, z = 0f;
+                isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));
+                for (int t = 0; t < 56; t++) isim.TickServer(ref x, ref y, ref z);
+                isim.DropPendingHistory();
+                float xAtDrop = x;
+
+                for (int t = 1; t <= 59; t++)
+                {
+                    float before = x;
+                    isim.TickServer(ref x, ref y, ref z);
+                    Assert.Greater(x, before, $"게이트 후 틱 {t}: 타이머 0화 — 재개 스트림이 만료를 물려받지 않는다");
+                }
+                Assert.AreEqual(59f * RunSpeed * Dt, x - xAtDrop, 1e-2f, "게이트 후 창 하나만큼 재hold");
+                isim.TickServer(ref x, ref y, ref z);
+                Assert.AreEqual(59f * RunSpeed * Dt, x - xAtDrop, 1e-2f, "60틱째 — 재시작한 창이 닫혀 불변");
+            }
+
+            // — OnTeleport —
+            {
+                var sim = NewSim(inputExpirySteps: 60);
+                var isim = (INetworkMoveSimulation)sim;
+                float x = 0f, y = 0f, z = 0f;
+                isim.AdoptInput(1, Serialize(new TIn { Dx = 1 }));
+                for (int t = 0; t < 70; t++) isim.TickServer(ref x, ref y, ref z);   // 만료 통과
+                isim.OnTeleport();
+                float xAtTeleport = x;
+
+                isim.AdoptInput(2, Serialize(new TIn { Dx = 1 }));   // 텔레포트 뒤 새 스트림
+                for (int t = 1; t <= 60; t++)
+                {
+                    float before = x;
+                    isim.TickServer(ref x, ref y, ref z);
+                    Assert.Greater(x, before, $"텔레포트 후 틱 {t}: 만료 상태가 경계를 넘어 끌려오지 않는다");
+                }
+                isim.TickServer(ref x, ref y, ref z);
+                Assert.AreEqual(60f * RunSpeed * Dt, x - xAtTeleport, 1e-2f, "신규 스트림도 정확히 창 하나만큼만 hold");
+            }
+        }
+
         private static float ReadStateVy(byte[] blob)
         {
             var r = new MessageBufferReader(blob);
             return ReadState(ref r).Vy;
+        }
+
+        // ── MOV-003 후속 (r19) ─────────────────────────────────────────────
+
+        [Test]
+        public void SetInput으로_입력을_계속_갱신하면_만료되지_않는다()
+        {
+            // listen-server host feed path: SetInput every frame (never AdoptInput) must keep the
+            // window open — r19 ISSUE-1. 60 ticks at expiry 10 would otherwise swap to default.
+            var sim = NewSim(inputExpirySteps: 10);
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 0f, y = 0f, z = 0f;
+            var input = new TIn { Dx = 1 };
+            for (int i = 0; i < 60; i++)
+            {
+                sim.SetInput(input);   // live feed — each refresh resets the expiry window
+                isim.TickServer(ref x, ref y, ref z);
+            }
+            Assert.AreEqual(60f * RunSpeed * Dt, x, 1e-4f, "SetInput 연속 갱신 — 만료 없이 60틱 전진");
+        }
+
+        [Test]
+        public void 음수_만료_스텝은_생성에서_거부된다()
+        {
+            Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                NewSim(inputExpirySteps: -1));
         }
     }
 }

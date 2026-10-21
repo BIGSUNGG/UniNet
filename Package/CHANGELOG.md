@@ -1,3 +1,13 @@
+## 0.14.0
+
+**Opt-in server input expiry (MOV-003, ADR-0050 — no wire/generator change; additive constructor option only).** `MoveSimulation.TickServer` re-applied the last input indefinitely while the input queue is starved (hold-last): a connection stall or a grace-session owner kept the server simulating the final forward input forever.
+
+### Added
+
+- `MoveSimulation` constructor option `inputExpirySteps` (default 0 = disabled — existing behavior byte-identical). When input supply stops for that many server steps, `_input` is swapped to `default(TInput)` exactly once and applied until a new input is adopted (idempotent). The expiry timer resets on `OnTeleport`, `ResetOwnershipStream`, `DropPendingHistory`, and every `SetInput` refresh (a live listen-server host feed never expires).
+- The hold-last default stays the documented contract; `decay-to-zero` was rejected (the meaning of `TInput` fields belongs to the game; step purity/determinism must not be mutated by the framework).
+- Tests: EditMode `MoveSimulationTests` extensions — default contract pin (600 ticks hold-last), expiry cutoff, re-supply reset, 10,000-tick idempotence, boundary resets.
+
 ## 0.13.0
 
 **Death-gate pending prediction cleanup (MOV-002, ADR-0049 — no wire/generator/public-surface change beyond one DIM).** The `NetworkTransform.SimulationEnabled` gate paused prediction but never cleared the unacknowledged history: a death -> remote respawn -> re-enable rendered the pre-death predicted position and the first ack replayed dead-era inputs (rollback artifact).

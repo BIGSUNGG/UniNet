@@ -48,6 +48,10 @@ namespace UniNet.Core.Hosting
         private TState _state;      // authoritative (server) or predicted (owner client)
         private uint _lastSeenSeq;  // server — monotonic guard against stale/replayed inputs
 
+        // MOV-003 — opt-in server input-expiry policy (default 0 = legacy hold-last forever, byte-for-byte today's behavior)
+        private readonly int _inputExpirySteps;  // grace window: inputless server steps tolerated before the held input swaps to default(TInput)
+        private int _idleSteps;                  // consecutive TickServer steps with an empty queue — reset on adoption, at explicit boundaries (teleport / ownership reset / death gate), and on every SetInput refresh (a live host feed never expires)
+
         // server input queue — parsed inputs (deserialized at adoption; malformed payloads never reach the ring)
         private readonly uint[] _qSeq = new uint[ServerQueueCapacity];
         private readonly TInput[] _qData = new TInput[ServerQueueCapacity];
@@ -82,6 +86,7 @@ namespace UniNet.Core.Hosting
         /// <param name="readState">State deserializer.</param>
         /// <param name="stepsPerSecond">Fixed simulation rate — 60 renders smoothly with one-step-behind interpolation; lower trades input cadence for bandwidth.</param>
         /// <param name="inputCapacityBytes">Input payload cap (default 64).</param>
+        /// <param name="inputExpirySteps">Server-only opt-in starvation bound (MOV-003): after this many consecutive inputless TickServer steps the held input is swapped to default(TInput) — exactly once at the crossing step, then applied every step until a fresh input is adopted — so a disconnected or stalled owner stops driving the object. 0 (default) keeps the legacy hold-last extrapolation forever.</param>
         public MoveSimulation(
             StepFn step,
             WriteInputFn writeInput,
@@ -89,7 +94,8 @@ namespace UniNet.Core.Hosting
             WriteStateFn writeState,
             ReadStateFn readState,
             float stepsPerSecond,
-            int inputCapacityBytes = 64)
+            int inputCapacityBytes = 64,
+            int inputExpirySteps = 0)
         {
             _step = step ?? throw new ArgumentNullException(nameof(step));
             _writeInput = writeInput ?? throw new ArgumentNullException(nameof(writeInput));
@@ -98,13 +104,19 @@ namespace UniNet.Core.Hosting
             _readState = readState ?? throw new ArgumentNullException(nameof(readState));
             if (stepsPerSecond <= 0f) throw new ArgumentOutOfRangeException(nameof(stepsPerSecond));
             if (inputCapacityBytes <= 0) throw new ArgumentOutOfRangeException(nameof(inputCapacityBytes));
+            if (inputExpirySteps < 0) throw new ArgumentOutOfRangeException(nameof(inputExpirySteps));
 
             StepIntervalSeconds = 1f / stepsPerSecond;
             InputCapacityBytes = inputCapacityBytes;
+            _inputExpirySteps = inputExpirySteps;
         }
 
         /// <summary>Sets the input used by the next step — call from the game's Update before the driver steps (predicting owner and listen-server host).</summary>
-        public void SetInput(in TInput input) => _input = input;
+        public void SetInput(in TInput input)
+        {
+            _input = input;
+            _idleSteps = 0;   // MOV-003 (r19 ISSUE-1): a refreshed input is not "inputless" — live host input must never expire
+        }
 
         /// <summary>Replaces the state directly (game-side initialization, custom teleport semantics).</summary>
         public void SetState(in TState state) => _state = state;
@@ -211,8 +223,17 @@ namespace UniNet.Core.Hosting
                 LastAdoptedSeq = _qSeq[_qHead];
                 _qHead = (_qHead + 1) % ServerQueueCapacity;
                 _qCount--;
+                _idleSteps = 0;   // fresh input — the expiry window restarts (MOV-003)
             }
-            _step(ref _state, ref x, ref y, ref z, in _input, StepIntervalSeconds);   // empty queue → re-apply the latest input (extrapolation)
+            else if (_inputExpirySteps > 0 && ++_idleSteps == _inputExpirySteps)
+            {
+                // MOV-003 — the input stream has been absent for the configured grace window: hold-last ends and a
+                // neutral default input takes over. Swapped exactly once at the crossing step (never re-swapped
+                // while starving), then applied every step — default stays default, so every step is identical
+                // and deterministic (ADR-0038). The next adoption above re-arms hold-last.
+                _input = default;
+            }
+            _step(ref _state, ref x, ref y, ref z, in _input, StepIntervalSeconds);   // empty queue → re-apply the latest input (hold-last extrapolation; with inputExpirySteps > 0 the held input becomes default(TInput) once the window elapses — MOV-003)
         }
 
         /// <inheritdoc />
@@ -249,6 +270,7 @@ namespace UniNet.Core.Hosting
             _input = default;
             _qHead = 0;
             _qCount = 0;
+            _idleSteps = 0;   // fresh expiry window for the next stream (MOV-003)
             _hHead = 0;
             _hCount = 0;
         }
@@ -262,9 +284,10 @@ namespace UniNet.Core.Hosting
             _hCount = 0;
             _lastSeenSeq = 0;      // the tenure guard restarts — the new owner's stream may begin at seq 1 (MOV-001)
             LastAdoptedSeq = 0;
+            _idleSteps = 0;        // the new tenure starts with a fresh input-expiry window (MOV-003) — a handoff must not inherit the previous owner's starvation clock
             // deliberately NOT touching _state (authoritative game state survives the handoff — the contract
-            // difference from OnTeleport above) nor _input (extrapolation continues until the new owner's first
-            // input — input-expiry is MOV-003, out of scope here)
+            // difference from OnTeleport above) nor _input (hold-last continues until the new owner's first input
+            // arrives or the opt-in input-expiry window elapses — MOV-003)
         }
 
         /// <inheritdoc />
@@ -278,6 +301,7 @@ namespace UniNet.Core.Hosting
             // position.
             _qHead = 0;
             _qCount = 0;
+            _idleSteps = 0;   // fresh expiry window after the gate (MOV-003) — the resumed stream is not pre-spent by pre-gate starvation
             _hHead = 0;
             _hCount = 0;
         }
