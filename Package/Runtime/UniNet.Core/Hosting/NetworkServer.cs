@@ -226,6 +226,15 @@ namespace UniNet.Core.Hosting
             public bool Disconnected { get; internal set; }
 
             /// <summary>
+            /// REC-002 — the client announced a voluntary leave (wire 15) before its transport close: the detach path
+            /// then discards the grace save for this departure (the leaving client burns its resume token — nobody
+            /// can ever resume) and orphans are adopted immediately. Written on the dispatch thread, read by the
+            /// detach lambda on the main queue — volatile like <see cref="RttMs"/>. Losing the race (detach first)
+            /// downgrades to the legacy grace behavior — the notice is best effort by contract, no new failure mode.
+            /// </summary>
+            internal volatile bool IntentionalLeave;
+
+            /// <summary>
             /// This connection's round-trip time in ms, as reported by the client's own probe (ADR-0029 ping wire 8 —
             /// the client measures client↔server RTT and piggybacks the EMA on each ping). -1 until the first report.
             /// Written on the DRPC dispatch thread, read on the main thread — volatile int-µs backing (same pattern as
@@ -245,7 +254,7 @@ namespace UniNet.Core.Hosting
             /// Whether this connection's protocol version was accepted (CON-001) — true immediately when version
             /// checking is inactive (empty ExpectedProtocolVersion), otherwise set when the client's wire-7 declaration
             /// matches. Until true the server holds ownership reassignment, catch-up, the ClientConnected event, and
-            /// all game-data sends; system wires (7/8/10/12) stay live so the handshake itself can complete.
+            /// all game-data sends; system wires (7/8/10/12/15) stay live so the handshake itself can complete.
             /// Volatile-backed: written on the dispatch thread, read by the tick and dispatch filters.
             /// </summary>
             public bool VersionApproved
@@ -567,7 +576,22 @@ namespace UniNet.Core.Hosting
                             {
                                 // Always runs regardless of subscriber exceptions — server invariant that keeps dead connections from
                                 // staying owners (letting a rethrown exception skip the rest of this lambda would lose OwnerOnly delta receivers)
-                                if (wasApproved && SessionGraceSeconds > 0)
+                                if (wasApproved && conn.IntentionalLeave)
+                                {
+                                    // REC-002 — a notified voluntary leave discards the grace save (the leaving client burned its
+                                    // resume token in ClientStop — a preserved session could never be resumed and would only block
+                                    // orphan adoption for the whole grace window); orphans are adopted immediately instead.
+                                    // Tombstoning the token (same one-grace-window bound as the sweep) makes a stale wire-10 resume
+                                    // report UnknownToken (terminal — no retry armed) instead of a misleading retryable SessionNotFound.
+                                    // Empty token = grace identity never issued — nothing to tombstone.
+                                    if (!string.IsNullOrEmpty(conn.SessionToken) && SessionGraceSeconds > 0)
+                                    {
+                                        lock (_gate)   // issuance reads the registry from the transport accept thread (ADR-0041) — same gate arbitrates
+                                            _closedResumeTokens[conn.SessionToken] = ((byte)GraceResumeResult.UnknownToken, UniNetTime.LocalClock() + SessionGraceSeconds);
+                                    }
+                                    ReassignOwnership();
+                                }
+                                else if (wasApproved && SessionGraceSeconds > 0)
                                     SaveGraceSession(conn.ConnId, conn.SessionToken);
                                 else
                                     ReassignOwnership();
@@ -626,6 +650,30 @@ namespace UniNet.Core.Hosting
 
         /// <summary>Total game ServerRpc calls dropped because the sender never declared an accepted protocol version (CON-001; all connections, since server start).</summary>
         public long UnapprovedServerRpcDrops => System.Threading.Interlocked.Read(ref _unapprovedRpcDrops);
+
+        // REC-002 — voluntary-leave notices (wire 15) applied to live connections. Quiet observability like
+        // _unapprovedRpcDrops: a notice that loses the detach race is counted only by its absence here.
+        private long _intentionalLeaves;
+
+        /// <summary>Records a voluntary-leave notice for one connection (REC-002 wire 15 — called by the generated
+        /// dispatch on the network thread). Sets <see cref="ServerConnection.IntentionalLeave"/>, so the detach path
+        /// skips the grace save for this departure — the client burned its resume token in ClientStop, so a preserved
+        /// session could never be resumed and would only block orphan adoption for the whole grace window. Best
+        /// effort by contract: a notice for an unknown/already-detached connection is ignored (the departure keeps
+        /// the legacy grace behavior). Runtime dispatch point — not intended for direct game calls.</summary>
+        public void OnIntentionalLeave(long connId)
+        {
+            foreach (var conn in SnapshotConnections())
+                if (conn.ConnId == connId && !conn.Disconnected)
+                {
+                    conn.IntentionalLeave = true;
+                    System.Threading.Interlocked.Increment(ref _intentionalLeaves);
+                    return;
+                }
+        }
+
+        /// <summary>Total wire-15 intentional-leave notices applied to live connections (REC-002; all connections, since server start).</summary>
+        public long IntentionalLeaves => System.Threading.Interlocked.Read(ref _intentionalLeaves);
 
         /// <summary>
         /// How long an undeclared connection may stay attached before it is kicked with VersionMismatch (CON-001), in

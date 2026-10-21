@@ -73,6 +73,10 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 
 수신 표현의 비용 절충: 실제 연기가 있는 tick마다 정렬된 connId 배열 1개를 공유한다(`AttachConnection`은 잠금 안에서 단조 증가 ID를 append하고 detach는 순서 보존). 각 후보는 기존 inline 64비트 및 초과분 pooled `ulong` 비트셋만 보유한다. 초과분은 기존 visibility pass에서 수집하고 후보에 word 단위 복사하므로 연기 후보마다 연결을 다시 훑거나 HashSet/버킷을 할당하지 않는다. 항목별 비트만 제거하므로 공유 ID 배열의 다른 수신자·후보는 변하지 않는다. 완료/파괴/빈 후보의 초과 비트 배열은 pool에 반환한다. 사용자 hook/채널 예외로 tick이 중단돼도 `finally`가 현재·미처리 후보를 해제하며, `_queue`에 실제 남겨 둔 후보의 소유권만 보존한다. 반환 뒤 참조를 null로 만들어 후속 정리의 중복 반환을 막고, 큐가 참조 중인 배열은 반환하거나 지우지 않는다. 송신은 정렬된 공유 ID와 현재 연결을 단방향 cursor로 병합하므로 후보당 O(이전 수신 ID 수+현재 연결 수)이며 개별 무효화만 이진 검색을 유지한다. 추가 공간은 tick 공유 O(N)+후보별 O(N/64)이다. 기존 HashSet 대신 메모리를 줄이며, 송신 시 현재 relevancy hook/거리 검사를 다시 하는 CPU 비용은 누출 차단에 필요하다. ready 캐치업은 첫 기준선 전에 보고 연결의 기존 큐 전달을 한 번에 제거하고, 객체별 기준선에서는 중복 검사하지 않는다(큐 순회 1회/캐치업). 단일 객체 가시성 재진입·`BroadcastSpawn`은 해당 netId/connId만 제거하는 선형 검사를 유지한다(전환이 매우 잦고 큐가 크면 별도 인덱싱 검토; 이번 범위 밖).
 
+## 자발 퇴장 통보와 유예 즉시 폐기 (0.9.0 — ADR-0046)
+
+자발적 `UniNetManager.ClientStop()`은 재개 토큰을 소각하는 계약(재개 불가)이므로, 유예 세션을 저장하면 재개 불가능한 세션이 유예 창 동안 고아로 잔존해 신규 입양을 막았다. 이제 ClientStop은 transport close 직전 **시스템 와이어 15 `IntentionalLeave`(C→S, 빈 페이로드)**를 발사하고 서버는 이 통보를 받은 연결의 유예 저장을 생략한다 — 대신 토큰을 툼스톤(`UnknownToken`, 수명 = 폐기+유예 창)하고 소유권을 즉시 재배정해 후발 클라가 고아를 즉시 입양한다. 통보는 전송 Task 250ms 유계 대기 + 150ms 드레인 창(ADR-0027 선례)으로 신뢰 전달되며, close 레이스 유실 시 기존 유예 동작으로 강등된다(무해). 구 클라(미통보)는 기존 유예 동작 그대로 — 하위 호환 회귀 0. 낡은 wire 10 재제시는 `SessionNotFound` (재시도 창) 대신 `UnknownToken`(즉시 종결)로 정확히 끝난다. `IntentionalLeaves` 카운터로 도달을 관측할 수 있다.
+
 ## 재개 결과 통보와 자동 재시도 (0.7.0 — ADR-0044)
 
 `ResumeSession`은 `GraceResumeResult`(Reattached / SessionNotFound / Expired / UnknownToken)를 반환하고, **모든 종결 사유가 wire 14 `ResumeResult{ok, reason, retryableRemainingMs}`로 요청 연결에 통보**된다. 클라는 `NetworkClient.LastResumeResult`와 `ResumeResultReceived` 이벤트(디스패치 스레드 — `QueueOnMain` 마셜)로 관측한다. `ReconnectAsync`의 반환값은 여전히 연결 수립일 뿐이므로 재부착 성공 여부는 이 이벤트로 판별한다. 소비·스윕만료 토큰은 툼스톤(원 만료 시점까지)되어 이중 소비 패자는 UnknownToken·스윕 만료는 Expired로 정확히 종결된다. **디태치 경합**(서버가 구연결 죽음을 감지하기 전 재접속 — 세션이 아직 저장 안 됨)은 SessionNotFound + 재시도 창으로 응답되고 클라가 0.5초 간격으로 wire 10을 재전송(`TickResumeRetry`, 드라이버 캐던스)해 창 내 재부착으로 수렴한다. 어떤 실패도 세션을 소진하지 않는다(SEC-001). 토큰 없는 신규 접속은 wire 14를 받지 않는다.
@@ -118,6 +122,7 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - 2026-10-12: EditMode 87/87 · PlayMode 22/22 (MCP 에디터) · 2-프로세스 킥·버전 왕복 PASS
 
 ## 변경 이력
+- 2026-10-21 — ADR-0046 자발 퇴장 통보: 시스템 와이어 15 `IntentionalLeave`(C→S) 신설 — ClientStop이 close 직전 통보, 서버는 유예 저장 생략+토큰 툼스톤+소유권 즉시 재배정. 전송 신뢰성: SendRPC Task 250ms 유계 대기 + 150ms 드레인 창. 구 클라 호환(미통보 = 기존 유예). 0.9.0 (REC-002 CLOSED — 실루프백 3/3·Arena 진단 PASS·전수 209/32 PASS)
 
 - 2026-10-20 — 리뷰 5: 승인된 씬 유보 연결에 파괴 ID를 보관하고 등록 후 유효 보고에서 부재 ID만 기준선 전에 1회 전달. 같은 netId 재등록은 현재 캐치업으로 대체하고 disconnect는 메인 큐에서 폐기한다. EditMode 3케이스·headless 5+기존 22종·음성 대조 검증, Unity 실행 및 독립 리뷰는 별도 게이트. README/소비자 스킬도 동기화.
 

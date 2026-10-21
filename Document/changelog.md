@@ -24,6 +24,13 @@
 - `UpdateVisibility`에서 해제·미승인·씬 유보 연결을 가시성 기록 전에 제외해 `SendBaseline`의 owner+spawn 누출과 미수신 상태의 허위 가시성 기록을 차단했다. 무송신 단언을 유지하고 배치 차단·ready 후 동적 기준선 복구 및 차단 연결 3종의 기록 없음 회귀를 보강했다.
 - 씬 게이트 회귀는 A와 B 모두 유효 보고하도록 전제를 바로잡고, 생성 수신기 재생 회귀는 메인 큐 적용 후 Score를 단언하도록 수정했다. Unity 재실행·독립 리뷰·릴리스는 아직 별도 검증 대상이다.
 
+### Added (자발 퇴장 통보 — REC-002, 패키지 0.9.0)
+
+- **자발 퇴장 시 유예 세션 즉시 폐기** ([[0046-자발-퇴장-통보-와이어15-IntentionalLeave-유예-세션-즉시-폐기]]·[[features/connection-lifecycle|connection-lifecycle]]) — 자발적 `ClientStop`은 재개 토큰을 소각하므로 유예 저장은 재개 불가능한 고아 세션을 유예 창 동안 만들어 신규 입양을 막았다. 이제 ClientStop이 close 직전 시스템 **와이어 15 `IntentionalLeave`(C→S)**를 발사하고 서버는 유예 저장을 생략, 토큰 툼스톤(`UnknownToken`)과 소유권 즉시 재배정으로 후발 클라의 즉시 입양을 허용한다
+- **전달 신뢰성** — 전송 Task 250ms 유계 대기 + 150ms 드레인 창(ADR-0027 선례). 미적용 시 실루프백에서 간헐 유실(1/2), 적용 후 3/3 연속 PASS. close 레이스 유실 시 기존 유예 동작 강등(무해)
+- **하위 호환** — 구 클라(미통보)는 기존 유예 동작 유지. 낡은 wire 10 재제시는 `UnknownToken` 즉시 종결. 생성기 0.2.12
+- **테스트** — EditMode +8(통보 후 유예 미저장·즉시 입양·툼스톤 정확 종결·무통보 회귀 방어·비활성 무해·와이어 페이로드 3종 — 빈/과대/미지 연결 무시), PlayMode 실RUDP 1종(자발 ClientStop → 유예 없음 → 후발 즉시 입양), Arena 진단 1종(`[UNINET-VERIFY] REC-002 DIAG PASS`). 음성 대조로 신규 테스트 3건이 구현 분기 반전 시 RED 확인
+
 ### Added (씬 전환 잔여 — SCN-001/002/003, 패키지 0.8.0)
 
 **배포 영수증 (2026-10-21)**: 커밋 `1de0a40` → [v0.8.0 Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.8.0), CI 성공(tag `39598549289`/main `39598544339`), 신규 프로젝트 설치·컴파일 PASS(로컬 Git URL, 샘플 포함). 독립 리뷰 r6~r8 CLEAN(zai/glm-5.3-flash). SCN-001/002/003 CLOSED.

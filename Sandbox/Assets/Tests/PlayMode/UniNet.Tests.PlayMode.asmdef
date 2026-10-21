@@ -16,6 +16,7 @@
     "precompiledReferences": [
         "nunit.framework.dll",
         "DRPC.Attribute.dll",
+        "DRPC.Shared.dll",
         "MessageProtocol.Core.dll"
     ],
     "autoReferenced": false,

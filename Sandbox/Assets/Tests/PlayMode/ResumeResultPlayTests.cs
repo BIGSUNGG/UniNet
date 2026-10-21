@@ -47,8 +47,8 @@ namespace UniNet.Tests
             string realToken = UniNetEnvironment.Client.SessionToken;
             Assert.IsNotEmpty(realToken, "세션 토큰 발급 관측");
 
-            // stop the client — the server keeps the grace session (the token is preserved by the test via re-seed)
-            UniNetManager.ClientStop();
+            // drop the client — the server keeps the grace session (the token is preserved by the test via re-seed)
+            RawDrop();
 
             // 1) FORGED token — terminal rejection, observed as a wire-14 result on the reconnecting client
             var forged = new NetworkClient { SessionToken = realToken.Substring(0, 40) + (realToken[40] == 'A' ? 'B' : 'A') + realToken.Substring(41) };
@@ -57,7 +57,7 @@ namespace UniNet.Tests
             while (!connect1.IsCompleted) yield return null;
             yield return WaitUntil(() => UniNetEnvironment.Client.LastResumeResult != GraceResumeResult.None, 5, "위조 토큰 — wire 14 결과 도착");
             Assert.AreEqual(GraceResumeResult.SessionNotFound, UniNetEnvironment.Client.LastResumeResult, "위조(미지) 토큰 — SessionNotFound (재시도 창과 함께)");
-            UniNetManager.ClientStop();
+            RawDrop();
 
             // 2) GENUINE token — reattached. Poll the sticky LastResumeResult on the CURRENT environment client
             // (like case 1): ClientAsync builds a NEW NetworkClient internally and only carries the token, so an event
@@ -70,6 +70,20 @@ namespace UniNet.Tests
             yield return WaitUntil(() => UniNetEnvironment.Client.LastResumeResult == GraceResumeResult.Reattached, 5, "진짜 토큰 — Reattached 이벤트");
             Assert.AreEqual(GraceResumeResult.Reattached, UniNetEnvironment.Client.LastResumeResult, "최종 결과 상태");
             UnityEngine.Debug.Log($"[UNINET-VERIFY] ResumeResult PASS — conn {firstConn} reattached over real RUDP (forged rejected first)");
+        }
+
+        /// <summary>Raw transport drop — NOT a voluntary ClientStop (wire 15 would tombstone the token; REC-002). This
+        /// test models an ungraceful drop, where the server keeps the grace session for the reconnect scenarios.</summary>
+        private static void RawDrop()
+        {
+            var sender = UniNetEnvironment.ClientSender;
+            UniNetEnvironment.SetClientSender(null);
+            UniNetEnvironment.SetClient(null);
+            if (sender is DRPC.Shared.Network.HubBase hub)
+            {
+                hub.Disconnect();
+                hub.Dispose();
+            }
         }
 
         private static IEnumerator WaitUntil(System.Func<bool> condition, float timeout, string label)

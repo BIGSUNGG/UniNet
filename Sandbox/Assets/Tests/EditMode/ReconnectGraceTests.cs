@@ -23,6 +23,8 @@ namespace UniNet.Tests
         public void TearDown()
         {
             UniNetEnvironment.SetServer(null);
+            UniNetEnvironment.SetClient(null);   // REC-002 tests seed a client/sender for the retry-window assertions — never leak into other fixtures
+            UniNetEnvironment.SetClientSender(null);
         }
 
         [Test]
@@ -240,6 +242,153 @@ namespace UniNet.Tests
             UniNetEnvironment.PumpMain();
             Assert.AreEqual(GraceResumeResult.UnknownToken, server.ResumeSession(token, chC.UniNetConnId), "동일 토큰 재사용(토큰 재생) — 거부 (소비 툼스톤 → 정확한 종결)");
             Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "재생 거부 후 소유권 불변");
+        }
+
+        // ── REC-002 — voluntary leave (wire 15): a voluntary ClientStop burns the resume token by contract, so a
+        // notified departure must NOT save a grace session (nothing can ever resume it; it only blocked orphan
+        // adoption for the whole grace window). Tombstone contract: a stale resume reports UnknownToken (terminal).
+
+        /// <summary>Captures wire-14 resume results — same explicit-interface pattern as ResumeResultTests.ResultChannel.</summary>
+        private sealed class LeaveResultChannel : RecordingChannel, IUniNetSystemChannel
+        {
+            internal readonly List<(bool Ok, byte Reason, double RetryMs)> Results = new();
+            void IUniNetSystemChannel.SendResumeResult(bool ok, byte result, double retryableRemainingMs)
+                => Results.Add((ok, result, retryableRemainingMs));
+        }
+
+        /// <summary>Records wire-10 retry sends — same pattern as ResumeResultTests.SenderStub.</summary>
+        private sealed class LeaveSenderStub : IUniNetClientSender
+        {
+            internal readonly List<(int MethodId, byte[] Payload)> Sent = new();
+            public void UniNetSend(int methodId, byte[] payload, DRPC.RpcDeliveryMode mode)
+                => Sent.Add((methodId, payload));
+        }
+
+        [Test]
+        public void 자발_퇴장_통보_후_유예_세션이_저장되지_않는다()
+        {
+            var server = new NetworkServer { SessionGraceSeconds = 30 };
+            UniNetEnvironment.SetServer(server);
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            string token = server.SnapshotConnections()[0].SessionToken;
+
+            server.OnIntentionalLeave(ch.UniNetConnId);   // wire 15 notice — the generated dispatch path in production
+            Assert.AreEqual(1, server.IntentionalLeaves, "통보 적용 카운터 (조용한 관측성)");
+            server.DetachConnection(ch);
+            UniNetEnvironment.PumpMain();
+
+            // a LIVE successor connection distinguishes all three outcomes: a saved session would Reattach,
+            // a missing save would report retryable SessionNotFound, and the tombstone reports UnknownToken
+            var chB = new LeaveResultChannel();
+            server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(GraceResumeResult.UnknownToken, server.ResumeSession(token, chB.UniNetConnId), "소각 토큰 — 유예 미저장 + 소비 툼스톤 (SessionNotFound 재시도 오인 없음)");
+            Assert.AreEqual((false, (byte)GraceResumeResult.UnknownToken, 0.0), chB.Results[^1], "wire 14 — 종결 사유 + 재시도 창 0");
+        }
+
+        [Test]
+        public void 자발_퇴장은_고아_입양을_즉시_허용한다()
+        {
+            var server = new NetworkServer { SessionGraceSeconds = 30 };
+            UniNetEnvironment.SetServer(server);
+            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-adopt");
+            var chA = new RecordingChannel();
+            server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            Assert.AreNotEqual(0, server.GetOwner(player.NetId), "준비 — 초기 소유자 배정");
+
+            server.OnIntentionalLeave(chA.UniNetConnId);
+            server.DetachConnection(chA);
+            UniNetEnvironment.PumpMain();
+
+            var chB = new RecordingChannel();
+            server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "유예 창(30s) 내 신규 연결 즉시 입양 — 고아 블로킹 소멸");
+        }
+
+        [Test]
+        public void 자발_퇴장_토큰의_재개는_재시도_창을_무장하지_않는다()
+        {
+            var server = new NetworkServer { SessionGraceSeconds = 30 };
+            UniNetEnvironment.SetServer(server);
+            var chA = new RecordingChannel();
+            server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            string token = server.SnapshotConnections()[0].SessionToken;
+            server.OnIntentionalLeave(chA.UniNetConnId);
+            server.DetachConnection(chA);
+            UniNetEnvironment.PumpMain();
+
+            // REC-001 retry contract, client side: SessionNotFound arms the window (sanity — the harness really
+            // sends), while the voluntary-leave tombstone's UnknownToken is terminal and must never arm it
+            var client = new NetworkClient { SessionToken = token };
+            UniNetEnvironment.SetClient(client);
+            var sender = new LeaveSenderStub();
+            UniNetEnvironment.SetClientSender(sender);
+            client.ApplyResumeResult(false, (byte)GraceResumeResult.SessionNotFound, 30000.0);
+            client.TickResumeRetry();
+            Assert.AreEqual(1, sender.Sent.Count, "대조 — SessionNotFound는 재시도 전송 (하니스 유효)");
+            Assert.AreEqual(10, sender.Sent[0].MethodId, "wire 10 재전송");
+
+            client.ApplyResumeResult(false, (byte)GraceResumeResult.UnknownToken, 0.0);
+            client.TickResumeRetry();
+            Assert.AreEqual(1, sender.Sent.Count, "UnknownToken 수신 — 재시도 창 무장 없음 (wire 10 재전송 없음)");
+        }
+
+        [Test]
+        public void 의도_통보_없는_해제는_기존_유예를_유지한다()
+        {
+            var server = new NetworkServer { SessionGraceSeconds = 30 };
+            UniNetEnvironment.SetServer(server);
+            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-legacy");
+            var chA = new RecordingChannel();
+            server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            long oldOwner = server.GetOwner(player.NetId);
+            string token = server.SnapshotConnections()[0].SessionToken;
+
+            server.DetachConnection(chA);   // legacy client — no notice, no flag
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(oldOwner, server.GetOwner(player.NetId), "구 클라 호환 — 유예 보존 (기존 동작 유지)");
+            Assert.AreEqual(0, server.IntentionalLeaves, "통보 없음 — 카운터 불변");
+
+            var chB = new RecordingChannel();
+            server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(GraceResumeResult.Reattached, server.ResumeSession(token, chB.UniNetConnId), "토큰 유효 — 재부착 성립 (툼스톤 오인 없음)");
+        }
+
+        [Test]
+        public void 유예_비활성_서버의_자발_퇴장_통보는_무해하다()
+        {
+            var server = new NetworkServer { SessionGraceSeconds = 0 };
+            UniNetEnvironment.SetServer(server);
+            var player = ReplicationTestSupport.RegisterScene<SpawnablePlayer>(server, "grace-off-leave");
+            var chA = new RecordingChannel();
+            server.AttachConnection(chA);
+            server.OnClientVersionDeclared(chA.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+
+            server.OnIntentionalLeave(chA.UniNetConnId);
+            server.DetachConnection(chA);
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(1, server.IntentionalLeaves, "통보는 정상 적용");
+
+            var chB = new RecordingChannel();
+            server.AttachConnection(chB);
+            server.OnClientVersionDeclared(chB.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(chB.UniNetConnId, server.GetOwner(player.NetId), "유예 비활성 — 즉시 재배정 (통보 무해)");
         }
     }
 }

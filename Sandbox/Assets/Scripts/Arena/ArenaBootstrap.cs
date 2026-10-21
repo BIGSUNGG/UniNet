@@ -511,5 +511,94 @@ namespace Arena
             }
         }
 #endif
+
+#if UNITY_EDITOR
+        // ── REC-002 voluntary-leave cleanup — in-editor diagnostic, real server/client/RUDP APIs on a side port ──
+        // Proves over the real wire: ClientStop's wire-15 notice reaches the server (IntentionalLeaves counter advances),
+        // the notified departure skips the grace save, and a fresh client joining INSIDE the grace window adopts
+        // the orphaned ownership immediately (the REC-002 orphan-blocking window is gone). Best-effort honesty:
+        // a notice lost in the close race keeps the legacy grace behavior — a systematically lost notice fails the
+        // wait below and must trigger the flush-lease design review (plan BLOCKER 2).
+        private const int Rec002DiagPort = ArenaConfig.Port + 9;
+        private static bool _rec002Running;   // re-entry guard — ContextMenu double-click protection
+
+        [ContextMenu("Diag/REC-002 자발 퇴장 즉시 정리 (기존 세션 정지 후)")]
+        private async void RunRec002VoluntaryLeaveDiagnostic()
+        {
+            const string tag = "[UNINET-VERIFY] REC-002";
+            if (!Application.isPlaying)   // ContextMenu also shows in Edit Mode — the documented Play-Mode precondition, enforced
+            { Debug.LogError($"{tag} SKIP — Play Mode 전용 (씬 진입 후 플레이 상태에서 실행)"); return; }
+            if (_rec002Running) { Debug.LogError($"{tag} SKIP — 진단 이미 실행 중 (재진입 차단)"); return; }
+            if (_sec001Running || _own001Running) { Debug.LogError($"{tag} SKIP — SEC-001/OWN-001 진단 실행 중 (상호 충돌 방지)"); return; }
+            _rec002Running = true;
+            try
+            {
+                // 0) stop any ACTIVE demo session gracefully (the same stop path as OnApplicationQuit, awaited) so the
+                // diagnostic never orphans the demo listener — announced, never a silent overwrite
+                if (UniNetEnvironment.Server != null || UniNetEnvironment.Client != null)
+                {
+                    Debug.Log($"{tag} 기존 데모 런타임 정상 정지 (role={_resolvedRole}) 후 진단 시작");
+                    if (_started)
+                    {
+                        switch (_resolvedRole)
+                        {
+                            case ArenaRole.Server: await UniNetManager.ServerStopAsync(); break;
+                            case ArenaRole.Host: await UniNetManager.HostStopAsync(); break;
+                            default: UniNetManager.ClientStop(); break;
+                        }
+                    }
+                    else
+                    {
+                        UniNetManager.ClientStop();
+                        await UniNetManager.ServerStopAsync();
+                    }
+                }
+                var options = new UniNet.Core.Hosting.UniNetEndpointOptions { ProtocolVersion = ArenaConfig.ProtocolVersion };
+
+                // 1) dedicated diagnostic runtime on a side port (grace 10 s) + a NON-DYNAMIC marker in the real
+                // server registry — it survives ClientStop's dynamic-spawn sweep (a dynamic avatar would not)
+                await UniNetManager.ServerAsync(Rec002DiagPort, options);
+                var server = UniNetEnvironment.Server;
+                server.SessionGraceSeconds = 10;
+                ulong netId = Fnv1a.Hash64("arena-rec002-voluntary-marker");   // deterministic side id — no scene/prefab dependency
+                server.RegisterSceneObject(netId, new object[] { new object() });
+
+                // 2) leaver joins — round-robin assigns the marker (only connection)
+                await UniNetManager.ClientAsync("127.0.0.1", Rec002DiagPort, options);
+                if (!await WaitAsync(() => UniNetEnvironment.Client != null && UniNetEnvironment.Client.LocalConnId != 0, 5, "퇴장자 Welcome", tag)) return;
+                long leaverConn = UniNetEnvironment.Client.LocalConnId;
+                if (!await WaitAsync(() => server.GetOwner(netId) == leaverConn, 5, "마커 소유권 배정", tag)) return;
+
+                // 3) voluntary ClientStop — the wire-15 notice must reach the server BEFORE the close (reliable channel);
+                //    the counter advancing is the real-RUDP delivery observation (plan BLOCKER 2)
+                UniNetManager.ClientStop();
+                if (!await WaitAsync(() => server.IntentionalLeaves >= 1, 5, "와이어 15 도달", tag)) return;
+                if (!await WaitGoneAsync(leaverConn, 5, "퇴장자 해제 관측", tag)) return;
+                Debug.Log($"{tag} 자발 ClientStop — 와이어 15 도달 확인 (유예 저장 생략 경로 진입)");
+
+                // 4) a fresh client joins INSIDE the grace window (10 s) — the orphan must be adopted immediately,
+                //    proving no grace session was saved (IsInGraceSession would have blocked the adoption)
+                await UniNetManager.ClientAsync("127.0.0.1", Rec002DiagPort, options);
+                if (!await WaitAsync(() => UniNetEnvironment.Client != null && UniNetEnvironment.Client.LocalConnId != 0, 5, "후발 클라 Welcome", tag)) return;
+                long lateConn = UniNetEnvironment.Client.LocalConnId;
+                if (lateConn == leaverConn) { Debug.LogError($"{tag} 준비 실패 — 커넥션 아이디 충돌"); return; }
+                if (!await WaitAsync(() => server.GetOwner(netId) == lateConn, 5, "유예 창 내 고아 즉시 입양", tag)) return;
+
+                Debug.Log($"[UNINET-VERIFY] REC-002 DIAG PASS — 자발 ClientStop이 유예 저장을 건너뛰고 후발 클라가 유예 창 내 고아를 즉시 입양 (실제 RUDP·와이어 15 도달·마커 기반)");
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                Debug.LogError($"{tag} 예외로 중단");
+            }
+            finally
+            {
+                UniNetManager.ClientStop();
+                UniNetManager.ServerStop();
+                _rec002Running = false;
+                Debug.Log($"{tag} 진단 종료 — 런타임 정리 (데모 부트스트랩은 재플레이로 복귀)");
+            }
+        }
+#endif
     }
 }

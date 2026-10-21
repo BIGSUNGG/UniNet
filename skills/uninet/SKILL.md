@@ -219,7 +219,7 @@ UniNetEnvironment.ServerChanged += () => { /* server instance set, before any co
 ```
 
 - All events fire on the **main thread**. Subscriber exceptions are isolated — one broken handler never kills the others or the pump. Disconnect-event subscribers cannot prevent ownership reassignment (guaranteed by the framework).
-- A voluntary `ClientStop` does **not** fire the client disconnect event; it only flips `IsClientConnected`.
+- A voluntary `ClientStop` does **not** fire the client disconnect event; it only flips `IsClientConnected`. It also announces wire 15 (REC-002): the server skips the grace save for this session, tombstones the burned token (`UnknownToken`), and reassigns orphaned ownership immediately — a fresh client joining within the grace window adopts right away instead of being blocked by a never-resumable session.
 - **Stop explicitly** — `await UniNetManager.ServerStopAsync()` (also `ServerStop`, `ClientStop`, `HostStopAsync`, `HostStop`). Stop is idempotent, sweeps dynamically spawned objects, and releases the listener so the same port re-listens cleanly. Call the sync versions from `OnApplicationQuit`. Skipping stop leaves the socket bound — the next start fails with an RUDP binding error.
 
 ## Wrong Usage, Exceptions & Errors

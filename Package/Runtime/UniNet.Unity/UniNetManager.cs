@@ -183,7 +183,12 @@ namespace UniNet.Unity
 
         /// <summary>Stops the client — closes the hub connection (Disconnect + Dispose) and clears environment state. Idempotent: no-op when not connected. Synchronous — safe in pre-shutdown paths.
         /// Dynamically spawned mirrors are destroyed here — a stale dynamic object keeps its cached netId and
-        /// aliases onto the NEXT session's recycled ids (double joins, wrong-owner reads).</summary>
+        /// aliases onto the NEXT session's recycled ids (double joins, wrong-owner reads).
+        /// The voluntary stop is announced on the wire (REC-002, wire 15) so the server skips the grace save —
+        /// this stop burns the resume token, so a preserved session could never be resumed and would only block
+        /// orphan adoption. Synchronous with a bounded flush window: the notice's reliable send is awaited for at
+        /// most 250 ms before the close (loopback completes in under a millisecond). A faulted or timed-out send
+        /// keeps the server's legacy grace behavior (harmless degradation).</summary>
         public static void ClientStop()
         {
             var sender = UniNetEnvironment.ClientSender;
@@ -193,8 +198,46 @@ namespace UniNet.Unity
             SweepDynamicSpawns();
             if (sender is global::DRPC.Shared.Network.HubBase hub)
             {
+                // REC-002 — announce BEFORE the close (payload empty: identity rides the channel). UniNetSend is
+                // fire-and-forget and closing immediately raced the close, intermittently losing the notice (observed
+                // on loopback), so the underlying HubBase.SendRPC is invoked for its task and awaited with a bound —
+                // it is protected in DRPC, hence the reflective call (DRPC versions are pinned in update-dlls.sh; a
+                // shape change degrades to the fire-and-forget path). A faulted or timed-out wait keeps the legacy
+                // grace path (harmless degradation).
+                var notice = TrySendNotice(hub);
+                if (notice != null)
+                {
+                    try { notice.Wait(TimeSpan.FromMilliseconds(250)); }   // loopback completes well under a millisecond — the bound only caps pathological cases
+                    catch { /* faulted send = the notice rides the close-race legacy path */ }
+                    // Drain window (ADR-0027 precedent — ServerStopAsync's 150 ms client-dispatch grace): the send task completes
+                    // at queue acceptance, and Disconnect+Dispose would tear the session down before the pipeline thread writes
+                    // the queued notice — observed as intermittent loss on loopback even with the task wait alone.
+                    System.Threading.Thread.Sleep(150);
+                }
+                else
+                {
+                    sender.UniNetSend(15, Array.Empty<byte>(), global::DRPC.RpcDeliveryMode.ReliableOrdered);   // reflect path unavailable — best effort
+                }
                 hub.Disconnect();
                 hub.Dispose();
+            }
+        }
+
+        /// <summary>Send task lookup for the pinned DRPC shape (SendRPC is protected in HubBase) — cached once; null when the pinned shape changed, so callers degrade to the fire-and-forget send.</summary>
+        private static readonly System.Reflection.MethodInfo SendNoticeRpc = typeof(global::DRPC.Shared.Network.HubBase)
+            .GetMethod("SendRPC", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int), typeof(byte[]), typeof(global::DRPC.RpcDeliveryMode) }, null);
+
+        /// <summary>Invokes the protected DRPC send for the voluntary-leave notice and returns its task (null when the reflective lookup is unavailable).</summary>
+        private static System.Threading.Tasks.Task TrySendNotice(global::DRPC.Shared.Network.HubBase hub)
+        {
+            if (SendNoticeRpc == null) return null;
+            try
+            {
+                return SendNoticeRpc.Invoke(hub, new object[] { 15, Array.Empty<byte>(), global::DRPC.RpcDeliveryMode.ReliableOrdered }) as System.Threading.Tasks.Task;
+            }
+            catch
+            {
+                return null;   // reflective invocation failed — caller falls back to the fire-and-forget send
             }
         }
 

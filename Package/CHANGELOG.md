@@ -1,3 +1,12 @@
+## 0.9.0
+
+**Voluntary-leave session cleanup (REC-002, ADR-0046 — additive only, no breaking change).** A voluntary `ClientStop` burns the resume token by contract, yet the server unconditionally kept a grace session for it — an un-resumable session lingered for the whole grace window and blocked fresh-client adoption of orphaned ownership. ClientStop now announces system wire 15 (`IntentionalLeave`, C→S, empty payload) right before the transport close; the server skips the grace save for that departure, tombstones the burned token (`UnknownToken` for the grace window — a stale resume attempt terminates immediately instead of arming a retry), and reassigns ownership at once, so a fresh client joining within the window adopts right away.
+
+### Changed
+
+- **`ClientStop` delivery contract** — the notice rides the reliable channel with a bounded flush window (send-task wait ≤ 250 ms plus a 150 ms drain window, the ADR-0027 `ServerStopAsync` precedent; loopback hands off well under a millisecond). A faulted or timed-out send degrades to the legacy grace behavior — no new failure mode. `ClientStop` remains synchronous with a worst-case block of ~400 ms.
+- **Compatibility** — legacy clients that never send wire 15 keep the exact legacy grace behavior (flag stays false). The mixed-version case is gated by the default package-version handshake. Generator 0.2.12 (wire-15 registration + handler emitted alongside 7/8/10/12).
+
 ## 0.8.0
 
 **Scene transition remainders (SCN-001/002/003, ADR-0045 — wire unchanged; bundled generator bumped to 0.2.11).** A joiner after a transition completed never received the current network scene (permanent — scene-object baselines were silently dropped on the unregistered client), catch-up full state raced the client's scene registration (dropped, never resent — permanent initial-value drift), and a stale same-name report could complete the gate early.
