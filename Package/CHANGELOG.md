@@ -1,3 +1,17 @@
+## 0.10.0
+
+**Game connection approval (CON-002, ADR-0047 — additive only, no breaking change).** The server could only validate the protocol version — games had no way to admit or reject a connection from their own credential checks. Set `options.ConnectionApprover` on the server (an async `Task<bool>` callback receiving `UniNetApprovalRequest{ConnId, ProtocolVersion, Credential}`; runs on the main thread with zero game data flowing until the verdict) and `options.ConnectionCredential` on the client. `false`/throw closes the connection and the client observes `ClientDisconnected(UniNetDisconnectReason.ApprovalRejected)`.
+
+### Changed
+
+- **Wire 7 payload extended** to `[version string][credential string]` — clients always write both strings (legacy clients never sent the second; servers read it conditionally on remaining bytes, so legacy servers ignore it). Declarations over 4096 bytes are discarded before parsing (ADR-0041 precedent). Generator 0.2.13.
+- **Callback-pending connections reuse the CON-001 hold** — no ownership, catch-up, replication, spawns, ClientConnected, or game ServerRpcs until the verdict. `ApprovalRequested` guarantees one callback per connection (redeclarations are idempotent; an already-approved connection is never re-validated).
+- **`VersionDeclareTimeoutMs` is the total budget** for declaration + callback completion — the sweep kicks a hung validator with VersionMismatch (no indefinite hold). Raise it for slow auth backends.
+
+### Added
+
+- `UniNetDisconnectReason.ApprovalRejected = 6` (explicit value, no renumbering — legacy clients that receive the new value fall through their default kick handling).
+
 ## 0.9.0
 
 **Voluntary-leave session cleanup (REC-002, ADR-0046 — additive only, no breaking change).** A voluntary `ClientStop` burns the resume token by contract, yet the server unconditionally kept a grace session for it — an un-resumable session lingered for the whole grace window and blocked fresh-client adoption of orphaned ownership. ClientStop now announces system wire 15 (`IntentionalLeave`, C→S, empty payload) right before the transport close; the server skips the grace save for that departure, tombstones the burned token (`UnknownToken` for the grace window — a stale resume attempt terminates immediately instead of arming a retry), and reassigns ownership at once, so a fresh client joining within the window adopts right away.
