@@ -706,6 +706,13 @@ namespace UniNet.Tests
                     channels.Add(ch);
                 }
                 UniNetEnvironment.PumpMain();
+                // OWN-002: ownership reassignment now supersedes deferred recipients with baselines — this test
+                // exercises the deferred-queue lifecycle itself, so park ownership on the LAST peer: the pruned
+                // peers own nothing (no reassignment baselines during prunes) and the last peer’s own departure
+                // has no adoption target (owner left dangling — ReassignOwnership early-returns), leaving the queue lifecycle untouched.
+                server.SetOwner(high.NetId, channels[count - 1].UniNetConnId);
+                server.SetOwner(player.NetId, channels[count - 1].UniNetConnId);
+                UniNetEnvironment.PumpMain();
                 high.Score = 2;
                 player.Score = 10;
                 server.TickReplication(server.SnapshotObjects(), 1.0);

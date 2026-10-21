@@ -24,6 +24,9 @@ namespace UniNet.Tests
         /// <summary>Whether the SecretHp RepNotify callback fired.</summary>
         public bool SecretNotified;
 
+        /// <summary>Number of times the SecretHp RepNotify callback fired (baseline re-apply counting).</summary>
+        public int SecretNotifyCount;
+
         /// <summary>Previous value received by the SecretHp RepNotify callback.</summary>
         public int LastPrevSecret;
 
@@ -31,6 +34,7 @@ namespace UniNet.Tests
         {
             SecretNotified = true;
             LastPrevSecret = prev;
+            SecretNotifyCount++;
         }
     }
 }

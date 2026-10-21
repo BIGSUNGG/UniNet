@@ -86,6 +86,44 @@ namespace UniNet.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator 이전_재입양_직후_baseline으로_OwnerOnly_현재값이_도착한다()
+        {
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var go = new GameObject("setowner-play-baseline");
+            var player = go.AddComponent<SpawnablePlayer>();
+            try
+            {
+                var hostTask = UniNetManager.HostAsync(port);
+                while (!hostTask.IsCompleted) yield return null;
+                Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
+                yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5, "Welcome 수신");
+                yield return WaitUntil(() => UniNetEnvironment.Client.GetOwner(player.NetId) == UniNetEnvironment.Client.LocalConnId, 5, "초기 소유");
+                yield return WaitUntil(() => player.SecretNotifyCount >= 1, 5, "초기 baseline 적용 (Owner 뷰 캐치업)");
+                int notifiesAfterInitial = player.SecretNotifyCount;   // 초기 적용분 — 관측 기준선
+
+                player.SecretHp = 99;   // 서버(호스트) 권위 변경 — 아직 전송된 적 없는 OwnerOnly 값
+
+                // 입양 대상이 비결정적(round-robin이 게스트를 고를 수 있음) — 호스트 클라이언트로 결정적 재입양(직접 SetOwner)으로 baseline 왕복을 검증한다 (OWN-002)
+                Assert.IsTrue(UniNetEnvironment.Server.SetOwner(player.NetId, 0), "해제 성립");
+                yield return WaitUntil(() => UniNetEnvironment.Client.GetOwner(player.NetId) == 0, 5, "해제 관찰 (OwnerUpdate 왕복)");
+                yield return new WaitForSecondsRealtime(0.3f);   // straggler deltas (e.g. the 99 owner delta) land before the baseline re-baseline
+                notifiesAfterInitial = player.SecretNotifyCount;   // re-baseline — only the re-adoption baseline counts from here
+
+                Assert.IsTrue(UniNetEnvironment.Server.SetOwner(player.NetId, UniNetEnvironment.Client.LocalConnId), "재입양 성립");
+                yield return WaitUntil(() => player.SecretNotifyCount == notifiesAfterInitial + 1, 5, "재입양 baseline 왕복 (OwnerOnly RepNotify)");
+                // prev = the RECEIVER’s prior view: the receiver was the owner and had already received the 99 delta, so the
+                // re-adoption baseline re-delivers 99 over 99 (the 50 spawn value only holds if that delta never landed).
+                Assert.IsTrue(player.LastPrevSecret == 99 || player.LastPrevSecret == 50, "baseline prev — 수신자 직전 뷰 (99 수신 후 또는 50 미수신)");
+                Assert.AreEqual(99, player.SecretHp, "호스트 권위 — IsServer 가드로 서버 값 불변");
+                UnityEngine.Debug.Log("[UNINET-VERIFY] OwnershipTransferBaseline PASS — re-adoption baseline re-delivered OwnerOnly over real loopback");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
         private static IEnumerator WaitUntil(System.Func<bool> condition, float timeout, string label)
         {
             float deadline = Time.realtimeSinceStartup + timeout;

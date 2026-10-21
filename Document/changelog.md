@@ -24,6 +24,12 @@
 - `UpdateVisibility`에서 해제·미승인·씬 유보 연결을 가시성 기록 전에 제외해 `SendBaseline`의 owner+spawn 누출과 미수신 상태의 허위 가시성 기록을 차단했다. 무송신 단언을 유지하고 배치 차단·ready 후 동적 기준선 복구 및 차단 연결 3종의 기록 없음 회귀를 보강했다.
 - 씬 게이트 회귀는 A와 B 모두 유효 보고하도록 전제를 바로잡고, 생성 수신기 재생 회귀는 메인 큐 적용 후 Score를 단언하도록 수정했다. Unity 재실행·독립 리뷰·릴리스는 아직 별도 검증 대상이다.
 
+### Fixed (소유권 이전 시 조건 필드 baseline 재전송 — OWN-002, 패키지 0.11.0)
+
+- **소유권 이전 3경로(SetOwner/ResumeSession/ReassignOwnership)의 조건 필드 누락** ([[0048-소유권-이전-조건-필드-baseline-재전송]]·[[features/monobehaviour-rpc-replicate|monobehaviour-rpc-replicate]]) — OwnerUpdate만 전파해 신규 owner는 비변경 OwnerOnly/InitialOnly 현재값을 영구 수신 못 하고, 이전 owner도 SkipOwner 필드를 기본값으로 고착(감사 항목이 가정하지 않은 추가 피해), RepNotify 미발화·prev 오염. ResumeSession 무씬 경로는 캐치업이 구 owner 뷰를 먼저 보내 누락이 확정적
+- **해결** — `SendOwnershipBaseline`(상태 전용 baseline: 지연 델타 무효화 선행·스폰 재전송 없음·fault 격리)을 3경로에 적용 — 신규 owner isOwner=true·직전 owner isOwner=false, 관련성 게이트 준수, 즉시 캐치업 연결은 억제(이중 전송 제거). 와이어·생성기·클라 무변경(비파괴)
+- **테스트** — EditMode +9(OwnerOnly 미변경값+Notify·SkipOwner 이전 owner·InitialOnly·예산 연기 큐 무효화·ResumeSession 재부착·입양 경계(타 연결 미누출 — 감사 오탐 메모 확인)·마스크 역할 경계·동적 스폰 미재전송·서버 스냅샷 불변), PlayMode +1(실루프백 재입양 baseline 왕복)
+
 ### Added (게임 접속 승인 콜백 — CON-002, 패키지 0.10.0)
 
 - **게임 접속 승인 콜백 확장점** ([[0047-게임-접속-승인-콜백-와이어7-자격증명]]·[[features/connection-lifecycle|connection-lifecycle]]) — 서버가 버전만 검사하고 게임 자격 증명을 검사할 방법이 없었다. 클라 옵션 `ConnectionCredential`이 와이어 7 선언에 자격 증명을 동봉(페이로드 `[version][credential]` 확장 — 구 클라 잔여 0으로 호환), 서버 옵션 `ConnectionApprover`(`Task<bool>` 콜백)이 승인/거부를 게임에 위임

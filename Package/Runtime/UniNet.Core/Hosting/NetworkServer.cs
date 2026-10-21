@@ -574,7 +574,7 @@ namespace UniNet.Core.Hosting
             if (conn.Disconnected) return;
             // The current full state supersedes this recipient's queued deltas, not other clients' changes.
             InvalidateDeferredRecipient(null, conn.ConnId);
-            ReassignOwnership();
+            ReassignOwnership(conn.ConnId);   // an adoption to THIS connection needs no extra baseline — the catch-up below is its owner-view baseline (OWN-002); adoptions to other connections still get one
             SendCatchup(conn);
             if (notifyConnected)
                 RaiseLifecycle(ClientConnected, conn.ConnId);   // after catch-up — spawns raised here never race the catch-up
@@ -1086,10 +1086,19 @@ namespace UniNet.Core.Hosting
                 {
                     var entry = GetEntry(netId);
                     if (entry == null) continue;
+                    long previousOwner = entry.OwnerConnId;
                     entry.OwnerConnId = newConnId;
                     foreach (var conn in SnapshotConnections())
                         if (!conn.Disconnected && conn.VersionApproved && !conn.AwaitingSceneReady)
+                        {
                             conn.Channel.SendOwnerUpdate(netId, newConnId);   // CON-001 — undeclared connections receive the baseline at approval instead; SCN-002 — scene-held at ready report
+                            // OWN-002 — same conditional-field baseline as SetOwner: the pre-drop catch-up showed the
+                            // reattached client the Others view only (the owner was still the dead connId back then)
+                            if (conn.ConnId == newConnId)
+                                SendOwnershipBaseline(conn, netId, entry, isOwner: true);
+                            else if (previousOwner != 0 && conn.ConnId == previousOwner)
+                                SendOwnershipBaseline(conn, netId, entry, isOwner: false);   // fires only when grace let the object move to another live connection meanwhile
+                        }
                 }
                 if (session.PlayerObjectNetId != 0)
                     _playerObjects[newConnId] = session.PlayerObjectNetId;
@@ -1202,10 +1211,20 @@ namespace UniNet.Core.Hosting
         {
             var entry = GetEntry(netId);
             if (entry == null) return false;
+            long previousOwner = entry.OwnerConnId;
             entry.OwnerConnId = ownerConnId;
             foreach (var conn in SnapshotConnections())   // all connections — same propagation as ReassignOwnership (clients without the object ignore the notice harmlessly)
                 if (!conn.Disconnected && conn.VersionApproved && !conn.AwaitingSceneReady)   // CON-001 — undeclared connections receive the notice at approval instead; SCN-002 — scene-held at ready report
+                {
                     conn.Channel.SendOwnerUpdate(netId, ownerConnId);
+                    // OWN-002 — the notice alone leaves conditional fields stale: the new owner has only ever received
+                    // the Others view (no OwnerOnly/InitialOnly values) and the previous owner never received SkipOwner
+                    // values. A state-only baseline re-send closes both; everyone else keeps the notice-only wire.
+                    if (conn.ConnId == ownerConnId)
+                        SendOwnershipBaseline(conn, netId, entry, isOwner: true);
+                    else if (previousOwner != 0 && conn.ConnId == previousOwner)
+                        SendOwnershipBaseline(conn, netId, entry, isOwner: false);   // connId 0 release: no incoming owner, the outgoing owner only
+                }
             return true;
         }
 
@@ -1285,7 +1304,9 @@ namespace UniNet.Core.Hosting
         /// are (re)assigned round-robin by ascending netId. Notifies clients on every change.
         /// ponytail: round-robin for orphans; replace with an explicit ownership-transfer API if production demands it.
         /// </summary>
-        private void ReassignOwnership()
+        /// <param name="immediateCatchupConnId">Connection whose own catch-up runs right after this pass — an adoption to it
+        /// needs no separate baseline (the catch-up IS its owner-view baseline, OWN-002); other adopters still get one.</param>
+        private void ReassignOwnership(long immediateCatchupConnId = 0)
         {
             var objects = SnapshotObjects();
             var connections = SnapshotConnections();
@@ -1312,9 +1333,23 @@ namespace UniNet.Core.Hosting
 
                 long owner = candidates[rr++ % candidates.Count].ConnId;
                 if (owner == entry.OwnerConnId) continue;
+                long previousOwner = entry.OwnerConnId;
                 entry.OwnerConnId = owner;
                 foreach (var conn in candidates)
+                {
                     conn.Channel.SendOwnerUpdate(netId, owner);
+                    // OWN-002 — adoption baseline: the adopter never received the OwnerOnly/InitialOnly view of the
+                    // orphan. The previous owner is never a live approved connection here (live owners skip adoption),
+                    // so the previous-owner branch below is defensive symmetry with SetOwner. Skipped for a connection
+                    // whose own catch-up immediately follows — that catch-up already carries its owner-view baseline.
+                    if (conn.ConnId == owner)
+                    {
+                        if (conn.ConnId != immediateCatchupConnId)
+                            SendOwnershipBaseline(conn, netId, entry, isOwner: true);
+                    }
+                    else if (previousOwner != 0 && conn.ConnId == previousOwner)
+                        SendOwnershipBaseline(conn, netId, entry, isOwner: false);
+                }
             }
         }
 
@@ -1355,6 +1390,31 @@ namespace UniNet.Core.Hosting
                 if (handler == null || !handler.HasFields) continue;
                 byte[] state = TryWriteFull(handler, entry.Subs[subId].Instance, isOwner);
                 if (state != null && state.Length > 0)   // null when every field is filtered out by conditions — skip catch-up (also null on a serializer fault — that sub-object is skipped)
+                    conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
+            }
+        }
+
+        /// <summary>
+        /// State-only conditional-field baseline for ONE recipient after an ownership transfer (OWN-002) — shared by
+        /// dynamic and scene objects. Unlike SendBaseline this never re-sends the spawn message: a transferred dynamic
+        /// object already exists on the receiver and a second spawn would re-instance it client-side. The caller sends
+        /// the OwnerUpdate FIRST (same per-recipient ordering as SendBaseline — the client's owner cache must be
+        /// correct while the full state applies and Notify observes the real owner). Prunes this recipient's deferred
+        /// deltas first so a queued pre-transfer delta cannot overwrite the fresh baseline (stale-override guard, same
+        /// contract as SendBaseline). RepNotify fires for every field in the recipient's mask including unchanged
+        /// values — the same contract the spawn/catch-up baseline already has. The server-side snapshot is untouched,
+        /// so dormancy flush accounting and subsequent change detection stay exact.
+        /// </summary>
+        private void SendOwnershipBaseline(ServerConnection conn, ulong netId, ServerObjectEntry entry, bool isOwner)
+        {
+            if (!IsRelevant(entry, conn, netId)) return;   // an irrelevant recipient keeps the existing baseline contract — the relevance re-entry re-sends full state (SendBaseline); a hook- or cull-rejected connection must not receive state here
+            InvalidateDeferredRecipient(netId, conn.ConnId);
+            for (byte subId = 0; subId < entry.Subs.Length; subId++)
+            {
+                var handler = entry.Subs[subId].Replication;
+                if (handler == null || !handler.HasFields) continue;
+                byte[] state = TryWriteFull(handler, entry.Subs[subId].Instance, isOwner);   // fault-isolated — a throwing user serializer skips that sub-object, not the whole pass
+                if (state != null && state.Length > 0)   // null when conditions filter every field out — also null on a serializer fault
                     conn.Channel.SendReplicate(netId, subId, handler.MethodId, state);
             }
         }

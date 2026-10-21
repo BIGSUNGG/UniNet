@@ -1,3 +1,12 @@
+## 0.11.0
+
+**Ownership-transfer condition-field baselines (OWN-002, ADR-0048 — no wire/generator/public-API change).** Ownership transfers (`SetOwner`, `ResumeSession` reattach, orphan adoption) propagated only the OwnerUpdate — unchanged `[Replicated(OwnerOnly/InitialOnly)]` fields never reached the new owner (stuck at defaults), the previous owner kept viewing SkipOwner fields as defaults, and RepNotify never fired for the delivered values.
+
+### Fixed
+
+- Ownership-transfer paths now re-deliver the condition-field baselines to the new owner (owner view) and the previous owner (others view) via a state-only full-state send (no spawn re-sent; budget-deferred deltas for the transferred object are superseded first; relevancy gates apply; connections with an immediate catch-up skip the redundant baseline). RepNotify fires on the delivered baselines with the receiver’s prior value as prev.
+- Test fixes: the deferred-budget queue lifecycle test is decoupled from ownership-reassignment baselines (ownership parked on the surviving peer); real-loopback re-adoption test made deterministic.
+
 ## 0.10.0
 
 **Game connection approval (CON-002, ADR-0047 — additive only, no breaking change).** The server could only validate the protocol version — games had no way to admit or reject a connection from their own credential checks. Set `options.ConnectionApprover` on the server (an async `Task<bool>` callback receiving `UniNetApprovalRequest{ConnId, ProtocolVersion, Credential}`; runs on the main thread with zero game data flowing until the verdict) and `options.ConnectionCredential` on the client. `false`/throw closes the connection and the client observes `ClientDisconnected(UniNetDisconnectReason.ApprovalRejected)`.
