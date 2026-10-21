@@ -102,6 +102,7 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+- 2026-10-21 — **REC-002 v0.9.0 구현 — 자발 퇴장 통보와 유예 즉시 폐기** (ADR-0046·[[features/connection-lifecycle]] 갱신. 자발적 `ClientStop`은 재개 토큰을 소각하므로 유예 저장은 고아 세션만 남겼다 — ClientStop이 close 직전 시스템 **와이어 15 `IntentionalLeave`(C→S)**를 발사하고 서버는 유예 저장 생략+토큰 툼스톤(`UnknownToken`)+소유권 즉시 재배정으로 후발 클라의 즉시 입양을 허용. 전달 신뢰성: 전송 Task 250ms 유계 대기+150ms 드레인 창(사용자 승인 계약 — 미적용 시 실루프백 간헐 유실 관측). 구 클라 호환(미통보=기존 유예). 생성기 0.2.12. **검증·배포 완료**: EditMode 210/210·PlayMode 32/32·실루프백 3/3 연속·Arena 진단 PASS·음성 대조 RED 확인·리뷰 r9→r10 CLEAN(zai/glm-5.3-flash)·커밋 `87a3467` → [v0.9.0 Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.9.0)·CI 성공·신규 설치 PASS — REC-002 CLOSED)
 
 - 2026-10-20 — **SCN 리뷰 5: 유보된 파괴 전달 복구** — 승인된 씬 유보 연결의 파괴 ID를 보관, 등록 후 유효 ready에서 여전히 부재한 ID만 소유권/캐치업 기준선 전에 1회 전달. 같은 netId 재등록은 캐치업으로 대체, disconnect는 메인 큐에서 폐기. EditMode +3케이스(총 34, 부모 Unity 34/34 EditMode·1/1 PlayMode PASS)·순차 dotnet 빌드/패키지 검증·headless 5+기존 22종/음성 대조 PASS. 필수 독립 reviewer CLEAN·배포는 미완료, 커밋/릴리스 없음. [[features/connection-lifecycle]]·[[research/commercial-netcode-audit]] 참조.
 

@@ -1051,6 +1051,134 @@
      ".pi-subagents/artifacts/commercial-netcode/scn080-fresh-install-unity.log"
     ]
    }
+  },
+  {
+   "id": "REC-002",
+   "status": "closed",
+   "kind": "voluntary-leave-cleanup",
+   "adr": "Document/decisions/0046-자발-퇴장-통보-와이어15-IntentionalLeave-유예-세션-즉시-폐기.md",
+   "featureDocument": "Document/features/connection-lifecycle.md",
+   "packageVersion": "0.9.0",
+   "generatorVersion": "0.2.12",
+   "wireSystemMessagesChanged": true,
+   "wireAdded": "15 IntentionalLeave (C→S, empty payload, announced in ClientStop before transport close)",
+   "breakingChanges": [],
+   "planner": {
+    "model": "zai/glm-5.3-flash",
+    "planDocument": ".pi-subagents/artifacts/commercial-netcode/rec002-plan.md",
+    "runs": [
+     "agent_mvi3a9yl_cea89529_4"
+    ]
+   },
+   "worker": {
+    "model": "zai/glm-5.3-flash",
+    "runs": [
+     "agent_mvi3o3ta_3298b870_5"
+    ]
+   },
+   "regressionTests": [
+    "UniNet.Tests.ReconnectGraceTests.자발_퇴장_통보_후_유예_세션이_저장되지_않는다",
+    "UniNet.Tests.ReconnectGraceTests.자발_퇴장은_고아_입양을_즉시_허용한다",
+    "UniNet.Tests.ReconnectGraceTests.자발_퇴장_토큰의_재개는_재시도_창을_무장하지_않는다",
+    "UniNet.Tests.ReconnectGraceTests.의도_통보_없는_해제는_기존_유예를_유지한다",
+    "UniNet.Tests.ReconnectGraceTests.유예_비활성_서버의_자발_퇴장_통보는_무해하다",
+    "UniNet.Tests.IntentionalLeaveWireTests (3케이스 — 빈 페이로드·과대 페이로드·미지 연결 무시)",
+    "UniNet.Tests.IntentionalLeavePlayTests.자발_ClientStop은_유예_없이_정리되고_후발_클라가_즉시_입양한다 (PlayMode 실RUDP)",
+    "Arena 진단: [UNINET-VERIFY] REC-002 DIAG PASS (실제 RUDP·와이어 15 도달·마커 기반)"
+   ],
+   "validation": [
+    {
+     "kind": "full EditMode",
+     "jobId": "1ca873d1237c4ceb9a0031766e5eefae",
+     "total": 209,
+     "passed": 209,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode (after unknown-connId test)",
+     "jobId": "2f5790671ac74e3f961663be258aed28",
+     "total": 210,
+     "passed": 210,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "7840aa48f52c40a0b897da660f536fd1",
+     "total": 32,
+     "passed": 32,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "loopback delivery (flush wait only)",
+     "note": "intermittent loss observed — 1 lost / 1 delivered",
+     "jobIds": [
+      "e3192bd95fde47e2b47a484984c4cbe7",
+      "9b4d989ed0444177bfff80e12c3cf28d"
+     ]
+    },
+    {
+     "kind": "loopback delivery (flush wait + 150ms drain window)",
+     "note": "3/3 consecutive PASS — the approved bounded flush window (option A)",
+     "jobIds": [
+      "1943ef42bcfd4c2182014602ddd7e724",
+      "41b704d83c5d4825aa5ed6eddbe5be39",
+      "194d402145274404b2b9d4d79ddb7e95"
+     ]
+    },
+    {
+     "kind": "Arena diagnostic",
+     "evidence": "[UNINET-VERIFY] REC-002 DIAG PASS — 자발 ClientStop이 유예 저장을 건너뛰고 후발 클라가 유예 창 내 고아를 즉시 입양 (실제 RUDP·와이어 15 도달·마커 기반)"
+    },
+    {
+     "kind": "negative control",
+     "note": "implementation branch inverted → 3 REC-002 tests exactly RED (job 5c4c96ba026146e49e2c9f268ceb3492) — tests genuinely verify the implementation"
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "87a346775d9d052dd315d92fc54c220f3ea2e0d4",
+     "sampleCompiled": true,
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/rec002-fresh-install-unity.log",
+     "note": "Local-Git gate; the final public-tag install gate is ledger item INSTALL-001."
+    }
+   ],
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "rounds": [
+     {
+      "round": "r9 (full REC-002 change)",
+      "runId": "agent_mvi67o0m_563ab4cc_6",
+      "verdict": "ISSUES",
+      "issues": "코드 결함 0건 — 문서 3건: Package/CHANGELOG 0.9.0 누락, 테스트 수 오기재+미지-connId 계약 미테스트, ADR 통상 블록 시간 오기재"
+     },
+     {
+      "round": "r10 (4-fix limited re-verification)",
+      "runId": "agent_mvi6uqyp_f199078f_7",
+      "verdict": "CLEAN",
+      "issues": "4곳 모두 반영 확인, 신규 테스트가 OnIntentionalLeave 미지-connId 분기를 실제 생성 핸들러 경유로 검증, +8 카운트 실측 일치"
+     }
+    ]
+   },
+   "userApprovedContractChange": "ClientStop bounded flush window (option A — send-task wait ≤250ms + 150ms drain; worst-case block ~400ms, typical ~150ms) — approved 2026-10-21 after intermittent loopback loss was demonstrated with the task wait alone",
+   "release": {
+    "status": "published",
+    "version": "0.9.0",
+    "tag": "v0.9.0",
+    "implementationCommit": "87a346775d9d052dd315d92fc54c220f3ea2e0d4",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.9.0",
+    "ciTagRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39615501117",
+    "ciMainRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39615496128",
+    "ciConclusion": "success",
+    "receipts": [
+     ".pi-subagents/artifacts/commercial-netcode/rec002-release.json",
+     ".pi-subagents/artifacts/commercial-netcode/rec002-ci-runs.json",
+     ".pi-subagents/artifacts/commercial-netcode/rec002-fresh-install-unity.log"
+    ]
+   }
   }
  ],
  "finalValidation": {
