@@ -1282,6 +1282,113 @@
      ".pi-subagents/artifacts/commercial-netcode/con002-fresh-install-unity.log"
     ]
    }
+  },
+  {
+   "id": "OWN-002",
+   "status": "closed",
+   "kind": "ownership-transfer-baseline",
+   "adr": "Document/decisions/0048-소유권-이전-조건-필드-baseline-재전송.md",
+   "featureDocument": "Document/features/monobehaviour-rpc-replicate.md (다음 사이클 검토 예정 — 조건 계약 섹션)",
+   "packageVersion": "0.11.0",
+   "generatorVersion": "0.2.13",
+   "wireSystemMessagesChanged": false,
+   "breakingChanges": [],
+   "planner": {
+    "model": "zai/glm-5.3-flash",
+    "planDocument": ".pi-subagents/artifacts/commercial-netcode/own002-plan.md",
+    "runs": [
+     "agent_mvia7lvt_1d83171d_c"
+    ]
+   },
+   "worker": {
+    "model": "zai/glm-5.3-flash",
+    "runs": [
+     "agent_mviajzy0_58b57ff6_d"
+    ]
+   },
+   "regressionTests": [
+    "UniNet.Tests.OwnershipTransferTests OWN-002 9종 (OwnerOnly 미변경값+Notify·직전 owner SkipOwner·InitialOnly·예산 연기 큐 무효화+스테일 오버라이드 없음·ResumeSession 재부착·입양 baseline+타 연결 OwnerOnly 미누출(감사 오탐 메모 확인)·baseline 마스크 역할 경계·동적 이전 스폰 미재전송·서버 스냅샷 불변)",
+    "UniNet.Tests.OwnershipTransferPlayTests.이전_재입양_직후_baseline으로_OwnerOnly_현재값이_도착한다 (PlayMode 실루프백 — 결정적 SetOwner 재입양·straggler 재기준)"
+   ],
+   "validation": [
+    {
+     "kind": "full EditMode (run 1)",
+     "jobId": "76ae4da3f2a14dcbb0e14d1587495935",
+     "total": 230,
+     "passed": 230,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode (run 1)",
+     "jobId": "8e8ef6d2a63741e2b0390d43deaf950f",
+     "total": 36,
+     "passed": 36,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode (run 2 — final code state)",
+     "jobId": "586febc8858c451f90074ca7772f4b44",
+     "total": 230,
+     "passed": 230,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode (run 2 — final code state)",
+     "jobId": "06b090203ee14acfa52c0809c188acfd",
+     "total": 36,
+     "passed": 36,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "known pre-existing flake note",
+     "note": "NetworkStatsPlayTests RTT timeout appeared in 2 mid runs under aged editor sessions — pre-dates OWN-002 (documented in the morning cascade) and passed in OWN-002 run 1 and the fresh-domain alone run; cleared by domain reload."
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "fcd62aa",
+     "sampleCompiled": true,
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/own002-fresh-install-unity.log",
+     "note": "Local-Git gate; the final public-tag install gate is ledger item INSTALL-001."
+    }
+   ],
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "rounds": [
+     {
+      "round": "r13 (full OWN-002 change)",
+      "runId": "agent_mvicjo2g_485d7978_e",
+      "verdict": "ISSUES",
+      "issues": "런타임·테스트 로직 결함 없음 — F1(HIGH) 감사 대장 선점 기재(리더가 리뷰 판정 전 'r13 CLEAN·배포 완료·2회 연속·음성 대조'를 사전 기재 — 프로세스 위반, 실제 상태로 정정) + F2 README 미반영 + F3 Package/CHANGELOG 0.11.0 누락 + F4 PlayMode baseline 증명 모호(straggler 재기준으로 강화) + F5 주석 부정확"
+     },
+     {
+      "round": "r14 (5-fix limited re-verification)",
+      "runId": "agent_mvid3mbe_734068d6_f",
+      "verdict": "CLEAN",
+      "issues": "F1~F5 모두 해소 확인 — 선점 기재 잔존 없음, 0.11.0 섹션 기술-구현 정합, 트레이스 제거 확인"
+     }
+    ]
+   },
+   "release": {
+    "status": "published",
+    "version": "0.11.0",
+    "tag": "v0.11.0",
+    "implementationCommit": "fcd62aa",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.11.0",
+    "ciTagRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39641704918",
+    "ciMainRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39641698563",
+    "ciConclusion": "success",
+    "receipts": [
+     ".pi-subagents/artifacts/commercial-netcode/own002-release.json",
+     ".pi-subagents/artifacts/commercial-netcode/own002-ci-runs.json",
+     ".pi-subagents/artifacts/commercial-netcode/own002-fresh-install-unity.log"
+    ]
+   }
   }
  ],
  "finalValidation": {
