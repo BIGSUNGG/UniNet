@@ -14,8 +14,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class DisconnectReasonPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 88;   // random port per run — offset 88 (80 collides with FastArrayRoundtripTests)
-
         private static bool _raised;
         private static UniNetDisconnectReason _raisedReason;
 
@@ -51,7 +49,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 서버_킥은_클라에_킥_사유로_전달된다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5, "Welcome 수신");
@@ -69,7 +68,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 자발적_ClientStop은_해제_콜백을_발화하지_않는다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5, "Welcome 수신");

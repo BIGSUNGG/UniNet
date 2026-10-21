@@ -13,8 +13,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class RpcRateLimitPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 120;   // offset 120 (unused by the other classes)
-
         [SetUp]
         public void SetUp()
         {
@@ -37,11 +35,12 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 동시_프레임_플러드는_한도만_실행하고_드롭을_집계한다()
         {
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
             var go = new GameObject("ratelimit-play");
             var player = go.AddComponent<VerifyPlayer>();
             try
             {
-                var hostTask = UniNetManager.HostAsync(Port);
+                var hostTask = UniNetManager.HostAsync(port);
                 while (!hostTask.IsCompleted) yield return null;
                 Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
                 yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5, "Welcome 수신");

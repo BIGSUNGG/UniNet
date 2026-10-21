@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨
 - **최초 작성**: 2026-09-21
-- **마지막 갱신**: 2026-10-20 (ADR-0044 — 재개 결과 통보·자동 재시도·0.7.0)
+- **마지막 갱신**: 2026-10-20 (ADR-0045 — 씬 전환 잔여·0.8.0)
 
 ## 개요
 
@@ -61,6 +61,18 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 
 버전 검사가 활성(기본 — `ProtocolVersion` 비었지 않음)인 한, 와이어 7 선언이 수용되기 전까지 연결은 **Welcome만 수신**한다. 미승인 연결은 소유권 재배정(후보·수신)·캐치업·복제 틱·스폰/파괴 통보·LoadScene 브로드캐스트·씬 준비 게이트·`ClientConnected`에서 제외되고, 생성 허브의 게임 ServerRpc는 `IsVersionApproved` 게이트에서 조용히 기각된다(`UnapprovedServerRpcDrops` 카운터). 시스템 와이어 7/8/10/12는 게이트 밖 — 핸드셰이크 생존 필수. 승인 시 보류 작업이 기존 순서(대기 씬→재배정→캐치업→`ClientConnected`)로 정확히 1회 실행되고 재선언은 멱등이다. 미승인 연결의 해제는 `ClientDisconnected`·유예 세션 없이 조용히 정리된다. 미선언 연결은 `VersionDeclareTimeoutMs`(기본 10000, 0=스윕 비활성) 후 기존 킥 경로로 `VersionMismatch` 퇴장된다. `ProtocolVersion`을 빈 문자열로 두면 즉시 동기 승인 — 기존 동작 완전 호환. 실제 클라이언트는 생성 허브가 자동 선언하므로 무변경.
 
+## 씬 전환 잔여 (0.8.0 — ADR-0045)
+
+완료된 전환의 씬이 `_currentScene`으로 추적돼 **이후 접속하는 모든 연결이 wire 11을 받는다**(SCN-001 — 이전엔 영구 누락). wire 11을 받은 연결은 ready 보고까지 게임 데이터(캐치업·복제 틱·스폰/파괴·소유권 통보)를 유보한다(SCN-002) — 보고는 `UniNetManager.OnSceneLoaded`가 등록 후 자동 송신하므로 캐치업 전체상태가 항상 등록된 객체에 적용된다(폐기 창 소멸). 유효 보고마다 해당 승인 연결에 대기 파괴→소유권 재배정→소유자 기준선→전체상태 캐치업을 실행한다. 기존 참여자도 유보 중 놓친 통보·값을 복구하고, 유보 중 후보가 없어 보류된 고아 입양도 재시도한다. `ClientConnected`는 유보된 신규 attach 꼬리에서만 캐치업 후 1회 발화하며 기존 참여자에게 재발화하지 않는다. CON-001 승인과 씬 레디는 순서 있는 2단계로 조합된다. 승인 플래그가 먼저 설정돼도 `PostApprovalRun`이 대기 중이면 `LoadScene`은 직접 송신하지 않고 승인 꼬리의 `RunPostApproval`에 전달을 맡긴다(같은 전환의 wire 11 중복과 두 번째 보고 요구 방지). 구독자 예외는 기존 격리·재전파를 유지하되 `finally`로 게이트 평가를 보장한다. SCN-003은 per-connection 송신 플래그+전환 세대로 **해당 연결의 현 wire 11 송신 전에 도착한 보고만 거부**한다(전환 없으면 현재 씬 귀속). 보고 귀속은 세대(generation) 기준으로도 이중 검증된다 — 생성 wire-12 핸들러가 디스패치 수신 시점에 `CaptureSceneLoadGeneration`으로 세대를 캡처해 메인 큐로 전달하고, 캡처 세대가 현재 세대와 일치하는 보고만 수용한다(송신 직후~메인 큐 처리 사이 낡은 보고 창 차단). 이미 송신된 이전 동명 씬 보고가 새 wire 11 송신 이후 도착하면 구별할 수 없고 조기 유보 해제·게이트 완료 가능성이 남는다 — ADR-0045에서 수용한 tokenless 한계이며 전환 토큰·와이어 변경은 범위 밖이다. 영구 미보고 연결은 유보 지속 — 킥/재시도는 게임 책임(ADR-0035). 전환 이력이 없는 서버는 현행 동작 그대로.
+
+**유보 중 파괴도 복구한다(리뷰 5)**. `DestroyObject`는 준비된 승인 연결에 즉시 `SendDestroy`하고, 승인된 `AwaitingSceneReady` 연결에는 netId를 연결별 지연 집합에 중복 없이 보관한다. 클라 등록 후 유효 ready 보고가 오면 소유권/캐치업 기준선보다 먼저 **서버 레지스트리에 여전히 없는 ID만** 파괴 통보한다. 따라서 `DontDestroyOnLoad` 또는 로컬 등록 씬 객체가 살아남아도 파괴를 영구 누락하지 않는다. 유보 중 같은 netId가 재등록되면 낡은 파괴는 폐기하고 대체 객체의 현재 기준선을 캐치업한다. 집합은 해제 시 분리해 후속 보고/전환에 재전송하지 않고, disconnect에서는 메인 큐에서 폐기해 전송 스레드의 detach와 HashSet 접근이 경합하지 않는다. 미승인 연결에는 집합을 만들거나 파괴를 통보하지 않는다. 공간 비용은 유보 연결마다 유보 중 파괴된 고유 ID 수에 비례하며, 영구 미보고 연결의 킥/타임아웃은 기존 게임 책임이다. 공개 API는 세대 캡처 2종(`CaptureSceneLoadGeneration`·3인자 `OnClientSceneLoaded`)이 추가됐고(구 생성 코드용 2인자 오버로드 유지), 와이어·페이로드는 불변이며 생성기는 0.2.11로 범핑됐다(패키지 동봉 — 소비자 조치 없음).
+
+가시성 갱신(`UpdateVisibility`)도 해제·미승인·씬 유보 연결을 **가시성 기록 전에 제외**한다. 따라서 틱의 동적 스폰/재진입 기준선이 유보를 우회하지 않고, 받지 않은 상태를 `_visible`/`_everVisible`에 기록하지 않는다. ready 보고 후 정상 캐치업이 기준선을 전송하고 가시성을 기록한다.
+
+예산 연기 큐는 **연기 당시의 안정 connId 수신 멤버십 AND 송신 시 현재 `IsRelevant`**를 모두 만족해야 전달한다(64명 초과도 동일). 큐에 들어간 뒤 비관련으로 바뀐 연결에는 낡은 델타를 누출하지 않는다. ready 캐치업 직전에 **보고한 연결만** 기존 큐의 수신 대상에서 제거하며, 공통 `SendBaseline`(캐치업·씬/동적 가시성 재진입)과 `BroadcastSpawn`도 해당 netId/connId의 낡은 큐 전달을 무효화한다. 따라서 비관련 기간에 큐가 남아 있어도 새 전체상태 이후 예전 델타가 재생되지 않는다. 다른 준비된 연결의 연기 변경은 그대로 보존된다. 비관련 전환과 해제 시에도 해당 수신자만 제거하고, 마지막 수신자가 사라진 항목은 예산 해제를 기다리지 않고 즉시 삭제·풀 배열 반환한다(휴면·씬 유보만으로 수신자를 제거하지 않음). 큐 전체 삭제·와이어 변경은 없다.
+
+수신 표현의 비용 절충: 실제 연기가 있는 tick마다 정렬된 connId 배열 1개를 공유한다(`AttachConnection`은 잠금 안에서 단조 증가 ID를 append하고 detach는 순서 보존). 각 후보는 기존 inline 64비트 및 초과분 pooled `ulong` 비트셋만 보유한다. 초과분은 기존 visibility pass에서 수집하고 후보에 word 단위 복사하므로 연기 후보마다 연결을 다시 훑거나 HashSet/버킷을 할당하지 않는다. 항목별 비트만 제거하므로 공유 ID 배열의 다른 수신자·후보는 변하지 않는다. 완료/파괴/빈 후보의 초과 비트 배열은 pool에 반환한다. 사용자 hook/채널 예외로 tick이 중단돼도 `finally`가 현재·미처리 후보를 해제하며, `_queue`에 실제 남겨 둔 후보의 소유권만 보존한다. 반환 뒤 참조를 null로 만들어 후속 정리의 중복 반환을 막고, 큐가 참조 중인 배열은 반환하거나 지우지 않는다. 송신은 정렬된 공유 ID와 현재 연결을 단방향 cursor로 병합하므로 후보당 O(이전 수신 ID 수+현재 연결 수)이며 개별 무효화만 이진 검색을 유지한다. 추가 공간은 tick 공유 O(N)+후보별 O(N/64)이다. 기존 HashSet 대신 메모리를 줄이며, 송신 시 현재 relevancy hook/거리 검사를 다시 하는 CPU 비용은 누출 차단에 필요하다. ready 캐치업은 첫 기준선 전에 보고 연결의 기존 큐 전달을 한 번에 제거하고, 객체별 기준선에서는 중복 검사하지 않는다(큐 순회 1회/캐치업). 단일 객체 가시성 재진입·`BroadcastSpawn`은 해당 netId/connId만 제거하는 선형 검사를 유지한다(전환이 매우 잦고 큐가 크면 별도 인덱싱 검토; 이번 범위 밖).
+
 ## 재개 결과 통보와 자동 재시도 (0.7.0 — ADR-0044)
 
 `ResumeSession`은 `GraceResumeResult`(Reattached / SessionNotFound / Expired / UnknownToken)를 반환하고, **모든 종결 사유가 wire 14 `ResumeResult{ok, reason, retryableRemainingMs}`로 요청 연결에 통보**된다. 클라는 `NetworkClient.LastResumeResult`와 `ResumeResultReceived` 이벤트(디스패치 스레드 — `QueueOnMain` 마셜)로 관측한다. `ReconnectAsync`의 반환값은 여전히 연결 수립일 뿐이므로 재부착 성공 여부는 이 이벤트로 판별한다. 소비·스윕만료 토큰은 툼스톤(원 만료 시점까지)되어 이중 소비 패자는 UnknownToken·스윕 만료는 Expired로 정확히 종결된다. **디태치 경합**(서버가 구연결 죽음을 감지하기 전 재접속 — 세션이 아직 저장 안 됨)은 SessionNotFound + 재시도 창으로 응답되고 클라가 0.5초 간격으로 wire 10을 재전송(`TickResumeRetry`, 드라이버 캐던스)해 창 내 재부착으로 수렴한다. 어떤 실패도 세션을 소진하지 않는다(SEC-001). 토큰 없는 신규 접속은 wire 14를 받지 않는다.
@@ -84,6 +96,17 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 
 ## 테스트 / 검증
 
+- **리뷰 5 검증**: `SceneTransitionTests`에 파괴 유보/재등록 2케이스와 disconnect 정리 1케이스를 추가했다(총 34케이스). 즉시 송신 없음·잘못된 보고 유지·ready 후 파괴 1회 및 기준선보다 먼저 전달·중복 보고/다음 전환 재송신 없음·준비된 연결 즉시 수신·미승인 무통보·재등록 대체 객체 Score=42 적용·연결별 상태 폐기를 단언한다. 순차 Core/EditMode/PlayMode `dotnet build --no-restore` 및 패키지 정적 검증 PASS(기존 CS8632 경고). 독립 headless Core는 기존/후발 참여자 × 파괴/재등록 4종 + 전송 스레드 detach 정리 1종 **5/5 PASS**, 기존 리뷰 4 probe 재실행 **22/22 PASS**. 수정 전 소스 음성 대조는 `held destroy delivered exactly once after ready`에서 예상 실패했다. 재현 소스/수정 전 소스/로그: `.pi-subagents/artifacts/commercial-netcode/scn-r5/`. 초기 probe 파일 분리 시 using 누락 빌드 실패 기록도 보존했으며 수정 후 전체 검증을 완료했다. worker는 Unity MCP를 사용하지 않았으나 부모가 최신 코드에서 `SceneTransitionTests` **34/34 EditMode PASS**(job `ece5ab18f3f34cccb3cc7813ad733e98`)·`CurrentSceneJoinPlayTests` **1/1 PlayMode PASS**(job `6c7c7a306ca94ef0826f0d90d68c0860`)를 실행했다. 필수 독립 reviewer CLEAN 대기, 커밋/스테이징/릴리스 없음.
+
+- **리뷰 4 검증**: Core→EditMode→PlayMode `dotnet build --no-restore` 순차 빌드·패키지 검증·`git diff --check` PASS. EditMode에 승인 꼬리/LoadScene 경합 1종과 2/66명 × 비관련/해제 마지막 수신자 정리 4케이스 추가. 독립 headless Core **22/22 PASS**: 기존 9종+경합 1종+2/66/130명 정리 6종+생성 relevancy/지연 송신 relevancy/중간 batch flush 채널 예외 3종+3/66/130명 append 및 선행/중간 제거 후 병합 3종. 예외 probe는 fresh·현재·미처리 후보의 overflow 참조 해제와 기존/재연기 큐의 동일 배열·비트 보존, 회복 후 peers에 정확히 1회 전달을 확인한다. 이전 소스에 같은 경합/정리/예외 probe를 실행하면 각각 예상 실패한다. 재현 소스·전 소스·순차 빌드·음성 대조 로그: `.pi-subagents/artifacts/commercial-netcode/scn-r4/`.
+- **리뷰 4 동일 Release headless benchmark**(리뷰 3의 `Program.cs` 그대로, 66연결·32객체·100회 압박/배출·warm-up 10회): round-4 전 **127.36ms / 22,933,216 bytes** → 후 **112.14ms / 22,933,216 bytes**. 최신 재실행 관측이며 이전 측정 로그도 `perf-*-initial.log`로 보존했다. 각 시간은 단일 합성 실행 관측으로 통계적/Unity 성능 개선 주장이 아니다. `PerfProgram.cs`·`BeforeNetworkServer.cs`·`perf-before.log`·`perf-after.log`로 재현 가능하다. 이후 hook/채널 예외의 기존 비트랜잭션 송신/스냅샷 동작은 변경하지 않았다(미완료 전달을 새로 재시도하지 않음).
+
+- ready 캐치업 중복 순회 보정: Core/EditMode/PlayMode `dotnet build --no-restore`·패키지 정적 검증·`git diff --check` 통과. 기존 headless Core 회귀 **9/9 PASS**를 재사용했고, 호출 경로 정적 단언으로 전체 무효화가 첫 기준선 전에 1회 수행되며 캐치업은 쌍별 순회를 생략하고 재진입은 유지함을 확인했다. 로그: `.pi-subagents/artifacts/commercial-netcode/scn-ready-prune/`. Unity suite 재실행·독립 reviewer CLEAN은 이번 worker에서 수행하지 않았다. 공개 동작 변경 없는 내부 성능 수정이므로 소비자 스킬은 추가 변경하지 않았다.
+
+- **Unity 실행 증거**: 리뷰 3 수정 뒤 부모가 `SceneTransitionTests` 26/26 EditMode·`CurrentSceneJoinPlayTests` 1/1 PlayMode, 리뷰 4 변경 뒤 31/31·1/1 PASS를 실행했다. 리뷰 5의 파괴 유보/재등록 수정 이후 최신 코드에서도 부모가 `SceneTransitionTests` **34/34 EditMode PASS** 및 `CurrentSceneJoinPlayTests` **1/1 PlayMode PASS**를 확인했다(위 job ID 참조). 17/17·20/20·26/26·31/31 및 worker의 Unity MCP 부재 기록은 과거 이력이다. 이는 SCN 대상 테스트이며 전체 Sandbox suite 완료를 뜻하지 않는다. 독립 reviewer CLEAN·배포는 여전히 별도 게이트다.
+- 리뷰 3라운드: `SceneTransitionTests`에 2/66/130 연결 × 비관련 상태 배출/재진입 후 배출 **6케이스** 추가(비관련 송신 없음·42 기준선 후 낡은 델타 없음·다른 수신자의 10→42 보존). dotnet Core/EditMode/PlayMode 빌드·패키지 정적 검증 통과, Unity와 분리한 headless Core probe **9/9 PASS**(기존 인덱스 이동/ready 3종 포함), 수정 전 소스는 비관련 누출 단언으로 예상 실패. worker는 Unity suite를 실행하지 않았다.
+- 제한된 Release headless 비용 probe(66연결·32오브젝트·100회 예산 압박/배출, warm-up 10회): 할당 **33,342,816 → 22,933,216 bytes(약 31% 감소)**, 단일 실행 시간 **110.54 → 130.39ms**. 전체 Core tick/송신을 포함하며 Unity/네이티브 호출 없는 합성 측정이므로 Unity 속도 개선 주장이 아니다. 현재 relevancy 재검사·이진 검색의 CPU 절충을 명시적으로 수용한 범위다. 재현용 probe·전후 소스·로그: `.pi-subagents/artifacts/commercial-netcode/scn-r3/`(로컬 검증 산출물, 배포물 아님).
+- 2026-10-20 SCN 리뷰 2라운드 큐 수정 — `dotnet build`로 `UniNet.Core`·`UniNet.Tests.EditMode`·`UniNet.Tests.PlayMode` 컴파일 및 패키지 정적 검증 통과(EditMode 기존 CS8632 2개). Unity와 분리된 임시 headless Core probe로 2/3/66 연결의 큐 역행 방지·다른 수신자 보존 3/3 확인, 동일 probe는 수정 전 소스에서 낡은 전달 단언으로 예상 실패했다. 추가한 실제 Unity EditMode 3케이스는 worker의 Unity 도구 부재로 **미실행**이며 이전 17/17·1/1 결과를 재실행 증거로 대체하지 않는다.
 - 2026-10-19 SEC-001 배포 준비 검증 — `ReconnectGraceTests` 8종 + `ResumeRequestWireTests` 2종 **10/10**, EditMode 전수 **138/138**, PlayMode 전수 **27/27**, Arena 실제 RUDP 진단 **DIAG PASS**. 잘못된 연결·중복 재개·위조 토큰·48바이트 정상 요청·초과/잘림/위조 접두 후 정상 재개·폐기 트래픽 카운터를 확인했다. 원시 증거와 개별 배포 상태는 `Document/research/commercial-netcode-evidence.json` 참조
 - EditMode `LifecycleEventTests` 4종 — 발화 순서(접속→해제)·소유권 재배정 전 발화 계약·접속 경로 구독자 예외 격리와 펌프 잔여 작업 보존·해제 경로 예외 무관 재배정 보장
 - PlayMode `LifecycleEventPlayTests` 2종 — 실제 루프백 RUDP 세션에서 서버/클라 이벤트·상태 조회(환영 ID 일치·원격 종료 콜백 + **서버 정지 사유 ServerShutdown 검증**), Arena 방식 퇴장 아바타 파괴와 서버 등록 해제
@@ -95,6 +118,21 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - 2026-10-12: EditMode 87/87 · PlayMode 22/22 (MCP 에디터) · 2-프로세스 킥·버전 왕복 PASS
 
 ## 변경 이력
+
+- 2026-10-20 — 리뷰 5: 승인된 씬 유보 연결에 파괴 ID를 보관하고 등록 후 유효 보고에서 부재 ID만 기준선 전에 1회 전달. 같은 netId 재등록은 현재 캐치업으로 대체하고 disconnect는 메인 큐에서 폐기한다. EditMode 3케이스·headless 5+기존 22종·음성 대조 검증, Unity 실행 및 독립 리뷰는 별도 게이트. README/소비자 스킬도 동기화.
+
+- 2026-10-20 — 리뷰 4: 승인 꼬리 전 LoadScene 중복 방지·overflow 비트 소유권의 예외 안전 정리·정렬 ID 선형 병합 송신·비관련/해제 마지막 수신자 즉시 폐기. 새 5케이스 추가, headless 22종/음성 대조/동일 benchmark와 부모의 변경 후 Unity `SceneTransitionTests` 31/31 EditMode·`CurrentSceneJoinPlayTests` 1/1 PlayMode PASS. 필수 독립 reviewer CLEAN·배포 대기, 커밋 없음.
+
+- 2026-10-20 — ready 캐치업의 객체별 중복 큐 순회 제거: `RunPostSceneReady`의 전체 수신자 무효화를 첫 기준선 전에 유지하고 `SendCatchup`에서만 객체별 무효화를 생략한다. 단일 객체 가시성 재진입과 스폰의 쌍별 무효화·공개 API·전달 계약은 그대로다.
+
+- 2026-10-20 — 리뷰 3라운드: 큐 송신은 안정 수신 멤버십과 현재 relevancy의 교집합, 모든 객체 기준선은 해당 수신자의 낡은 큐 전달을 대체. 후보별 HashSet/연결 재스캔을 공유 ID 배열+inline/pooled 비트셋으로 교체하고 6케이스 회귀·합성 비용 측정을 추가. 리뷰 2 수정 이후 부모 Unity 20/20·1/1 PASS를 최신 실행 이력으로 반영하되, 이번 추가 변경 이후 Unity 재실행·독립 CLEAN은 별도 게이트로 남긴다.
+
+- 2026-10-20 — 리뷰 2라운드: ready 캐치업 직전에 보고 연결의 낡은 큐 전달만 무효화. 실제 예산/휴면 연기 때만 connId 수신 집합을 확보해 연결 이탈에 따른 인덱스 이동과 64명 초과도 처리. `SceneTransitionTests`에 2연결·선행 연결 1명/64명 이탈(총 3케이스) 회귀 추가: 예산으로 남은 이전값 10, 유보 중 스냅샷 42 전진, A 캐치업 후 값 역행 없음, B의 연기 42 전달 보존. 이 변경의 Unity 실행·독립 재리뷰는 별도 게이트이며 SCN-003 tokenless 범위는 유지.
+
+- 2026-10-20 — 독립 리뷰 후속: 기존 참여자 ready 시 소유권·전체상태 복구(접속 이벤트 중복 없음), 마지막 보고의 접속 구독자 예외에도 게이트 평가 보장. EditMode 회귀 3종 추가, PlayMode는 baseline 수신 후 신호를 초기화하고 실제 RepNotify·이전 수신값 100을 단언하도록 수정. SCN-003은 송신 전 도착 보고 차단에 한정하고 수용된 동명 in-flight 한계를 명시. Unity 실행·독립 재리뷰·릴리스는 미완료.
+
+- 2026-10-20 — SCN 검증 후속 수정: 가시성 갱신의 기준선 누출·허위 가시성 기록 차단. `SceneTransitionTests`에 해제/미승인/씬 유보 3종의 무송신·기록 없음 회귀 추가, 레디 후 동적 스폰 복구 단언 강화. 실제 Unity 재실행·리뷰는 별도 게이트.
+- 2026-10-20 — ADR-0045 씬 전환 잔여: 현재 씬 추적(SCN-001)·레디 보고 전 캐치업 유보·2단계 조합(SCN-002)·낡은 보고 귀속 차단(SCN-003 — 송신 플래그+디스패치 수신 시점 세대 캡처). 와이어 불변·생성기 0.2.11(세대 캡처 핸들러·신규 API 2종 — 구 오버로드 호환). 0.8.0 (독립 리뷰 r6에서 무변경 표기 정정)
 
 - 2026-10-20 — ADR-0044 재개 결과 통보·자동 재시도: `GraceResumeResult` 열거형(파괴)·wire 14 결과 통보·소비/만료 툼스톤·`LastResumeResult`/`ResumeResultReceived`·SessionNotFound 자동 재시도(0.5s). 제너레이터 0.2.10. 0.7.0 (REC-001)
 

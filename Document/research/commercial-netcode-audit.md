@@ -108,11 +108,23 @@
 | GEN-003 | OPEN | RPC 직접 매개변수는 기본형·string·Message 중심이며 enum은 UNINET002 거부 | enum 매개변수의 실사용 지원·정확한 underlying codec·잘못된 값 검증·Arena 예시 |
 | GEN-004 | INVESTIGATE | RPC 직접 Vector/Quaternion/배열 인자에는 필드 Serializer와 같은 확장 경로가 없음. Message envelope 우회는 존재 | 기존 envelope 기능을 누락으로 세지 않되 일반 Unity 값·컬렉션 인자의 직접 지원 필요성과 안전한 크기/타입 계약 검토 |
 | LIF-001 | OPEN | `UniNetManager.ServerStopAsync:197-211`에는 동기 ServerStop의 SweepDynamicSpawns가 없음. 시작 실패 시 환경 롤백도 별도 검증 필요 | 전용 서버 async 정지→동일 프로세스 재시작의 오래된 동적 객체·ID 충돌을 재현하고 종료/실패 경로 대칭 정리 |
-| SCN-001 | OPEN | `CheckSceneGate:565-573`이 완료 뒤 `_pendingScene=null`로 지움. AttachConnection은 진행 중 씬만 재전송 | 씬 전환 완료 후 후발 접속자에게 현재 네트워크 씬을 전달하고 ready/캐치업 순서 검증 |
-| SCN-002 | INVESTIGATE | 씬 객체의 전체 상태가 클라 등록 전에 오면 lookup 실패로 폐기될 수 있고, 나중 등록에 전체 상태 재요청 경로가 보이지 않음 | 로비에서 접속→서버 게임 씬 상태 수신→뒤늦은 로드 조합의 고정값 불일치 재현 |
-| SCN-003 | INVESTIGATE | 씬 ready는 이름 문자열로만 구분, 실패·시간 초과/같은 씬 반복 전환에서 낡은 보고 구분은 미검증 | 전환 식별·실패 복구·기한·완료 이벤트 격리를 실제 사용 흐름으로 검증 |
+| SCN-001 | OPEN | 조사 확정(`aa6c5b85`): 게이트 완료 시 `_pendingScene=null` — 후발 접속자는 현재 네트워크 씬을 영구히 못 받고, 씬 객체 baseline은 클라 등록 전 lookup-miss로 조용 폐기(로비에 동적 객체만 남는 실증 경로) | **구현 진행(2026-10-20, 승인 방향)**: `_currentScene` 추적 + RunPostApproval 재전송 — SCN-002/003와 단일 단위로 해결 |
+| SCN-002 | OPEN | 조사 확정(`aa6c5b85`): SendLoadScene 직후 즉시 캐치업 전송 — 씬 로드/등록 전 도착한 전체상태는 무음 폐기되고 서버 스냅샷은 이미 갱신돼 초기값 재전송 없음(고정값 영구 불일치 실증 경로) | **구현·검증 대기**: per-connection ready 유보. 독립 리뷰 후 기존 참여자도 ready 시 재배정·전체상태 복구(접속 이벤트 중복 없음), 마지막 보고의 접속 구독자 예외에도 게이트 평가. 회귀·실제 Notify 보강 뒤 부모 Unity 26/26·1/1 PASS, 리뷰 4 코드에서 31/31·1/1, 리뷰 5 코드에서 34/34 EditMode·1/1 PlayMode PASS. 독립 CLEAN·배포 전까지 OPEN이며 최신 상세는 아래 상태 참조 |
+| SCN-003 | OPEN (범위 내 검증 대기) | ADR-0045 승인 범위: 해당 연결의 현 wire 11 송신 **전에 도착한** 낡은/위조 보고가 게이트에 반영되는 문제 | **구현·검증 대기**: `SceneLoadSent`로 송신 전 도착 보고 거부. 리뷰 5 코드에서 부모 Unity 34/34 EditMode·1/1 PlayMode PASS. 독립 CLEAN·배포 전까지 OPEN 유지. 새 wire 11 뒤 도착한 이전 동명 씬 보고는 아래 수용 잔여로 분리(이 항목의 미해결 범위 내 버그가 아님) |
 | ARENA-001 | OPEN | `ArenaBootstrap.LoadPlayerPrefab`이 UNITY_EDITOR 외 빌드에서 null 반환 | 실제 빌드에서 프리팹을 포함·조회하고 Windows 전용 서버+별도 클라 2개 실행 검증 가능하게 수정 |
 | INSTALL-001 | OPEN | `Package/tools/verify-install.sh`는 로컬 repo clone/file URL만 구성 | 최종 공개 UPM 태그를 신규 프로젝트에 설치·컴파일하는 확인 경로 추가. 개발 도구 변경도 리뷰 대상 |
+
+### SCN 최신 검증 상태 (2026-10-20)
+
+- **리뷰 5 후속(현재 코드)**: 유보 중 `DestroyObject`가 서버 등록/가시성을 제거한 뒤 통보를 버려, 클라에 살아남은 씬 객체가 영구 잔류할 수 있는 필수 지적을 수정했다. 승인된 유보 연결별 고유 파괴 ID를 보관하고 등록 후 유효 ready 보고에서 여전히 서버에 없는 ID만 소유권/캐치업 기준선 전에 1회 전달한다. 같은 netId 재등록은 낡은 파괴를 보내지 않고 현재 전체상태로 복구하며 disconnect 정리는 메인 큐에 한정한다. 준비된 연결 즉시 송신·미승인 무통보. 공개 API 확장(세대 캡처 2종 신규 — 구 생성 코드용 2인자 오버로드 호환 유지)·와이어 불변·생성기 0.2.11 범핑(이전 문서의 "무변경" 표기는 독립 리뷰 r6에서 정정). EditMode 3케이스 추가(총 34), 순차 Core/EditMode/PlayMode dotnet 빌드·패키지 검증 PASS, headless 신규 **5/5**+기존 **22/22 PASS**, 수정 전 소스는 누락 파괴 단언으로 예상 실패했다. 근거 `.pi-subagents/artifacts/commercial-netcode/scn-r5/`(프로브 초기 using 누락 빌드 실패 로그 포함). 이후 부모 Unity `SceneTransitionTests` **34/34 EditMode PASS**(job `ece5ab18f3f34cccb3cc7813ad733e98`) 및 `CurrentSceneJoinPlayTests` **1/1 PlayMode PASS**(job `6c7c7a306ca94ef0826f0d90d68c0860`). **필수 독립 reviewer CLEAN 미완료**. SCN-001/002/003 OPEN·커밋/릴리스 없음 유지.
+
+- 리뷰 3 보정 이후 부모가 `SceneTransitionTests` 26/26 EditMode·`CurrentSceneJoinPlayTests` 1/1 PlayMode, 리뷰 4 코드에서 31/31·1/1 PASS를 실행했다. 리뷰 5 코드에서도 부모가 `SceneTransitionTests` **34/34 EditMode PASS**(job `ece5ab18f3f34cccb3cc7813ad733e98`) 및 `CurrentSceneJoinPlayTests` **1/1 PlayMode PASS**(job `6c7c7a306ca94ef0826f0d90d68c0860`)를 확인했다. 이전 카운트와 worker의 Unity MCP 부재 문장은 과거 이력이다. 이는 대상 suite만 검증했으며 전체 Sandbox suite를 뜻하지 않는다.
+- 리뷰 4에서 승인 꼬리 대기 중 중복 wire 11·예외 시 overflow 소유권·송신 ID 선형 병합·예산 압박 중 빈 큐 폐기를 수정했다. EditMode 5케이스 추가(총 31), 순차 Core/EditMode/PlayMode dotnet 빌드·패키지 검증·headless **22/22**·전 소스 음성 대조 3종 PASS. 동일 합성 benchmark는 **127.36→112.14ms**, 양쪽 **22,933,216 bytes**(Unity 성능 개선 증거가 아님). 산출물: `.pi-subagents/artifacts/commercial-netcode/scn-r4/`; 상세 계약/트레이드오프는 [[features/connection-lifecycle]].
+- worker는 Unity MCP를 사용할 수 없었으나 부모가 리뷰 4 및 리뷰 5 코드에서 대상 테스트를 각각 PASS했다. SCN-001/002/003은 필수 독립 reviewer CLEAN·개별 배포 전까지 OPEN 유지하며 이번 작업에는 커밋/릴리스가 없다.
+
+### 수용된 범위 밖 잔여 (ADR-0045)
+
+- **ACCEPTED — 동명 씬 in-flight tokenless 보고**: 이미 송신된 이전 보고가 해당 연결의 새 wire 11 송신 뒤 도착하면 구별 불가. 조기 유보 해제·게이트 완료 위험을 수용했으며, 토큰·wire 11/12·공개 시스템 채널 시그니처 변경은 범위 밖이다. SCN-003의 범위 내 미해결 결함으로 세지 않으며, 테스트·리뷰·배포 성공을 뜻하지도 않는다. 타임아웃/취소는 ADR-0035의 게임 책임 계약을 유지한다.
 
 ### 오탐·보류 근거
 

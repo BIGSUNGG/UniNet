@@ -89,6 +89,7 @@
 - [[0042-이동-소유권-전이-스트림-리셋-에포크]] — MOV-001: NetworkClient.OwnershipChanged 값변경 이벤트·MoveSimulation.ResetOwnershipStream(TState 보존)·이동 소유권 epoch(봉투 접두·불일치 기각)로 소유권 전이 후 새 스트림 즉시 채택 (0.5.0)
 - [[0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보]] — CON-001: 버전 선언 수용 전 소유권·캐치업·복제·게임 RPC 유보, 승인 시 기존 순서로 해제, 미선언 타임아웃 킥 (0.6.0, 제너레이터 0.2.9)
 - [[0044-재개-결과-통보와-자동-재시도]] — REC-001: ResumeSession 결과 열거형·wire 14 재개 결과 통보·소비/만료 토큰 툼스톤·SessionNotFound 자동 재시도(0.5s 간격) (0.7.0, 제너레이터 0.2.10)
+- [[0045-씬-전환-잔여-현재-씬-전달-레디-보고-전-캐치업-유보-낡은-보고-차단]] — SCN-001/002/003: 현재 씬 추적·레디 보고 전 캐치업 유보·낡은 보고 차단 (0.8.0, 와이어 불변·생성기 0.2.11 세대 캡처)
 
 ### deployment — 배포
 
@@ -100,6 +101,10 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-20 — **SCN 리뷰 5: 유보된 파괴 전달 복구** — 승인된 씬 유보 연결의 파괴 ID를 보관, 등록 후 유효 ready에서 여전히 부재한 ID만 소유권/캐치업 기준선 전에 1회 전달. 같은 netId 재등록은 캐치업으로 대체, disconnect는 메인 큐에서 폐기. EditMode +3케이스(총 34, 부모 Unity 34/34 EditMode·1/1 PlayMode PASS)·순차 dotnet 빌드/패키지 검증·headless 5+기존 22종/음성 대조 PASS. 필수 독립 reviewer CLEAN·배포는 미완료, 커밋/릴리스 없음. [[features/connection-lifecycle]]·[[research/commercial-netcode-audit]] 참조.
+
+- 2026-10-20 — **SCN-001/002/003 v0.8.0 구현 — 씬 전환 잔여** (ADR-0045·[[features/connection-lifecycle]] 갱신. `_currentScene` 추적으로 완료된 전환의 씬이 후발 접속자에게 전달, `AwaitingSceneReady`로 보고 전 게임 데이터 유보(전체상태 폐기 창 소멸·유보된 attach 꼬리는 보고 시 해제·CON-001 2단계 순서), `SceneLoadSent`+전환 세대 캡처로 송신 전 도착한 낡은 보고만 거부(송신 뒤 도착한 이전 동명 보고는 ADR-0045 수용 한계). 와이어 불변·생성기 0.2.11(디스패치 수신 시점 세대 캡처, 신규 공개 API 2종 — 구 생성 코드 2인자 오버로드 호환). EditMode +7종 및 리뷰 후속 3종(값 적용 재생 단언 포함)·PlayMode 실RUDP 1종. 리뷰 5 후속 Unity `SceneTransitionTests` 34/34 EditMode·`CurrentSceneJoinPlayTests` 1/1 PlayMode PASS. 독립 CLEAN·배포·감사 CLOSED 전환은 미완료)
 
 - 2026-10-20 — **REC-001 v0.7.0 구현 — 재개 결과 통보와 자동 재시도** (ADR-0044·[[features/connection-lifecycle]] 갱신. `ResumeSession`이 `GraceResumeResult` 열거형 반환(파괴), wire 14로 모든 종결 사유를 요청 연결에 통보(ok/reason/retryableRemainingMs), 소비·스윕만료 토큰 툼스톤으로 이중 소비 패자 UnknownToken·만료 Expired 정확 종결, 클라 `LastResumeResult`+`ResumeResultReceived` 이벤트, SessionNotFound 디태치 경합 자동 재시도(0.5s 간격·창 마감까지 — 경합이 재부착으로 수敛). 제너레이터 0.2.10(해시 검증 배포). **검증·배포 완료**: 회귀 4종·타깝 12/12·EditMode 167/167·PlayMode 30/30·실RUDP·신규 설치·Flash r1 CLEAN·v0.7.0 Release·main/tag CI 성공 — 구현 `206fecf`, REC-001 CLOSED. 검증 중 결함 4건(툼스톤 분기순서·스윕 툼스톤 수명0·DIM override·테스트 전제/구독 인스턴스) 수정·이력 보존)
 

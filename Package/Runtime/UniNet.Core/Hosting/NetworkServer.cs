@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using MessageProtocol.Serialize;
@@ -31,6 +32,7 @@ namespace UniNet.Core.Hosting
         private readonly List<DeferredDelta> _queue = new();
         private readonly List<DeferredDelta> _pending = new();
         private bool[] _relevanceScratch = Array.Empty<bool>();
+        private ulong[] _relevanceOverflowScratch = Array.Empty<ulong>();
         private long _seq;
 
         // Batched replication — per-connection accumulation buffers (parallel to the tick's connection snapshot;
@@ -143,7 +145,9 @@ namespace UniNet.Core.Hosting
 
         // ADR-0035 — scene transition tracking
         private string? _pendingScene;
+        private string? _currentScene;   // SCN-001 — the last COMPLETED transition's scene: post-completion joiners receive it (previously unrecoverable)
         private readonly HashSet<long> _sceneReadyConnections = new();
+        private const int MaxPendingSceneDestroys = 4096;
 
         /// <summary>Fires on the main thread when every live connection has reported the pending scene loaded (ADR-0035). Parameter: the scene identifier.</summary>
         public event Action<string>? AllClientsSceneLoaded;
@@ -257,6 +261,25 @@ namespace UniNet.Core.Hosting
             /// <summary>The post-approval attach work already ran — makes approval idempotent under any main-queue ordering (CON-001).</summary>
             internal bool PostApprovalRun;
 
+            /// <summary>SCN-002 — wire 11 was sent to this connection and its ready report has not arrived: game data
+            /// (catch-up, replication, spawns, ownership notices) is held. Reports land after client registration
+            /// (UniNetManager registers scene objects BEFORE reporting), so full-state baselines are never dropped.</summary>
+            internal bool AwaitingSceneReady;
+
+            // Main-thread only, including detach cleanup: absent objects have no catch-up baseline to retire client survivors.
+            internal HashSet<ulong> PendingSceneDestroys;
+
+            /// <summary>SCN-003 — wire 11 was sent to this connection for the CURRENT transition (reset at LoadScene start):
+            /// only reports arriving after this connection's wire 11 count — stale reports that predate the send are rejected.</summary>
+            internal bool SceneLoadSent;
+
+            // Invalidated at transition start and each wire-11 send. Dispatch reads atomically BEFORE queueing.
+            internal long SceneLoadGeneration;
+
+            /// <summary>SCN-002 — the attach tail (reassignment, catch-up, ClientConnected) is held behind the scene-ready report
+            /// (set when RunPostApproval sends wire 11). CON-001 legacy behavior when no scene was ever loaded.</summary>
+            internal bool CatchupHeld;
+
             /// <summary>Session token issued in the Welcome (ADR-0034/0041) — opaque Base64 string identifying the connection for
             /// grace-session reattach. Empty = not issued (inactive; grace saving treats it as no session).</summary>
             public string SessionToken { get; internal set; } = string.Empty;
@@ -311,7 +334,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>Removes a registered object and propagates the destroy to all connections. Returns false if it was not registered (main thread).</summary>
+        /// <summary>Removes a registered object and propagates its destroy. Approved connections waiting for scene readiness receive the destroy after their valid ready report; other ready connections receive it immediately. Returns false if the object was not registered (main thread).</summary>
         public bool DestroyObject(ulong netId)
         {
             lock (_gate)
@@ -325,8 +348,25 @@ namespace UniNet.Core.Hosting
             foreach (var set in _everVisible.Values) set.Remove(netId);
 
             foreach (var conn in SnapshotConnections())
-                if (!conn.Disconnected && conn.VersionApproved)   // CON-001 — undeclared connections never saw the spawn; approval catch-up carries current state
+            {
+                if (conn.Disconnected || !conn.VersionApproved) continue;
+                if (conn.AwaitingSceneReady)
+                {
+                    var pending = conn.PendingSceneDestroys ??= new HashSet<ulong>();
+                    if (pending.Contains(netId)) continue;
+                    if (pending.Count == MaxPendingSceneDestroys)
+                    {
+                        conn.PendingSceneDestroys = null;
+                        DisconnectClient(conn.ConnId, UniNetDisconnectReason.Kicked);
+                        // Revoke acceptance immediately; the notice/transport close still uses the normal kick path.
+                        DetachConnection(conn.Channel);
+                        continue;
+                    }
+                    pending.Add(netId);
+                }
+                else
                     conn.Channel.SendDestroy(netId);
+            }
             return true;
         }
 
@@ -339,10 +379,11 @@ namespace UniNet.Core.Hosting
             GetSpawnTransform(entry, out float px, out float py, out float pz, out float qx, out float qy, out float qz, out float qw);
             foreach (var conn in SnapshotConnections())
             {
-                if (conn.Disconnected || !conn.VersionApproved) continue;   // CON-001 — undeclared connections receive no game data; approval delivers spawn baselines via catch-up
+                if (conn.Disconnected || !conn.VersionApproved || conn.AwaitingSceneReady) continue;   // CON-001 — undeclared connections receive no game data; SCN-002 — scene-held connections wait for the ready report
                 if (!IsRelevant(entry, conn, netId)) continue;   // irrelevant connection — skip the spawn (sent when it becomes relevant)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
+                InvalidateDeferredRecipient(netId, conn.ConnId);
                 conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);   // owner baseline before the state — a frame between state and notice would twist the initial spawn's Notify owner view (OWN-001)
                 SendSpawnState(conn.Channel, netId, entry, px, py, pz, qx, qy, qz, qw, conn.ConnId == entry.OwnerConnId);
             }
@@ -466,11 +507,33 @@ namespace UniNet.Core.Hosting
             if (conn.Disconnected || conn.PostApprovalRun) return;
             if (!conn.VersionApproved) return;   // held — no game data, no reassignment, no event yet
             conn.PostApprovalRun = true;
-            if (_pendingScene != null)
-                conn.Channel.SendLoadScene(_pendingScene);   // ADR-0035 — late joiner participates in the in-flight transition
+            string? scene = _pendingScene ?? _currentScene;   // SCN-001 — completed transitions reach post-completion joiners too
+            if (scene != null)
+            {
+                // SCN-002 — hold game data until the ready report: the report is sent AFTER client registration
+                // (UniNetManager registers scene objects, then reports), so the catch-up full state always lands on
+                // registered objects instead of being silently dropped. Timeout/retry is game responsibility (ADR-0035).
+                conn.AwaitingSceneReady = true;
+                System.Threading.Interlocked.Increment(ref conn.SceneLoadGeneration);
+                conn.SceneLoadSent = true;
+                conn.CatchupHeld = true;   // SCN-002 — the attach tail waits for the ready report
+                conn.Channel.SendLoadScene(scene);
+                return;   // the reassignment/catch-up/ClientConnected tail runs on the ready report (RunPostSceneReady)
+            }
+            RunPostSceneReady(conn, true);
+        }
+
+        /// <summary>Reconciles ownership and full state after approval or scene readiness. Only the initial attach
+        /// raises ClientConnected; existing participants still need baselines for changes missed during the hold.</summary>
+        private void RunPostSceneReady(ServerConnection conn, bool notifyConnected)
+        {
+            if (conn.Disconnected) return;
+            // The current full state supersedes this recipient's queued deltas, not other clients' changes.
+            InvalidateDeferredRecipient(null, conn.ConnId);
             ReassignOwnership();
             SendCatchup(conn);
-            RaiseLifecycle(ClientConnected, conn.ConnId);   // after catch-up — spawns raised here never race the catch-up
+            if (notifyConnected)
+                RaiseLifecycle(ClientConnected, conn.ConnId);   // after catch-up — spawns raised here never race the catch-up
         }
 
         /// <summary>Detaches a connection (observed when the hub disconnects).</summary>
@@ -489,10 +552,12 @@ namespace UniNet.Core.Hosting
                         bool wasApproved = conn.VersionApproved;   // CON-001 — a never-approved connection never surfaced to the game (no event, no grace session); it owns nothing
                         UniNetEnvironment.QueueOnMain(() =>
                         {
+                            conn.PendingSceneDestroys = null;
                             _viewerPositions.Remove(conn.ConnId);   // P3/P4 cleanup — same main thread as the tick
                             _visible.Remove(conn.ConnId);
                             _everVisible.Remove(conn.ConnId);   // prevents HashSets lingering across reconnects (connIds are monotonically increasing)
                             _gridRelevant.Remove(conn.ConnId);   // clears the P4 grid sets too
+                            InvalidateDeferredRecipient(null, conn.ConnId);
                             try
                             {
                                 if (wasApproved)
@@ -687,17 +752,84 @@ namespace UniNet.Core.Hosting
             _sceneReadyConnections.Clear();
             foreach (var conn in SnapshotConnections())
             {
-                if (conn.Disconnected || !conn.WelcomeSent || !conn.VersionApproved) continue;   // pre-Welcome — AttachConnection catchup covers; undeclared — the approval path delivers the pending scene (CON-001)
+                System.Threading.Interlocked.Increment(ref conn.SceneLoadGeneration);
+                conn.SceneLoadSent = false;   // SCN-003 — reports predating THIS transition's wire 11 are stale (same-name re-transition guard)
+                if (conn.Disconnected || !conn.WelcomeSent || !conn.VersionApproved || !conn.PostApprovalRun) continue;   // the pending approval tail delivers this transition exactly once
+                conn.AwaitingSceneReady = true;   // SCN-002 — hold game data until the ready report
+                System.Threading.Interlocked.Increment(ref conn.SceneLoadGeneration);
+                conn.SceneLoadSent = true;
                 conn.Channel.SendLoadScene(sceneName);   // wire 11
             }
         }
 
-        /// <summary>Applies a client's scene-loaded report (ADR-0035, wire 12 — generated handler). Fires the gate event when all live connections are ready.</summary>
+        /// <summary>Applies a client's scene-loaded report (ADR-0035, wire 12). Convenience overload for legacy generated
+        /// handlers and manual reports — it captures the generation at call time; the current generated handler instead
+        /// captures at dispatch receipt and calls the three-argument overload directly. SCN-002: the report releases the
+        /// game-data hold (the client registers scene objects BEFORE reporting, so catch-up full state lands on registered
+        /// objects). SCN-003 rejects reports arriving before this connection's current wire 11 send. An already-sent old
+        /// same-scene report arriving after that send is indistinguishable without wire tokens.</summary>
         public void OnClientSceneLoaded(long connId, string sceneName)
+            => OnClientSceneLoaded(connId, sceneName, CaptureSceneLoadGeneration(connId));
+
+        /// <summary>Captures the connection's local scene-load generation at wire-12 dispatch receipt, before parsing or
+        /// main-thread queueing. Pass it to the three-argument OnClientSceneLoaded overload. Thread-safe; no wire token.</summary>
+        public long CaptureSceneLoadGeneration(long connId)
         {
-            if (_pendingScene == null || sceneName != _pendingScene) return;   // stale or unexpected report
-            _sceneReadyConnections.Add(connId);
-            CheckSceneGate();
+            lock (_gate)
+            {
+                foreach (var conn in _connections)
+                    if (conn.ConnId == connId && !conn.Disconnected)
+                        return System.Threading.Interlocked.Read(ref conn.SceneLoadGeneration);
+                return -1;
+            }
+        }
+
+        /// <summary>Processes a queued scene-ready report on the main thread using its dispatch-receipt generation.
+        /// Reports received before a newer LoadScene or wire-11 send cannot release that newer transition.</summary>
+        public void OnClientSceneLoaded(long connId, string sceneName, long receivedGeneration)
+        {
+            var conn = FindConnection(connId);
+            if (conn == null || conn.Disconnected || !conn.VersionApproved) return;
+            if (!conn.SceneLoadSent || receivedGeneration != System.Threading.Interlocked.Read(ref conn.SceneLoadGeneration)) return;
+            string? expectedScene = _pendingScene ?? _currentScene;
+            if (expectedScene == null || sceneName != expectedScene) return;
+            bool destroysDrained = false;
+            try
+            {
+                DrainPendingSceneDestroys(conn);   // keep the hold until every pending destroy has succeeded
+                destroysDrained = true;
+                conn.AwaitingSceneReady = false;
+                conn.SceneLoadSent = false;
+                if (_pendingScene != null) _sceneReadyConnections.Add(connId);
+                bool notifyConnected = conn.CatchupHeld;
+                conn.CatchupHeld = false;
+                RunPostSceneReady(conn, notifyConnected);   // existing participants also missed ownership notices and state while held
+            }
+            finally
+            {
+                if (!destroysDrained)
+                {
+                    conn.AwaitingSceneReady = true;
+                    conn.SceneLoadSent = true;
+                    _sceneReadyConnections.Remove(connId);
+                }
+                CheckSceneGate();   // a post-ready subscriber fault must not strand the last valid report
+            }
+        }
+
+        private void DrainPendingSceneDestroys(ServerConnection conn)
+        {
+            var destroys = conn.PendingSceneDestroys;
+            if (destroys == null) return;
+            var ids = new ulong[destroys.Count];
+            destroys.CopyTo(ids);
+            foreach (ulong netId in ids)
+            {
+                // Re-registration replaces the old lifetime; catch-up owns its current baseline.
+                if (GetEntry(netId) == null) conn.Channel.SendDestroy(netId);
+                destroys.Remove(netId);   // a throwing send retains this and all remaining IDs for the next valid report
+            }
+            conn.PendingSceneDestroys = null;
         }
 
         /// <summary>The pending scene identifier (null when no transition is in progress — ADR-0035).</summary>
@@ -711,9 +843,10 @@ namespace UniNet.Core.Hosting
         {
             if (_pendingScene == null) return;
             foreach (var conn in SnapshotConnections())
-                if (!conn.Disconnected && conn.VersionApproved && !_sceneReadyConnections.Contains(conn.ConnId)) return;   // someone not ready — undeclared connections cannot report (they receive the scene at approval, CON-001)
+                if (!conn.Disconnected && conn.VersionApproved && (conn.AwaitingSceneReady || !_sceneReadyConnections.Contains(conn.ConnId))) return;   // someone not ready — undeclared connections cannot report (CON-001); scene-held connections report after loading (SCN-002)
             var scene = _pendingScene;
             _pendingScene = null;
+            _currentScene = scene;   // SCN-001 — post-completion joiners receive this scene
             AllClientsSceneLoaded?.Invoke(scene);
         }
 
@@ -800,8 +933,8 @@ namespace UniNet.Core.Hosting
                     if (entry == null) continue;
                     entry.OwnerConnId = newConnId;
                     foreach (var conn in SnapshotConnections())
-                        if (!conn.Disconnected && conn.VersionApproved)
-                            conn.Channel.SendOwnerUpdate(netId, newConnId);   // CON-001 — undeclared connections receive the baseline at approval instead
+                        if (!conn.Disconnected && conn.VersionApproved && !conn.AwaitingSceneReady)
+                            conn.Channel.SendOwnerUpdate(netId, newConnId);   // CON-001 — undeclared connections receive the baseline at approval instead; SCN-002 — scene-held at ready report
                 }
                 if (session.PlayerObjectNetId != 0)
                     _playerObjects[newConnId] = session.PlayerObjectNetId;
@@ -916,7 +1049,7 @@ namespace UniNet.Core.Hosting
             if (entry == null) return false;
             entry.OwnerConnId = ownerConnId;
             foreach (var conn in SnapshotConnections())   // all connections — same propagation as ReassignOwnership (clients without the object ignore the notice harmlessly)
-                if (!conn.Disconnected && conn.VersionApproved)   // CON-001 — undeclared connections receive the notice at approval instead
+                if (!conn.Disconnected && conn.VersionApproved && !conn.AwaitingSceneReady)   // CON-001 — undeclared connections receive the notice at approval instead; SCN-002 — scene-held at ready report
                     conn.Channel.SendOwnerUpdate(netId, ownerConnId);
             return true;
         }
@@ -1006,11 +1139,11 @@ namespace UniNet.Core.Hosting
             var live = new HashSet<long>();
             var candidates = new List<ServerConnection>();
             foreach (var conn in connections)
-                if (!conn.Disconnected && conn.VersionApproved)   // CON-001 — undeclared connections neither take nor receive ownership
-                {
-                    live.Add(conn.ConnId);
-                    candidates.Add(conn);
-                }
+            {
+                if (conn.Disconnected || !conn.VersionApproved) continue;   // CON-001 — undeclared connections neither take nor receive ownership
+                live.Add(conn.ConnId);   // an approved owner KEEPS its objects even while scene-held — a re-transition must not steal ownership (SCN-002)
+                if (!conn.AwaitingSceneReady) candidates.Add(conn);   // scene-held connections cannot TAKE orphans yet — the ready report re-runs this pass
+            }
             if (candidates.Count == 0) return;   // nobody approved yet — orphans stay ownerless until an approval re-runs this pass
 
             var sorted = new List<(ulong NetId, ServerObjectEntry Entry)>(objects);
@@ -1038,7 +1171,7 @@ namespace UniNet.Core.Hosting
                 if (!IsRelevant(entry, conn, netId)) continue;   // irrelevant object — excluded from catch-up (sent on relevance transition)
                 GetVisibleSet(conn.ConnId).Add(netId);
                 GetEverVisibleSet(conn.ConnId).Add(netId);
-                SendBaseline(conn, netId, entry);
+                SendBaseline(conn, netId, entry, invalidateDeferred: false);   // RunPostSceneReady already pruned the entire recipient once
             }
         }
 
@@ -1049,8 +1182,10 @@ namespace UniNet.Core.Hosting
         /// the real owner (OWN-001). Reusing the existing OwnerUpdate wire: the receiver updates the cache synchronously
         /// while replication/spawn payloads apply on the main queue, so a pre-state notice is already visible to them.
         /// </summary>
-        private void SendBaseline(ServerConnection conn, ulong netId, ServerObjectEntry entry)
+        private void SendBaseline(ServerConnection conn, ulong netId, ServerObjectEntry entry, bool invalidateDeferred)
         {
+            // Single-object re-entry must prune here; catch-up prunes all objects before its first baseline.
+            if (invalidateDeferred) InvalidateDeferredRecipient(netId, conn.ConnId);
             conn.Channel.SendOwnerUpdate(netId, entry.OwnerConnId);
             bool isOwner = entry.OwnerConnId == conn.ConnId;
             if (entry.IsDynamic)
@@ -1099,171 +1234,234 @@ namespace UniNet.Core.Hosting
             int budgetLeft = budget > 0 ? budget : int.MaxValue;
             if (_gridEnabled) RefreshGrid(objects, connections);   // P4 — refresh grid visibility once per tick
 
+            long[] recipientIds = null;   // one immutable, shared ID snapshot per tick, only if something is deferred
             _pending.Clear();
-            foreach (var (netId, entry) in objects)
+            try
             {
-                if (!UpdateVisibility(netId, entry, connections)) continue;   // irrelevant to every connection — skip compare and send (restores the baseline on re-entry)
-
-                // Snapshot per-connection relevancy as a bitmask at enqueue time — removes per-item × per-connection
-                // re-evaluation (hook + transform native calls) from the send loop.
-                // Falls back to re-evaluation at send time with more than 64 connections (rare large topology).
-                ulong relevantMask = 0;
-                int maskCount = Math.Min(connections.Count, 64);
-                for (int i = 0; i < maskCount; i++)
-                    if (_relevanceScratch[i]) relevantMask |= 1ul << i;
-
-                var policy = entry.Instance as IUniNetReplicationPolicy;
-                if (policy != null && policy.IsNetworkDormant) continue;   // dormant — skip delta compare (flushing dormancy sends the accumulated changes)
-
-                float hz = policy?.NetworkUpdateFrequencyHz ?? 0f;
-                for (byte subId = 0; subId < entry.Subs.Length; subId++)
+                foreach (var (netId, entry) in objects)
                 {
-                    var sub = entry.Subs[subId];
-                    var handler = sub.Replication;
-                    if (handler == null || !handler.HasFields) continue;
-                    if (timed && hz > 0f && time < sub.NextReplicateTime) continue;   // rate not due yet — snapshot kept, changes go on the due tick
+                    if (!UpdateVisibility(netId, entry, connections)) continue;   // irrelevant to every connection — skip compare and send (restores the baseline on re-entry)
 
-                    byte[] toOwner, toOthers;
-                    try
+                    // Fresh candidates reuse this tick's visibility bits; deferred candidates also check current relevancy.
+                    // Higher indexes use pooled words copied from the same visibility pass (no per-candidate connection scan).
+                    ulong relevantMask = 0;
+                    int maskCount = Math.Min(connections.Count, 64);
+                    for (int i = 0; i < maskCount; i++)
+                        if (_relevanceScratch[i]) relevantMask |= 1ul << i;
+
+                    var policy = entry.Instance as IUniNetReplicationPolicy;
+                    if (policy != null && policy.IsNetworkDormant) continue;   // dormant — skip delta compare (flushing dormancy sends the accumulated changes)
+
+                    float hz = policy?.NetworkUpdateFrequencyHz ?? 0f;
+                    for (byte subId = 0; subId < entry.Subs.Length; subId++)
                     {
-                        (toOwner, toOthers) = handler.CompareAndWriteDelta(sub);
-                    }
-                    catch (Exception ex)
-                    {
-                        // A faulty user serializer (custom Write/Read/Equals, see ADR-0020) must not kill the whole
-                        // replication tick — skip this sub-object; the snapshot was not updated, so it retries next tick.
-                        // The rate deadline still advances: a deterministic fault (e.g. an over-limit collection kept as-is)
-                        // would otherwise re-throw at the full send rate and flood the console with stack traces.
-                        UniNetEnvironment.LogFault(ex);
-                        if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;   // fault backoff — one period
-                        continue;
-                    }
-                    if (IsEmpty(toOwner) && IsEmpty(toOthers))
-                    {
-                        // Unreliable streams heal an in-motion loss with the next delta — but a lost FINAL delta strands
-                        // the remote (nothing follows it). Once an unreliable sub has been quiet past the resend delay,
-                        // re-send its full state once on the reliable batch. Reliable subs never need this.
-                        bool unreliableSub = (policy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
-                        if (timed && unreliableSub && !sub.QuiescenceResent && sub.LastChangeTime >= 0
-                            && time - sub.LastChangeTime >= QuiescenceResendDelaySeconds)
+                        var sub = entry.Subs[subId];
+                        var handler = sub.Replication;
+                        if (handler == null || !handler.HasFields) continue;
+                        if (timed && hz > 0f && time < sub.NextReplicateTime) continue;   // rate not due yet — snapshot kept, changes go on the due tick
+
+                        byte[] toOwner, toOthers;
+                        try
                         {
-                            sub.QuiescenceResent = true;
-                            _pending.Add(new DeferredDelta
-                            {
-                                NetId = netId,
-                                SubId = subId,
-                                MethodId = handler.MethodId,
-                                Owner = TryWriteFull(handler, sub.Instance, true),
-                                Others = TryWriteFull(handler, sub.Instance, false),
-                                SenderType = sub.Instance.GetType(),
-                                Priority = policy?.NetworkPriority ?? 1f,
-                                EnqueuedAt = time,
-                                RelevantMask = relevantMask,
-                                Seq = _seq++,
-                                ForceReliable = true,
-                            });
+                            (toOwner, toOthers) = handler.CompareAndWriteDelta(sub);
                         }
+                        catch (Exception ex)
+                        {
+                            // A faulty user serializer (custom Write/Read/Equals, see ADR-0020) must not kill the whole
+                            // replication tick — skip this sub-object; the snapshot was not updated, so it retries next tick.
+                            // The rate deadline still advances: a deterministic fault (e.g. an over-limit collection kept as-is)
+                            // would otherwise re-throw at the full send rate and flood the console with stack traces.
+                            UniNetEnvironment.LogFault(ex);
+                            if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;   // fault backoff — one period
+                            continue;
+                        }
+                        if (IsEmpty(toOwner) && IsEmpty(toOthers))
+                        {
+                            // Unreliable streams heal an in-motion loss with the next delta — but a lost FINAL delta strands
+                            // the remote (nothing follows it). Once an unreliable sub has been quiet past the resend delay,
+                            // re-send its full state once on the reliable batch. Reliable subs never need this.
+                            bool unreliableSub = (policy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
+                            if (timed && unreliableSub && !sub.QuiescenceResent && sub.LastChangeTime >= 0
+                                && time - sub.LastChangeTime >= QuiescenceResendDelaySeconds)
+                            {
+                                sub.QuiescenceResent = true;
+                                _pending.Add(new DeferredDelta
+                                {
+                                    NetId = netId,
+                                    SubId = subId,
+                                    MethodId = handler.MethodId,
+                                    Owner = TryWriteFull(handler, sub.Instance, true),
+                                    Others = TryWriteFull(handler, sub.Instance, false),
+                                    SenderType = sub.Instance.GetType(),
+                                    Priority = policy?.NetworkPriority ?? 1f,
+                                    EnqueuedAt = time,
+                                    RelevantMask = relevantMask,
+                                    RelevantOverflow = CaptureRelevanceOverflow(connections.Count),
+                                    Seq = _seq++,
+                                    ForceReliable = true,
+                                });
+                            }
+                            continue;
+                        }
+                        if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;
+
+                        if (timed) sub.LastChangeTime = time;
+                        sub.QuiescenceResent = false;
+                        bool flushReliable = sub.NextSendReliable;
+                        sub.NextSendReliable = false;
+
+                        _pending.Add(new DeferredDelta
+                        {
+                            NetId = netId,
+                            SubId = subId,
+                            MethodId = handler.MethodId,
+                            Owner = toOwner,
+                            Others = toOthers,
+                            SenderType = sub.Instance.GetType(),
+                            Priority = policy?.NetworkPriority ?? 1f,
+                            EnqueuedAt = timed ? time : 0,
+                            RelevantMask = relevantMask,
+                            RelevantOverflow = CaptureRelevanceOverflow(connections.Count),
+                            Seq = _seq++,
+                            ForceReliable = flushReliable,
+                        });
+                    }
+                }
+
+                // Merge candidates with the previous tick's deferrals → send in starvation-boosted priority order (UE GetNetPriority: priority × (1 + waitSec / 0.1))
+                _pending.AddRange(_queue);
+                _pending.Sort((a, b) =>
+                {
+                    double effA = a.Priority * (1 + (timed ? time - a.EnqueuedAt : 0) / 0.1);
+                    double effB = b.Priority * (1 + (timed ? time - b.EnqueuedAt : 0) / 0.1);
+                    int cmp = effB.CompareTo(effA);
+                    return cmp != 0 ? cmp : a.Seq.CompareTo(b.Seq);
+                });
+
+                foreach (var item in _queue) item.Queued = false;
+                _queue.Clear();
+                _typeBudgetLeft.Clear();   // refill per-type channel budgets — left empty in immediate mode (no budget policy)
+                if (timed)
+                    foreach (var kv in _channelBudgets) _typeBudgetLeft[kv.Key] = kv.Value;
+
+                foreach (var item in _pending)
+                {
+                    var entry = GetEntry(item.NetId);
+                    if (entry == null) { item.ReleaseRecipients(); continue; }   // destroyed mid-tick — drop the deferral
+
+                    var entryPolicy = entry.Instance as IUniNetReplicationPolicy;
+                    if (entryPolicy != null && entryPolicy.IsNetworkDormant)
+                    {
+                        // Went dormant — hold the deferrals too. Dropping them would lose changes permanently (the snapshot
+                        // was already updated), so they are sent once dormancy is flushed.
+                        DeferDelta(item, connections, ref recipientIds);
                         continue;
                     }
-                    if (timed && hz > 0f) sub.NextReplicateTime = time + 1f / hz;
 
-                    if (timed) sub.LastChangeTime = time;
-                    sub.QuiescenceResent = false;
-                    bool flushReliable = sub.NextSendReliable;
-                    sub.NextSendReliable = false;
-
-                    _pending.Add(new DeferredDelta
+                    int size = Math.Max(item.Owner?.Length ?? 0, item.Others?.Length ?? 0);
+                    bool globalOk = budgetLeft >= size || (budget > 0 && size > budget);   // force-send a single delta larger than the budget (anti-starvation)
+                    bool typeOk = true;
+                    if (_typeBudgetLeft.TryGetValue(item.SenderType, out int typeLeft))
                     {
-                        NetId = netId,
-                        SubId = subId,
-                        MethodId = handler.MethodId,
-                        Owner = toOwner,
-                        Others = toOthers,
-                        SenderType = sub.Instance.GetType(),
-                        Priority = policy?.NetworkPriority ?? 1f,
-                        EnqueuedAt = timed ? time : 0,
-                        RelevantMask = relevantMask,
-                        Seq = _seq++,
-                        ForceReliable = flushReliable,
-                    });
-                }
-            }
+                        _channelBudgets.TryGetValue(item.SenderType, out int typeBudget);
+                        typeOk = typeLeft >= size || (typeBudget > 0 && size > typeBudget);
+                    }
+                    if (!globalOk || !typeOk)
+                    {
+                        DeferDelta(item, connections, ref recipientIds);   // EnqueuedAt is preserved so the starvation boost keeps growing
+                        continue;
+                    }
 
-            // Merge candidates with the previous tick's deferrals → send in starvation-boosted priority order (UE GetNetPriority: priority × (1 + waitSec / 0.1))
-            _pending.AddRange(_queue);
-            _pending.Sort((a, b) =>
-            {
-                double effA = a.Priority * (1 + (timed ? time - a.EnqueuedAt : 0) / 0.1);
-                double effB = b.Priority * (1 + (timed ? time - b.EnqueuedAt : 0) / 0.1);
-                int cmp = effB.CompareTo(effA);
-                return cmp != 0 ? cmp : a.Seq.CompareTo(b.Seq);
-            });
+                    int spent = 0;
+                    bool unreliable = !item.ForceReliable
+                        && (entryPolicy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
+                    int recipientCursor = 0;
+                    for (int i = 0; i < connections.Count; i++)
+                    {
+                        var conn = connections[i];
+                        if (conn.Disconnected || !conn.VersionApproved || conn.AwaitingSceneReady) continue;   // CON-001 — undeclared connections receive no replication until approval; SCN-002 — scene-held connections wait for their ready report
+                        bool relevant;
+                        if (item.Recipients != null)
+                        {
+                            // Both snapshots are ascending: attach appends monotonic IDs; removal never reorders.
+                            while (recipientCursor < item.Recipients.Length && item.Recipients[recipientCursor] < conn.ConnId)
+                                recipientCursor++;
+                            relevant = recipientCursor < item.Recipients.Length && item.Recipients[recipientCursor] == conn.ConnId
+                                && item.IsRecipientIndex(recipientCursor) && IsRelevant(entry, conn, item.NetId);
+                        }
+                        else relevant = item.IsRecipientIndex(i);   // fresh candidates use this tick's index-stable visibility bits
+                        if (!relevant) continue;
+                        var payload = conn.ConnId == entry.OwnerConnId ? item.Owner : item.Others;
+                        if (IsEmpty(payload)) continue;
 
-            _queue.Clear();
-            _typeBudgetLeft.Clear();   // refill per-type channel budgets — left empty in immediate mode (no budget policy)
-            if (timed)
-                foreach (var kv in _channelBudgets) _typeBudgetLeft[kv.Key] = kv.Value;
-
-            foreach (var item in _pending)
-            {
-                var entry = GetEntry(item.NetId);
-                if (entry == null) continue;   // destroyed mid-tick — drop the deferral
-
-                var entryPolicy = entry.Instance as IUniNetReplicationPolicy;
-                if (entryPolicy != null && entryPolicy.IsNetworkDormant)
-                {
-                    // Went dormant — hold the deferrals too. Dropping them would lose changes permanently (the snapshot
-                    // was already updated), so they are sent once dormancy is flushed.
-                    _queue.Add(item);
-                    continue;
-                }
-
-                int size = Math.Max(item.Owner?.Length ?? 0, item.Others?.Length ?? 0);
-                bool globalOk = budgetLeft >= size || (budget > 0 && size > budget);   // force-send a single delta larger than the budget (anti-starvation)
-                bool typeOk = true;
-                if (_typeBudgetLeft.TryGetValue(item.SenderType, out int typeLeft))
-                {
-                    _channelBudgets.TryGetValue(item.SenderType, out int typeBudget);
-                    typeOk = typeLeft >= size || (typeBudget > 0 && size > typeBudget);
-                }
-                if (!globalOk || !typeOk)
-                {
-                    _queue.Add(item);   // defer — EnqueuedAt is preserved so the starvation boost keeps growing
-                    continue;
+                        var batch = unreliable ? _batchSeq[i] : _batchRel[i];
+                        var candidate = new ReplicateEntry(item.NetId, item.SubId, item.MethodId, payload);
+                        if (batch.Count > 0 && batch.Bytes + candidate.WireBytes > MaxReplicateBatchBytes)
+                            FlushBatch(batch, conn.Channel, unreliable);   // ponytail: fixed ~MTU cap (Sequenced cannot fragment); per-connection splitting if deltas ever grow
+                        batch.Add(candidate);
+                        spent += payload.Length;
+                    }
+                    item.ReleaseRecipients();
+                    budgetLeft = Math.Max(0, budgetLeft - spent);
+                    if (_typeBudgetLeft.ContainsKey(item.SenderType))
+                        _typeBudgetLeft[item.SenderType] = Math.Max(0, _typeBudgetLeft[item.SenderType] - spent);
                 }
 
-                int spent = 0;
-                bool unreliable = !item.ForceReliable
-                    && (entryPolicy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
+                // Tail flush — at most two batch messages per connection this tick (one reliable, one unreliable)
                 for (int i = 0; i < connections.Count; i++)
                 {
-                    var conn = connections[i];
-                    if (conn.Disconnected || !conn.VersionApproved) continue;   // CON-001 — undeclared connections receive no replication until approval
-                    bool relevant = i < 64
-                        ? (item.RelevantMask & (1ul << i)) != 0
-                        : IsRelevant(entry, conn, item.NetId);   // >64 connections — re-evaluate at send time (rare large topology)
-                    if (!relevant) continue;
-                    var payload = conn.ConnId == entry.OwnerConnId ? item.Owner : item.Others;
-                    if (IsEmpty(payload)) continue;
-
-                    var batch = unreliable ? _batchSeq[i] : _batchRel[i];
-                    var candidate = new ReplicateEntry(item.NetId, item.SubId, item.MethodId, payload);
-                    if (batch.Count > 0 && batch.Bytes + candidate.WireBytes > MaxReplicateBatchBytes)
-                        FlushBatch(batch, conn.Channel, unreliable);   // ponytail: fixed ~MTU cap (Sequenced cannot fragment); per-connection splitting if deltas ever grow
-                    batch.Add(candidate);
-                    spent += payload.Length;
+                    FlushBatch(_batchRel[i], connections[i].Channel, unreliable: false);
+                    FlushBatch(_batchSeq[i], connections[i].Channel, unreliable: true);
                 }
-                budgetLeft = Math.Max(0, budgetLeft - spent);
-                if (_typeBudgetLeft.ContainsKey(item.SenderType))
-                    _typeBudgetLeft[item.SenderType] = Math.Max(0, _typeBudgetLeft[item.SenderType] - spent);
             }
-
-            // Tail flush — at most two batch messages per connection this tick (one reliable, one unreliable)
-            for (int i = 0; i < connections.Count; i++)
+            finally
             {
-                FlushBatch(_batchRel[i], connections[i].Channel, unreliable: false);
-                FlushBatch(_batchSeq[i], connections[i].Channel, unreliable: true);
+                // A hook/channel fault may abort anywhere; only retained queue entries keep pool ownership.
+                foreach (var item in _pending)
+                    if (!item.Queued) item.ReleaseRecipients();
+                _pending.Clear();
             }
+        }
+
+        /// <summary>Captures identity once per deferred tick; each candidate keeps only its own compact visibility bits.</summary>
+        private void DeferDelta(DeferredDelta item, IReadOnlyList<ServerConnection> connections, ref long[] recipientIds)
+        {
+            if (item.Recipients == null)
+            {
+                if (recipientIds == null)
+                {
+                    recipientIds = new long[connections.Count];
+                    // Attach appends monotonically assigned IDs under _gate; detach preserves order.
+                    for (int i = 0; i < connections.Count; i++) recipientIds[i] = connections[i].ConnId;
+                }
+                item.Recipients = recipientIds;
+            }
+            _queue.Add(item);
+            item.Queued = true;
+        }
+
+        private void InvalidateDeferredRecipient(ulong? netId, long connId)
+        {
+            // ponytail: scan on baseline/relevance changes; index by netId if transition churn makes this hot.
+            for (int i = _queue.Count - 1; i >= 0; i--)
+            {
+                var item = _queue[i];
+                if (netId.HasValue && item.NetId != netId.Value) continue;
+                item.RemoveRecipient(connId);
+                if (item.HasRecipients()) continue;
+                _queue.RemoveAt(i);
+                item.Queued = false;
+                item.ReleaseRecipients();
+            }
+        }
+
+        private ulong[] CaptureRelevanceOverflow(int connectionCount)
+        {
+            if (connectionCount <= 64) return null;
+            int words = (connectionCount - 1) / 64;
+            var bits = ArrayPool<ulong>.Shared.Rent(words);
+            Array.Copy(_relevanceOverflowScratch, bits, words);
+            return bits;
         }
 
         private void EnsureBatchLists(int count)
@@ -1441,14 +1639,23 @@ namespace UniNet.Core.Hosting
         private bool UpdateVisibility(ulong netId, ServerObjectEntry entry, IReadOnlyList<ServerConnection> conns)
         {
             if (_relevanceScratch.Length < conns.Count) _relevanceScratch = new bool[conns.Count];
+            int overflowWords = (conns.Count - 1) / 64;
+            if (_relevanceOverflowScratch.Length < overflowWords) _relevanceOverflowScratch = new ulong[overflowWords];
+            Array.Clear(_relevanceOverflowScratch, 0, overflowWords);
             bool anyRelevant = false;
             for (int i = 0; i < conns.Count; i++)
             {
                 var conn = conns[i];
+                if (conn.Disconnected || !conn.VersionApproved || conn.AwaitingSceneReady)
+                {
+                    _relevanceScratch[i] = false;
+                    continue;   // blocked connections neither receive re-entry baselines nor seed visibility before catch-up
+                }
                 var seen = GetVisibleSet(conn.ConnId);
                 if (IsRelevant(entry, conn, netId))
                 {
                     _relevanceScratch[i] = anyRelevant = true;
+                    if (i >= 64) _relevanceOverflowScratch[i / 64 - 1] |= 1ul << (i % 64);
                     bool everNew = GetEverVisibleSet(conn.ConnId).Add(netId);
                     if (seen.Add(netId) && (!everNew || entry.IsDynamic))
                         SendVisibilityState(conn, netId, entry);   // re-entry baseline restore · dynamic object creation
@@ -1456,7 +1663,7 @@ namespace UniNet.Core.Hosting
                 else
                 {
                     _relevanceScratch[i] = false;
-                    seen.Remove(netId);   // relevant → irrelevant — stop deltas (client keeps the last state; propagation destroy is out of contract)
+                    if (seen.Remove(netId)) InvalidateDeferredRecipient(netId, conn.ConnId);   // prune even while budget-starved; peers keep their queued changes
                 }
             }
             return anyRelevant;
@@ -1464,7 +1671,7 @@ namespace UniNet.Core.Hosting
 
         /// <summary>Sends a relevancy transition — the same entry baseline as catch-up (ownership notice first, then spawn/full state), outside the budget.</summary>
         private void SendVisibilityState(ServerConnection conn, ulong netId, ServerObjectEntry entry)
-            => SendBaseline(conn, netId, entry);
+            => SendBaseline(conn, netId, entry, invalidateDeferred: true);
 
         private HashSet<ulong> GetVisibleSet(long connId)
         {
@@ -1505,7 +1712,7 @@ namespace UniNet.Core.Hosting
             public ViewerPosition(float x, float y, float z) { X = x; Y = y; Z = z; }
         }
 
-        /// <summary>One delta deferred for exceeding a budget — EnqueuedAt anchors the starvation boost; RelevantMask holds the target connection bits (low 64).</summary>
+        /// <summary>One delta candidate — EnqueuedAt anchors starvation; RelevantMask is tick-local (low 64), Recipients survives deferral.</summary>
         private sealed class DeferredDelta
         {
             public ulong NetId;
@@ -1517,8 +1724,41 @@ namespace UniNet.Core.Hosting
             public float Priority;
             public double EnqueuedAt;
             public ulong RelevantMask;
+            public long[] Recipients;   // shared sorted connIds from the enqueue tick, never later connection indexes
+            public ulong[] RelevantOverflow;   // pooled words above the inline 64 bits; owned by this candidate
             public long Seq;
             public bool ForceReliable;   // dormancy flush + quiescence resend — must not ride the lossy stream
+
+            public bool IsRecipientIndex(int index)
+                => index < 64 ? (RelevantMask & (1ul << index)) != 0
+                    : (RelevantOverflow[index / 64 - 1] & (1ul << (index % 64))) != 0;
+
+            public bool Queued;   // only retained queue entries may keep pooled words after a tick aborts
+
+            public bool HasRecipients()
+            {
+                if (RelevantMask != 0) return true;
+                int words = (Recipients.Length - 1) / 64;
+                for (int i = 0; i < words; i++)
+                    if (RelevantOverflow[i] != 0) return true;
+                return false;
+            }
+
+            public void RemoveRecipient(long connId)
+            {
+                int index = Array.BinarySearch(Recipients, connId);
+                if (index < 0) return;
+                if (index < 64) RelevantMask &= ~(1ul << index);
+                else RelevantOverflow[index / 64 - 1] &= ~(1ul << (index % 64));
+            }
+
+            public void ReleaseRecipients()
+            {
+                Recipients = null;
+                if (RelevantOverflow == null) return;
+                ArrayPool<ulong>.Shared.Return(RelevantOverflow);
+                RelevantOverflow = null;
+            }
         }
 
         /// <summary>One (netId, subId, methodId, payload) slot in a per-connection replication batch.</summary>

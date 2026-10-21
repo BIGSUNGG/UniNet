@@ -16,8 +16,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class ArenaRoundtripTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 0;   // random port per run — works around environments where a listener socket lingers in the editor process after play mode ends
-
         [SetUp]
         public void DisableSceneBootstrap()
         {
@@ -43,8 +41,10 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우()
         {
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+
             // Start the host — the server and client connect over a real loopback socket
-            var hostTask = UniNetManager.HostAsync(Port);
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
@@ -126,7 +126,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_점프_대시_텔레포트_상태_시뮬레이션()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 

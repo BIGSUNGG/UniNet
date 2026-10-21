@@ -17,8 +17,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class LifecycleStopTests
     {
-        private static readonly int PortBase = 30000 + (System.Environment.TickCount % 2000) * 12 + 40;   // random port per run (this class uses 3 ports)
-
         [SetUp]
         public void AllowStopNoise()
         {
@@ -46,7 +44,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 서버_정지후_동일_포트_재리슨_성공()
         {
-            int port = PortBase;      // random per run — works around listeners lingering after play mode ends (environment issue)
+            int port = TestPortAllocator.Next();   // fresh port per test — the relisten below works because the stop path frees this port first
 
             var t1 = UniNetManager.ServerAsync(port);
             while (!t1.IsCompleted) yield return null;
@@ -67,7 +65,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 클라_정지후_서버연결해제와_재접속_성공()
         {
-            int port = PortBase + 2;  // random per run
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
             var serverTask = UniNetManager.ServerAsync(port);
             while (!serverTask.IsCompleted) yield return null;
             Assert.IsFalse(serverTask.IsFaulted, serverTask.Exception?.ToString());
@@ -96,7 +94,7 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_정지후_재시작_성공()
         {
-            int port = PortBase + 4;  // random per run
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
             var h1 = UniNetManager.HostAsync(port);
             while (!h1.IsCompleted) yield return null;
             Assert.IsFalse(h1.IsFaulted, h1.Exception?.ToString());

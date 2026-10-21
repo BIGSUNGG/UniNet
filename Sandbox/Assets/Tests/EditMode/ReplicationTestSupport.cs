@@ -86,7 +86,11 @@ namespace UniNet.Tests
             Spawns.Add(netId);
             Order.Add($"spawn:{netId}");
         }
-        public void SendDestroy(ulong netId) => Destroys.Add(netId);
+        public virtual void SendDestroy(ulong netId)
+        {
+            Destroys.Add(netId);
+            Order.Add($"destroy:{netId}");
+        }
         public void SendTimeSync(double serverTime) => TimeSyncs.Add(serverTime);
         public System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNet.Core.UniNetDisconnectReason reason)
         {

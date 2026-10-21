@@ -260,13 +260,14 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("        /// <summary>Wire message 12 (ADR-0035) — client reports the scene is loaded.</summary>");
             sb.AppendLine($"        private static {TaskOfBytes} __SceneLoaded_Requested(long senderConnId, byte[] data)");
             sb.AppendLine("        {");
+            sb.AppendLine($"            var server = {Env}.Server;");
+            sb.AppendLine("            long generation = server?.CaptureSceneLoadGeneration(senderConnId) ?? -1;   // capture at dispatch receipt, not main-queue processing");
             sb.AppendLine("            try");
             sb.AppendLine("            {");
             sb.AppendLine($"                var r = new {Reader}(data);");
             sb.AppendLine("                var scene = r.ReadString();");
-            sb.AppendLine($"                var server = {Env}.Server;");
             sb.AppendLine("                server?.TrafficStats.OnReceived(data.Length);");
-            sb.AppendLine($"                {Env}.QueueOnMain(() => server?.OnClientSceneLoaded(senderConnId, scene));   // ADR-0035");
+            sb.AppendLine($"                {Env}.QueueOnMain(() => server?.OnClientSceneLoaded(senderConnId, scene, generation));   // ADR-0035 / SCN-003");
             sb.AppendLine($"                return global::System.Threading.Tasks.Task.FromResult({Empty});");
             sb.AppendLine("            }");
             sb.AppendLine("            catch (global::System.Exception ex)");

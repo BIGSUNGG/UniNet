@@ -15,19 +15,18 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class NetSerializeRoundtripTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 72;   // random port per run (offset 72 — no overlap with the other PlayMode classes)
-
         [TearDown]
         public void StopListeners() => UniNetManager.HostStop();
 
         [UnityTest]
         public IEnumerator 호스트_왕복_커스텀_직렬화_양자화_리플리케이션()
         {
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
             var go = new GameObject("quantized-host");
             var tank = go.AddComponent<QuantizedTank>();
             try
             {
-                var hostTask = UniNetManager.HostAsync(Port);
+                var hostTask = UniNetManager.HostAsync(port);
                 while (!hostTask.IsCompleted) yield return null;
                 Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
                 yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);

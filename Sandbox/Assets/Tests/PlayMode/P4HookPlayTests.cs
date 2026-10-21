@@ -10,15 +10,14 @@ namespace UniNet.Tests
     /// <summary>P4 wire/driver-level tests — verifies TimeSync synchronization and rewind position history (PlayMode real loopback).</summary>
     public sealed class P4HookPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 16;   // random port per run — avoids listeners lingering in the editor process after play mode ends
-
         [TearDown]
         public void StopListeners() => UniNetManager.HostStop();
 
         [UnityTest]
         public IEnumerator TimeSync_와이어로_서버_시각_수신이_제공된다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
@@ -36,7 +35,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 리와인드_히스토리가_과거_위치를_반환한다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 

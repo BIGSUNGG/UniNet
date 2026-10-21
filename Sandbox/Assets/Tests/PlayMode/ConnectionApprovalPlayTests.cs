@@ -20,8 +20,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class ConnectionApprovalPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 17;   // random port per run — offset +17 (no overlap with the other PlayMode classes)
-
         /// <summary>Record-only channel standing in for an undeclared connection (never sends wire 7).</summary>
         private sealed class SilentChannel : IUniNetSystemChannel
         {
@@ -60,8 +58,10 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 실제_클라는_자동_선언으로_승인되고_미선언_연결은_유보_후_타임아웃_킥된다()
         {
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+
             // real RUDP server with a short undeclared timeout (500 ms) — the sweep rides the driver tick
-            var hostTask = UniNetManager.HostAsync(Port, new UniNetEndpointOptions { VersionDeclareTimeoutMs = 500 }, null);
+            var hostTask = UniNetManager.HostAsync(port, new UniNetEndpointOptions { VersionDeclareTimeoutMs = 500 }, null);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 

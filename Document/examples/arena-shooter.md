@@ -56,6 +56,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | 기능 | 게임 내 사용 | 위치 |
 | --- | --- | --- |
 | ServerRpc | 이동 입력은 NetworkTransform 시뮬레이션(RpcSubmitMove 스트림) · `RpcSubmitAim` / `RpcFire` / `RpcTeleport` — 조준·발사·텔레포트 요청 | ArenaPlayer·NetworkTransform |
+| 씬 전환 잔여(SCN-001~003·ADR-0045) | 라이브러리 자동 — 후발 접속자 현재 씬 수신·보고 전 캐치업 유보·wire 11 송신 전 도착 보고 차단(송신 뒤 도착한 이전 동명 보고는 ADR-0045 수용 한계) | 라이브러리 (아레나는 씬 전환 미사용 — 무영향) |
 | 재개 결과 통보(REC-001·ADR-0044) | 라이브러리 자동 — wire 14 종결 사유 통보·디태치 경합 자동 재시도(0.5s)·이벤트 `ResumeResultReceived` | 라이브러리 (게임은 자동 활용) |
 | 연결 승인(CON-001·ADR-0043) | 라이브러리 자동 — 실제 클라는 자동 선언, 미선언 연결은 게임 데이터 유보 후 10s 킥 (`UniNetEndpointOptions.VersionDeclareTimeoutMs`) | 라이브러리 (게임은 자동 활용) |
 | ServerRpc 검증 후크(`_Validate`) | 이동 입력 envelope 용량 상한(NetworkTransform 시뮬레이션)·조준 각도 유효성·발사 단위벡터·hitTime 미래 시각 거부 | ArenaPlayer·NetworkTransform |

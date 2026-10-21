@@ -13,8 +13,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class NetworkStatsPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 104;   // random port per run — offset 104 (unused by the other classes)
-
         [SetUp]
         public void SetUp()
         {
@@ -37,7 +35,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 실세션에서_양단_카운터와_RTT가_측정된다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5, "Welcome 수신");

@@ -16,8 +16,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class LifecycleEventPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 48;   // random port per run (this class uses 2 ports)
-
         private static bool _clientBye;
         private static UniNetDisconnectReason _clientByeReason;
 
@@ -53,7 +51,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 서버와_클라_수명주기_이벤트가_실제_세션에서_발화한다()
         {
-            var serverTask = UniNetManager.ServerAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var serverTask = UniNetManager.ServerAsync(port);
             while (!serverTask.IsCompleted) yield return null;
             Assert.IsFalse(serverTask.IsFaulted, serverTask.Exception?.ToString());
 
@@ -64,7 +63,7 @@ namespace UniNet.Tests
             UniNetManager.ClientDisconnected += OnClientBye;
             Assert.IsFalse(UniNetManager.IsClientConnected, "접속 전 상태");
 
-            var clientTask = UniNetManager.ClientAsync("127.0.0.1", Port);
+            var clientTask = UniNetManager.ClientAsync("127.0.0.1", port);
             while (!clientTask.IsCompleted) yield return null;
             Assert.IsFalse(clientTask.IsFaulted, "접속 실패: " + clientTask.Exception);
 
@@ -86,7 +85,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 퇴장_연결의_소유_아바타가_파괴되고_서버_등록이_해제된다()
         {
-            var hostTask = UniNetManager.HostAsync(Port + 2);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port + 2);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 

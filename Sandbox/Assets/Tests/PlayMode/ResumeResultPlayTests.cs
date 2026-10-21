@@ -18,8 +18,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class ResumeResultPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 25;   // random port per run — offset +25 (no overlap with the other PlayMode classes)
-
         [SetUp]
         public void SetUp()
         {
@@ -37,7 +35,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 진짜_토큰은_재부착_결과를_위조_토큰은_거절_결과를_관측한다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             var server = UniNetEnvironment.Server;
@@ -54,7 +53,7 @@ namespace UniNet.Tests
             // 1) FORGED token — terminal rejection, observed as a wire-14 result on the reconnecting client
             var forged = new NetworkClient { SessionToken = realToken.Substring(0, 40) + (realToken[40] == 'A' ? 'B' : 'A') + realToken.Substring(41) };
             UniNetEnvironment.SetClient(forged);
-            var connect1 = UniNetManager.ClientAsync("127.0.0.1", Port);
+            var connect1 = UniNetManager.ClientAsync("127.0.0.1", port);
             while (!connect1.IsCompleted) yield return null;
             yield return WaitUntil(() => UniNetEnvironment.Client.LastResumeResult != GraceResumeResult.None, 5, "위조 토큰 — wire 14 결과 도착");
             Assert.AreEqual(GraceResumeResult.SessionNotFound, UniNetEnvironment.Client.LastResumeResult, "위조(미지) 토큰 — SessionNotFound (재시도 창과 함께)");
@@ -66,7 +65,7 @@ namespace UniNet.Tests
             // 실제_생성_수신기 test through the real generated wire-14 receiver.
             var genuine = new NetworkClient { SessionToken = realToken };
             UniNetEnvironment.SetClient(genuine);
-            var connect2 = UniNetManager.ClientAsync("127.0.0.1", Port);
+            var connect2 = UniNetManager.ClientAsync("127.0.0.1", port);
             while (!connect2.IsCompleted) yield return null;
             yield return WaitUntil(() => UniNetEnvironment.Client.LastResumeResult == GraceResumeResult.Reattached, 5, "진짜 토큰 — Reattached 이벤트");
             Assert.AreEqual(GraceResumeResult.Reattached, UniNetEnvironment.Client.LastResumeResult, "최종 결과 상태");

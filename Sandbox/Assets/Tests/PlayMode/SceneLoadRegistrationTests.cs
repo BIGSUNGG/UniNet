@@ -17,7 +17,28 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class SceneLoadRegistrationTests
     {
-        private static readonly int Port = 32000 + (System.Environment.TickCount % 2000) * 8 + 16;   // random port per run — same rationale as HostRoundtripTests
+        // Self-heal against a residual LateScene left by an earlier fixture — additive leftovers AND
+        // the active-scene case (a Single-mode transition that ended with LateScene as the only scene).
+        // A leftover copy registers a duplicate netId under this fixture's fresh connection and breaks
+        // the same-instance assertion below, so both forms must be gone before the test loads its own
+        // additive copy. The active case needs a neutral anchor scene: Unity refuses to unload the
+        // last/active scene, but unloading is allowed once another loaded scene exists.
+        [UnitySetUp]
+        public IEnumerator CleanResidualLateScene()
+        {
+            var late = SceneManager.GetSceneByName("LateScene");
+            if (!late.IsValid() || !late.isLoaded) yield break;
+            if (SceneManager.GetActiveScene() != late)
+            {
+                var op = SceneManager.UnloadSceneAsync(late);
+                while (op != null && !op.isDone) yield return null;
+                yield break;
+            }
+            var anchor = SceneManager.CreateScene("UniNetTestSceneAnchor");
+            SceneManager.SetActiveScene(anchor);
+            var unload = SceneManager.UnloadSceneAsync(late);
+            while (unload != null && !unload.isDone) yield return null;
+        }
 
         [TearDown]
         public void StopListeners()
@@ -31,7 +52,8 @@ namespace UniNet.Tests
         public IEnumerator 늦게_로드된_씬의_오브젝트가_양단에_등록되고_RPC가_전송된다()
         {
             // 1) Start hosting in the test scene — it holds no network objects, startup registration finds nothing
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);

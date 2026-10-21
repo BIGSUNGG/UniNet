@@ -15,9 +15,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class HostRoundtripTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 32;   // random port per run — avoids environments where a listener socket lingers in the editor process after play mode ends (this class uses 3 ports)
-
-
         [TearDown]
         public void StopListeners()
         {
@@ -28,12 +25,13 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_왕복_ServerRpc_ClientRpc_Multicast_리플리케이션()
         {
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
             var go = new GameObject("roundtrip-player");
             var player = go.AddComponent<VerifyPlayer>();
             try
             {
                 // Start the host — the server and client connect over a real loopback socket
-                var hostTask = UniNetManager.HostAsync(Port);
+                var hostTask = UniNetManager.HostAsync(port);
                 while (!hostTask.IsCompleted) yield return null;
                 Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
@@ -98,7 +96,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_동적_스폰_파괴_조건부_리플리케이션()
         {
-            var hostTask = UniNetManager.HostAsync(Port + 1);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port + 1);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);
@@ -138,7 +137,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 호스트_다중_컴포넌트_오브젝트_왕복()
         {
-            var hostTask = UniNetManager.HostAsync(Port + 2);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port + 2);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
             yield return WaitUntil(() => UniNetEnvironment.Client.LocalConnId != 0, 5);

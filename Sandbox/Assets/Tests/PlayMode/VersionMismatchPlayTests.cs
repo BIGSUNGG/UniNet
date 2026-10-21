@@ -14,8 +14,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class VersionMismatchPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 96;   // random port per run — offset 96 (unused by the other classes)
-
         private static bool _raised;
         private static UniNetDisconnectReason _raisedReason;
 
@@ -52,11 +50,12 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 버전_불일치_클라는_VersionMismatch_사유로_거부된다()
         {
-            var serverTask = UniNetManager.ServerAsync(Port, new UniNetEndpointOptions { ProtocolVersion = "arena-9.0" });
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var serverTask = UniNetManager.ServerAsync(port, new UniNetEndpointOptions { ProtocolVersion = "arena-9.0" });
             while (!serverTask.IsCompleted) yield return null;
             Assert.IsFalse(serverTask.IsFaulted, serverTask.Exception?.ToString());
 
-            var clientTask = UniNetManager.ClientAsync("127.0.0.1", Port);   // declares the default package version — mismatch by design
+            var clientTask = UniNetManager.ClientAsync("127.0.0.1", port);   // declares the default package version — mismatch by design
             while (!clientTask.IsCompleted) yield return null;
             Assert.IsFalse(clientTask.IsFaulted, clientTask.Exception?.ToString());
 
@@ -68,11 +67,12 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 버전_일치_커스텀_버전은_정상_접속된다()
         {
-            var serverTask = UniNetManager.ServerAsync(Port + 1, new UniNetEndpointOptions { ProtocolVersion = "arena-9.0" });
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var serverTask = UniNetManager.ServerAsync(port + 1, new UniNetEndpointOptions { ProtocolVersion = "arena-9.0" });
             while (!serverTask.IsCompleted) yield return null;
             Assert.IsFalse(serverTask.IsFaulted, serverTask.Exception?.ToString());
 
-            var clientTask = UniNetManager.ClientAsync("127.0.0.1", Port + 1, new UniNetEndpointOptions { ProtocolVersion = "arena-9.0" });
+            var clientTask = UniNetManager.ClientAsync("127.0.0.1", port + 1, new UniNetEndpointOptions { ProtocolVersion = "arena-9.0" });
             while (!clientTask.IsCompleted) yield return null;
             Assert.IsFalse(clientTask.IsFaulted, clientTask.Exception?.ToString());
 

@@ -10,15 +10,14 @@ namespace UniNet.Tests
     /// <summary>Driver-level relevancy guard — the tick on the frame right after a plain Destroy must not touch the destroyed component (review round 1, item 1).</summary>
     public sealed class RelevancyDriverTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 24;   // random port per run — avoids listeners lingering in the editor process after play mode ends
-
         [TearDown]
         public void StopListeners() => UniNetManager.HostStop();
 
         [UnityTest]
         public IEnumerator 일반_Destroy_직후_프레임의_틱은_예외_없이_돈다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 

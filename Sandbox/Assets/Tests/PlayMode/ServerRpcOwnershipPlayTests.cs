@@ -13,8 +13,6 @@ namespace UniNet.Tests
     /// <summary>ServerRpc owner auto-enforcement — real loopback RUDP host round-trip (see ADR-0016).</summary>
     public sealed class ServerRpcOwnershipPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 64;   // random port per run — no offset overlap with the other PlayMode classes
-
         /// <summary>Record-only channel standing in for a second (non-owner) connection — a single process has only one ClientSender, so the server receive path substitutes for it.</summary>
         private sealed class GuestChannel : IUniNetSystemChannel
         {
@@ -40,11 +38,12 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 소유자_왕복은_실행되고_비소유_발신은_거부된다()
         {
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
             var go = new GameObject("ownership-play");
             var player = go.AddComponent<VerifyPlayer>();
             try
             {
-                var hostTask = UniNetManager.HostAsync(Port);
+                var hostTask = UniNetManager.HostAsync(port);
                 while (!hostTask.IsCompleted) yield return null;
                 Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 

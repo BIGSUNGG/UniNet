@@ -16,8 +16,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class NetworkTransformPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 8;   // random port per run — avoids listeners lingering in the editor process after play mode ends
-
         private struct TIn { public sbyte Dx; public bool Jump; }
         private struct TSt { public float Vy; }
 
@@ -56,7 +54,8 @@ namespace UniNet.Tests
 
         private static IEnumerator StartHost()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per call — each test binds its own listener
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
         }

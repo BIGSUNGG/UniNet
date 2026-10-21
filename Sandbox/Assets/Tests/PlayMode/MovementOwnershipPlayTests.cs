@@ -21,8 +21,6 @@ namespace UniNet.Tests
     /// </summary>
     public sealed class MovementOwnershipPlayTests
     {
-        private static readonly int Port = 30000 + (System.Environment.TickCount % 2000) * 8 + 9;   // random port per run — offset +9 (no overlap with the other PlayMode classes)
-
         /// <summary>Record-only channel standing in for a second connection — attaching it triggers the reassignment pass that adopts the released object (same pattern as OwnershipTransferPlayTests).</summary>
         private sealed class GuestChannel : IUniNetSystemChannel
         {
@@ -87,7 +85,8 @@ namespace UniNet.Tests
         [UnityTest]
         public IEnumerator 소유권_사이클_후_이전_임기_입력은_epoch로_기각되고_새_스트림_ack가_재개된다()
         {
-            var hostTask = UniNetManager.HostAsync(Port);
+            int port = TestPortAllocator.Next();   // fresh port per test — listener sockets linger across runs
+            var hostTask = UniNetManager.HostAsync(port);
             while (!hostTask.IsCompleted) yield return null;
             Assert.IsFalse(hostTask.IsFaulted, hostTask.Exception?.ToString());
 
