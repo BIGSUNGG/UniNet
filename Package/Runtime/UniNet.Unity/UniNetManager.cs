@@ -52,6 +52,7 @@ namespace UniNet.Unity
             var server = new NetworkServer();
             server.ExpectedProtocolVersion = options?.ProtocolVersion ?? UniNet.Core.UniNetInfo.Version;   // ADR-0028 — handshake expectation
             server.VersionDeclareTimeoutMs = options?.VersionDeclareTimeoutMs ?? 10000;   // CON-001 — undeclared-connection kick timeout (0 = hold indefinitely)
+            server.ConnectionApprover = options?.ConnectionApprover;   // CON-002 — game approval gate (null = CON-001 behavior)
             UniNetEnvironment.SetServer(server);
             NetworkBehaviour.RegisterAllToServer();
 
@@ -115,6 +116,7 @@ namespace UniNet.Unity
             UniNetEnvironment.Client.SessionToken = prevToken;   // ADR-0034 — carry for reattach (empty = fresh session)
             UniNetEnvironment.SetClientSender(null);   // so a stale session hub's late Disconnected fails the hub identity filter
             UniNetEnvironment.LocalProtocolVersion = options?.ProtocolVersion ?? UniNet.Core.UniNetInfo.Version;   // ADR-0028 — declared on connect by the generated hub
+            UniNetEnvironment.LocalCredential = options?.ConnectionCredential ?? string.Empty;   // CON-002 — rides the wire-7 declaration (empty = no credential presented)
             NetworkBehaviour.RegisterAllToClient();
 
             // Wrap client hub creation to observe session end (Disconnected) — mirrors the server-side OnConnected wiring

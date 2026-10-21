@@ -29,6 +29,19 @@ namespace UniNet.Core.Hosting
         /// </summary>
         public int VersionDeclareTimeoutMs { get; set; } = 10000;
 
+        /// <summary>
+        /// Server-only — game approval callback (CON-002, ADR-0047). When set, every connection additionally passes this
+        /// gate after its wire-7 declaration: the callback receives the declared version and game credential and returns
+        /// whether to admit; false (or a throw) kicks with ApprovalRejected, true releases the held attach work. Null
+        /// (default) keeps the exact CON-001 behavior. The callback runs on the main thread; its time budget is
+        /// <see cref="VersionDeclareTimeoutMs"/> — a hung callback is swept like an undeclared connection.
+        /// </summary>
+        public UniNetConnectionApprover ConnectionApprover { get; set; }
+
+        /// <summary>Client-only — game credential carried on the wire-7 version declaration (CON-002). Empty by default.
+        /// Pair it with the server's <see cref="ConnectionApprover"/>, which decides admission from what it receives.</summary>
+        public string ConnectionCredential { get; set; }
+
         /// <summary>Connect timeout in ms (0 = default, about 5 seconds).</summary>
         public int ConnectTimeoutMs { get; set; }
 

@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.9.0";   // 0.9.0 — voluntary ClientStop announces its leave (REC-002, wire 15): server skips the grace save and adopts orphans immediately
+        public const string Version = "0.10.0";   // 0.10.0 — game approval callback (CON-002, wire 7 credential + ApprovalRejected): the server can gate joins on game-checked credentials
     }
 }

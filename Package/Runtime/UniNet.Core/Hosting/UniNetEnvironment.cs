@@ -37,6 +37,14 @@ namespace UniNet.Core.Hosting
         public static string LocalProtocolVersion { get; set; } = UniNetInfo.Version;
 
         /// <summary>
+        /// Game credential this endpoint sends with its wire-7 version declaration (CON-002). Set from
+        /// UniNetEndpointOptions.ConnectionCredential by UniNetManager.ClientAsync; the generated client hub appends it to
+        /// the declaration payload. Empty (default) sends an empty credential — the server's approval callback decides what
+        /// that means (games that gate on a token reject it; open servers pass it).
+        /// </summary>
+        public static string LocalCredential { get; set; } = string.Empty;
+
+        /// <summary>
         /// Engine-level fault logger — the Unity layer wires UnityEngine.Debug.LogException here at startup so Core
         /// stays engine-agnostic. Core's replication tick routes user-serializer exceptions (custom Write/Read/Equals,
         /// see ADR-0020) through this hook: a faulty serializer skips its sub-object instead of killing the tick.

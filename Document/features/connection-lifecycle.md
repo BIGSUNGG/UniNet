@@ -73,6 +73,10 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 
 수신 표현의 비용 절충: 실제 연기가 있는 tick마다 정렬된 connId 배열 1개를 공유한다(`AttachConnection`은 잠금 안에서 단조 증가 ID를 append하고 detach는 순서 보존). 각 후보는 기존 inline 64비트 및 초과분 pooled `ulong` 비트셋만 보유한다. 초과분은 기존 visibility pass에서 수집하고 후보에 word 단위 복사하므로 연기 후보마다 연결을 다시 훑거나 HashSet/버킷을 할당하지 않는다. 항목별 비트만 제거하므로 공유 ID 배열의 다른 수신자·후보는 변하지 않는다. 완료/파괴/빈 후보의 초과 비트 배열은 pool에 반환한다. 사용자 hook/채널 예외로 tick이 중단돼도 `finally`가 현재·미처리 후보를 해제하며, `_queue`에 실제 남겨 둔 후보의 소유권만 보존한다. 반환 뒤 참조를 null로 만들어 후속 정리의 중복 반환을 막고, 큐가 참조 중인 배열은 반환하거나 지우지 않는다. 송신은 정렬된 공유 ID와 현재 연결을 단방향 cursor로 병합하므로 후보당 O(이전 수신 ID 수+현재 연결 수)이며 개별 무효화만 이진 검색을 유지한다. 추가 공간은 tick 공유 O(N)+후보별 O(N/64)이다. 기존 HashSet 대신 메모리를 줄이며, 송신 시 현재 relevancy hook/거리 검사를 다시 하는 CPU 비용은 누출 차단에 필요하다. ready 캐치업은 첫 기준선 전에 보고 연결의 기존 큐 전달을 한 번에 제거하고, 객체별 기준선에서는 중복 검사하지 않는다(큐 순회 1회/캐치업). 단일 객체 가시성 재진입·`BroadcastSpawn`은 해당 netId/connId만 제거하는 선형 검사를 유지한다(전환이 매우 잦고 큐가 크면 별도 인덱싱 검토; 이번 범위 밖).
 
+## 연결 승인 콜백 (0.10.0 — ADR-0047)
+
+게임이 자격 증명을 검사해 접속을 승인/거부하는 확장점(CON-002). 클라 옵션 `ConnectionCredential`이 설정되면 와이어 7 버전 선언에 자격 증명 문자열이 동봉된다(페이로드 `[version][credential]` — 상한 4096바이트, 초과는 파싱 전 조용 폐기; 구 클라는 문자열 1개라 잔여 0으로 credential="" 처리). 서버 옵션 `ConnectionApprover`가 설정되면 승인 흐름이 확장된다: 버전 수용 → **승인 콜백**(메인 스레드 시작, `UniNetApprovalRequest{ConnId, ProtocolVersion, Credential}` 전달, `Task<bool>` — DB/HTTP 검증 가능) → true면 기존 순서(대기 씬→재배정→캐치업→ClientConnected), false·예외면 `DisconnectClient(ApprovalRejected)`로 마감(클라 `ClientDisconnected(ApprovalRejected)` 관측). 콜백 대기 중 연결은 CON-001 유예 상태를 그대로 유지한다(게임 데이터 전면 유보·게임 ServerRpc 게이트). await 재개는 thread pool → `QueueOnMain`으로 메인 복귀 — 상태 변경은 메인 계약 유지. **게임 콜백의 반환 Task는 메인 스레드 펌프와 무관하게 완료 가능해야 한다**(DB/HTTP I/O형 — 내부 await에 `ConfigureAwait(false)` 권장; 메인 캡처 continuation은 메인이 막혀 있으면 완료가 굶는다). 타임아웃: `VersionDeclareTimeoutMs`는 선언+콜백 완료까지의 총 예산 — 스윕이 콜백 진행 중 연결도 VersionMismatch 킥으로 마감(무기한 유보 없음; 느린 인증 게임은 상향). 재접속(ResumeSession) 재선언도 콜백 1회 통과 — 게임이 재검증하거나 통과시킨다. 콜백 미설정(null, 기본)은 CON-001 동작과 완전히 동일하고 구 클라와 양방향 호환이다.
+
 ## 자발 퇴장 통보와 유예 즉시 폐기 (0.9.0 — ADR-0046)
 
 자발적 `UniNetManager.ClientStop()`은 재개 토큰을 소각하는 계약(재개 불가)이므로, 유예 세션을 저장하면 재개 불가능한 세션이 유예 창 동안 고아로 잔존해 신규 입양을 막았다. 이제 ClientStop은 transport close 직전 **시스템 와이어 15 `IntentionalLeave`(C→S, 빈 페이로드)**를 발사하고 서버는 이 통보를 받은 연결의 유예 저장을 생략한다 — 대신 토큰을 툼스톤(`UnknownToken`, 수명 = 폐기+유예 창)하고 소유권을 즉시 재배정해 후발 클라가 고아를 즉시 입양한다. 통보는 전송 Task 250ms 유계 대기 + 150ms 드레인 창(ADR-0027 선례)으로 신뢰 전달되며, close 레이스 유실 시 기존 유예 동작으로 강등된다(무해). 구 클라(미통보)는 기존 유예 동작 그대로 — 하위 호환 회귀 0. 낡은 wire 10 재제시는 `SessionNotFound` (재시도 창) 대신 `UnknownToken`(즉시 종결)로 정확히 끝난다. `IntentionalLeaves` 카운터로 도달을 관측할 수 있다.
@@ -122,6 +126,7 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - 2026-10-12: EditMode 87/87 · PlayMode 22/22 (MCP 에디터) · 2-프로세스 킥·버전 왕복 PASS
 
 ## 변경 이력
+- 2026-10-21 — ADR-0047 연결 승인 콜백: 와이어 7 페이로드 확장 `[version][credential]`(조건부 읽기로 구 클라 호환)·`UniNetEndpointOptions.ConnectionApprover/ConnectionCredential`·`UniNetDisconnectReason.ApprovalRejected = 6`·콜백 대기 중 CON-001 유예 상태 재사용·`VersionDeclareTimeoutMs` 총예산 재사용. 0.10.0 (CON-002 CLOSED — EditMode 221/221·PlayMode 35/35·실RUDP 승인/거부/초과페이로드 PASS·리뷰 r11→r12 CLEAN)
 - 2026-10-21 — ADR-0046 자발 퇴장 통보: 시스템 와이어 15 `IntentionalLeave`(C→S) 신설 — ClientStop이 close 직전 통보, 서버는 유예 저장 생략+토큰 툼스톤+소유권 즉시 재배정. 전송 신뢰성: SendRPC Task 250ms 유계 대기 + 150ms 드레인 창. 구 클라 호환(미통보 = 기존 유예). 0.9.0 (REC-002 CLOSED — 실루프백 3/3·Arena 진단 PASS·전수 209/32 PASS)
 
 - 2026-10-20 — 리뷰 5: 승인된 씬 유보 연결에 파괴 ID를 보관하고 등록 후 유효 보고에서 부재 ID만 기준선 전에 1회 전달. 같은 netId 재등록은 현재 캐치업으로 대체하고 disconnect는 메인 큐에서 폐기한다. EditMode 3케이스·headless 5+기존 22종·음성 대조 검증, Unity 실행 및 독립 리뷰는 별도 게이트. README/소비자 스킬도 동기화.

@@ -24,5 +24,8 @@ namespace UniNet.Core
 
         /// <summary>The server rejected the connection because the client's declared protocol version does not match (ADR-0028 version handshake).</summary>
         VersionMismatch = 5,
+
+        /// <summary>The server's game approval callback rejected the connection (CON-002 credential gate — the game decided this credential is not admitted). Explicit value: existing reasons are never renumbered — a legacy client casting the unknown 6 falls through to its generic-kick handling (no functional loss).</summary>
+        ApprovalRejected = 6,
     }
 }

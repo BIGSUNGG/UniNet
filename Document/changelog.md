@@ -24,6 +24,14 @@
 - `UpdateVisibility`에서 해제·미승인·씬 유보 연결을 가시성 기록 전에 제외해 `SendBaseline`의 owner+spawn 누출과 미수신 상태의 허위 가시성 기록을 차단했다. 무송신 단언을 유지하고 배치 차단·ready 후 동적 기준선 복구 및 차단 연결 3종의 기록 없음 회귀를 보강했다.
 - 씬 게이트 회귀는 A와 B 모두 유효 보고하도록 전제를 바로잡고, 생성 수신기 재생 회귀는 메인 큐 적용 후 Score를 단언하도록 수정했다. Unity 재실행·독립 리뷰·릴리스는 아직 별도 검증 대상이다.
 
+### Added (게임 접속 승인 콜백 — CON-002, 패키지 0.10.0)
+
+- **게임 접속 승인 콜백 확장점** ([[0047-게임-접속-승인-콜백-와이어7-자격증명]]·[[features/connection-lifecycle|connection-lifecycle]]) — 서버가 버전만 검사하고 게임 자격 증명을 검사할 방법이 없었다. 클라 옵션 `ConnectionCredential`이 와이어 7 선언에 자격 증명을 동봉(페이로드 `[version][credential]` 확장 — 구 클라 잔여 0으로 호환), 서버 옵션 `ConnectionApprover`(`Task<bool>` 콜백)이 승인/거부를 게임에 위임
+- **거부 사유 `ApprovalRejected = 6`** — 기존 킥 경로(공지 플러시→150ms 유예→폐쇄) 재사용, 클라 `ClientDisconnected` 관측. 열거값 명시 지정(재번호 없음 — 비파괴)
+- **콜백 대기 중 = CON-001 유예 상태 재사용** — 게임 데이터 전면 유보·게임 ServerRpc 게이트 자동 적용. `ApprovalRequested` 플래그로 콜백 연결당 1회(재선언 멱등). `VersionDeclareTimeoutMs`는 선언+콜백 완료 총예산 — 스윕이 hang 콜백도 VersionMismatch 킥으로 마감
+- **전달 신뢰성·호환** — 와이어 7 페이로드 상한 4096바이트(파싱 전 조용 폐기 — ADR-0041 선례), 잔여 바이트 조건부 읽기로 구 클라 호환. 생성기 0.2.13. 콜백 미설정 서버는 CON-001 동작과 완전 동일
+- **테스트** — EditMode +11(승인 순서 유지·거부 킥+유예 없음·미설정 불변·검사 비활성+approver 조합·콜백 인자 단언·비동기 대기 중 유보·예외 LogFault+거부·재선언 멱등·대기 중 RPC 게이트·총예산 초과 킥·페이로드 상한 계약), PlayMode +3(실RUDP credential 승인 왕복·ApprovalRejected 수신·초과 페이로드 조용 폐기+연결 유지)
+
 ### Added (자발 퇴장 통보 — REC-002, 패키지 0.9.0)
 
 - **자발 퇴장 시 유예 세션 즉시 폐기** ([[0046-자발-퇴장-통보-와이어15-IntentionalLeave-유예-세션-즉시-폐기]]·[[features/connection-lifecycle|connection-lifecycle]]) — 자발적 `ClientStop`은 재개 토큰을 소각하므로 유예 저장은 재개 불가능한 고아 세션을 유예 창 동안 만들어 신규 입양을 막았다. 이제 ClientStop이 close 직전 시스템 **와이어 15 `IntentionalLeave`(C→S)**를 발사하고 서버는 유예 저장을 생략, 토큰 툼스톤(`UnknownToken`)과 소유권 즉시 재배정으로 후발 클라의 즉시 입양을 허용한다

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UniNet.Core.Hosting;
 using UniNet.Unity;
@@ -225,6 +226,273 @@ namespace UniNet.Tests
             UniNetEnvironment.PumpMain();
             Assert.IsTrue(GetConn(server, attach.Result).WelcomeSent, "Welcome 송신 (메인 큐)");
             Assert.IsFalse(double.IsNaN(GetConn(server, attach.Result).AttachedAtClock), "메인 큐에서 타임아웃 스탬프 — Welcome과 함께 개시");
+        }
+
+        // ── CON-002 — 게임 접속 승인 콜백 (connection approval callback, ADR-0047) ──
+
+        [Test]
+        public void 승인_콜백이_true면_기존_승인_순서대로_해제된다()
+        {
+            var server = new NetworkServer();
+            server.ConnectionApprover = r => Task.FromResult(true);
+            UniNetEnvironment.SetServer(server);
+            var player = NewSceneObject(server, "cap2-approve");
+
+            int connected = 0;
+            server.ClientConnected += _ => connected++;
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+            Assert.IsFalse(server.IsVersionApproved(ch.UniNetConnId), "승인 콜백 대기 — 유보 유지");
+
+            Assert.IsTrue(server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "arena-demo"), "선언 수용");
+            UniNetEnvironment.PumpMain();   // RunApprovalAsync → (동기 완료) → FinishApproval → RunPostApproval
+            UniNetEnvironment.PumpMain();   // await 재개가 큐를 한 번 더 탈 경우를 위한 안전 펌프
+
+            Assert.IsTrue(server.IsVersionApproved(ch.UniNetConnId), "콜백 승인");
+            Assert.AreEqual(1, connected, "ClientConnected — 콜백 완료 후 발화");
+            Assert.AreEqual(ch.UniNetConnId, server.GetOwner(player.NetId), "소유권 재배정 — 콜백 완료 후");
+            var replicates = ReplicatesOf(ch, player.NetId);
+            Assert.GreaterOrEqual(replicates.Count, 1, "캐치업 실행");
+            int ownerIdx = ch.Order.FindIndex(e => e.StartsWith("owner:" + player.NetId + ":"));
+            int stateIdx = ch.Order.FindIndex(e => replicates.Contains(e));
+            Assert.Less(ownerIdx, stateIdx, "소유권 통보가 상태보다 먼저 (기존 순서 계약 유지)");
+        }
+
+        [Test]
+        public void 승인_콜백이_false면_ApprovalRejected로_킥되고_게임_노출이_없다()
+        {
+            var server = new NetworkServer { SessionGraceSeconds = 10 };
+            server.ConnectionApprover = r => Task.FromResult(false);
+            UniNetEnvironment.SetServer(server);
+            var player = NewSceneObject(server, "cap2-reject");
+
+            int connected = 0, disconnected = 0;
+            server.ClientConnected += _ => connected++;
+            server.ClientDisconnected += _ => disconnected++;
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "bad-cred");
+            UniNetEnvironment.PumpMain();
+            UniNetEnvironment.PumpMain();
+
+            Assert.AreEqual(1, ch.DisconnectNotices.Count, "거부 킥 — 공지 1회");
+            Assert.AreEqual(UniNet.Core.UniNetDisconnectReason.ApprovalRejected, ch.DisconnectNotices[0], "거부 사유");
+            Assert.AreEqual(0, connected, "ClientConnected 없음");
+            Assert.AreEqual(0, server.GetOwner(player.NetId), "소유권 배정 없음");
+
+            server.DetachConnection(ch);   // 킥 후 해제 관측 — never-approved 경로
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(0, disconnected, "미승인 연결 — ClientDisconnected 미발화 (게임 노출·유예 저장 없음)");
+        }
+
+        [Test]
+        public void 승인_콜백이_없으면_CON001_동작이_불변이다()
+        {
+            var server = new NetworkServer();   // ConnectionApprover == null (기본)
+            UniNetEnvironment.SetServer(server);
+            int connected = 0;
+            server.ClientConnected += _ => connected++;
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+            Assert.IsFalse(server.IsVersionApproved(ch.UniNetConnId), "미선언 — 미승인 (CON-001)");
+
+            Assert.IsTrue(server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, ""), "선언 수용 (자격 증명 빈 문자열)");
+            UniNetEnvironment.PumpMain();
+            Assert.IsTrue(server.IsVersionApproved(ch.UniNetConnId), "콜백 없음 — 선언 즉시 승인 (CON-001)");
+            Assert.AreEqual(1, connected, "즉시 해제 — 기존 동작");
+        }
+
+        [Test]
+        public void 검사_비활성과_승인_콜백_조합에서는_선언까지_유보되고_스윕이_활성이다()
+        {
+            var server = new NetworkServer { ExpectedProtocolVersion = string.Empty, VersionDeclareTimeoutMs = 1000 };
+            server.ConnectionApprover = r => Task.FromResult(r.Credential == "tok");
+            UniNetEnvironment.SetServer(server);
+
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+            Assert.IsFalse(server.IsVersionApproved(ch.UniNetConnId), "검사 비활성이어도 콜백 있으면 선언 대기 (즉시 승인 아님)");
+
+            Assert.IsTrue(server.OnClientVersionDeclared(ch.UniNetConnId, "inactive-check-ignores-version", "tok"), "검사 비활성 — 버전 무관 수용");
+            UniNetEnvironment.PumpMain();
+            UniNetEnvironment.PumpMain();
+            Assert.IsTrue(server.IsVersionApproved(ch.UniNetConnId), "콜백 게이트 통과 — 승인");
+
+            var silent = new RecordingChannel();
+            server.AttachConnection(silent);
+            UniNetEnvironment.PumpMain();
+            server.SweepUnapprovedConnections(UniNetTime.LocalClock() + 2.0);   // 검사 비활성+콜백 조합 — 스윕 활성
+            Assert.AreEqual(1, silent.DisconnectNotices.Count, "무선언 연결 — 스윕 킥");
+            Assert.AreEqual(UniNet.Core.UniNetDisconnectReason.VersionMismatch, silent.DisconnectNotices[0], "킥 사유");
+        }
+
+        [Test]
+        public void 콜백은_선언_버전과_자격증명을_그대로_전달받는다()
+        {
+            var server = new NetworkServer();
+            UniNetApprovalRequest seen = default;
+            server.ConnectionApprover = r => { seen = r; return Task.FromResult(true); };
+            UniNetEnvironment.SetServer(server);
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "tok-123");
+            UniNetEnvironment.PumpMain();
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(ch.UniNetConnId, seen.ConnId, "connId 전달");
+            Assert.AreEqual(server.ExpectedProtocolVersion, seen.ProtocolVersion, "선언 버전 전달");
+            Assert.AreEqual("tok-123", seen.Credential, "자격 증명 전달");
+
+            // 무증명 경로 (구버전 허브·2인자 오버로드) — 빈 문자열로 정규화된다
+            var ch2 = new RecordingChannel();
+            server.AttachConnection(ch2);
+            UniNetEnvironment.PumpMain();
+            UniNetApprovalRequest seen2 = default;
+            server.ConnectionApprover = r => { seen2 = r; return Task.FromResult(true); };
+            server.OnClientVersionDeclared(ch2.UniNetConnId, server.ExpectedProtocolVersion);   // 2인자 — credential 없음
+            UniNetEnvironment.PumpMain();
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(string.Empty, seen2.Credential, "무증명 — 빈 문자열 정규화");
+        }
+
+        [Test]
+        public void 비동기_승인_대기_중에는_게임_데이터가_풀리지_않는다()
+        {
+            var server = new NetworkServer();
+            server.ConnectionApprover = async r => { await Task.Delay(80).ConfigureAwait(false); return true; };   // ConfigureAwait: context-free I/O model — a main-thread-captured continuation would starve while this EditMode test blocks the main thread
+            UniNetEnvironment.SetServer(server);
+            var player = NewSceneObject(server, "cap2-async");
+            int connected = 0;
+            server.ClientConnected += _ => connected++;
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "cred");
+            UniNetEnvironment.PumpMain();   // 콜백 시작 — await 대기 진입
+            Assert.AreEqual(0, connected, "대기 중 ClientConnected 없음");
+            Assert.AreEqual(0, ReplicatesOf(ch, player.NetId).Count, "대기 중 캐치업·복제 없음");
+
+            for (int i = 0; i < 200 && !server.IsVersionApproved(ch.UniNetConnId); i++)
+            {
+                System.Threading.Thread.Sleep(10);   // 테스트 스레드 = 메인 스레드 — 드라이버 Update 대역
+                UniNetEnvironment.PumpMain();
+            }
+            Assert.IsTrue(server.IsVersionApproved(ch.UniNetConnId), "완료 후 승인");
+            Assert.AreEqual(1, connected, "완료 후 ClientConnected");
+            Assert.GreaterOrEqual(ReplicatesOf(ch, player.NetId).Count, 1, "완료 후 캐치업");
+        }
+
+        [Test]
+        public void 콜백_예외는_LogFault로_관측되고_ApprovalRejected로_마감된다()
+        {
+            var server = new NetworkServer();
+            server.ConnectionApprover = r => Task.FromException<bool>(new InvalidOperationException("승인 검증기 폭주"));
+            UniNetEnvironment.SetServer(server);
+            var faults = new List<Exception>();
+            var prev = UniNetEnvironment.LogFault;
+            UniNetEnvironment.LogFault = ex => faults.Add(ex);
+            try
+            {
+                int connected = 0;
+                server.ClientConnected += _ => connected++;
+                var ch = new RecordingChannel();
+                server.AttachConnection(ch);
+                UniNetEnvironment.PumpMain();
+
+                server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "cred");
+                UniNetEnvironment.PumpMain();
+                UniNetEnvironment.PumpMain();
+
+                Assert.AreEqual(1, faults.Count, "LogFault 관측");
+                Assert.AreEqual(1, ch.DisconnectNotices.Count, "거부 킥");
+                Assert.AreEqual(UniNet.Core.UniNetDisconnectReason.ApprovalRejected, ch.DisconnectNotices[0], "킥 사유");
+                Assert.AreEqual(0, connected, "승인 없음");
+            }
+            finally { UniNetEnvironment.LogFault = prev; }
+        }
+
+        [Test]
+        public void 승인_대기_중_재선언은_콜백을_한_번만_호출한다()
+        {
+            var server = new NetworkServer();
+            int calls = 0;
+            server.ConnectionApprover = r => { calls++; return Task.FromResult(true); };
+            UniNetEnvironment.SetServer(server);
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+
+            Assert.IsTrue(server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "c1"), "1차 선언");
+            Assert.IsTrue(server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "c2"), "재선언 수용 (멱등)");
+            UniNetEnvironment.PumpMain();
+            UniNetEnvironment.PumpMain();
+
+            Assert.AreEqual(1, calls, "콜백 1회 — 게임 판단은 연결당 1회");
+            Assert.IsTrue(server.IsVersionApproved(ch.UniNetConnId), "승인");
+        }
+
+        [Test]
+        public void 승인_대기_중_게임_ServerRpc는_승인_게이트에_걸린다()
+        {
+            var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var server = new NetworkServer();
+            server.ConnectionApprover = r => pending.Task;
+            UniNetEnvironment.SetServer(server);
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "cred");
+            UniNetEnvironment.PumpMain();   // 콜백 대기 진입
+
+            Assert.IsFalse(server.IsVersionApproved(ch.UniNetConnId), "콜백 대기 — 미승인");
+            Assert.AreEqual(0, server.UnapprovedServerRpcDrops, "초기 카운터 0");
+            server.ReportUnapprovedServerRpc(ch.UniNetConnId);   // 생성 디스패치 게이트가 호출하는 지점
+            Assert.AreEqual(1, server.UnapprovedServerRpcDrops, "대기 중 RPC 기각 관측");
+
+            pending.SetResult(true);   // RunContinuationsAsynchronously — the verdict lands on the thread pool, then QueueOnMain carries it back
+            for (int i = 0; i < 100 && !server.IsVersionApproved(ch.UniNetConnId); i++)
+            {
+                System.Threading.Thread.Sleep(10);   // pump until the thread-pool continuation → QueueOnMain round trip lands
+                UniNetEnvironment.PumpMain();
+            }
+            Assert.IsTrue(server.IsVersionApproved(ch.UniNetConnId), "지연된 승인 적용");
+        }
+
+        [Test]
+        public void 승인_콜백_대기도_총예산을_초과하면_VersionMismatch로_마감된다()
+        {
+            var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);   // 영원히 끝나지 않는 검증기 (hang)
+            var server = new NetworkServer { VersionDeclareTimeoutMs = 1000 };
+            server.ConnectionApprover = r => pending.Task;
+            UniNetEnvironment.SetServer(server);
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            UniNetEnvironment.PumpMain();
+
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion, "cred");
+            UniNetEnvironment.PumpMain();
+            Assert.AreEqual(0, ch.DisconnectNotices.Count, "대기 중 — 킥 없음");
+
+            server.SweepUnapprovedConnections(UniNetTime.LocalClock() + 2.0);   // 선언+승인 총예산 초과
+            Assert.AreEqual(1, ch.DisconnectNotices.Count, "콜백 hang — 스윕 마감 (무기한 유보 없음)");
+            Assert.AreEqual(UniNet.Core.UniNetDisconnectReason.VersionMismatch, ch.DisconnectNotices[0], "킥 사유");
+        }
+
+        [Test]
+        public void 와이어7_페이로드_상한_계약은_4096바이트다()
+        {
+            // 생성 서버 핸들러가 파싱 전에 이 상수로 초과 페이로드를 조용히 폐기한다 (미인증 경로, ADR-0041 선례).
+            // EditMode는 생성 핸들러를 직접 호출할 수 없어 (세션 팩토리 필요) 상수 계약만 고정한다 — 폐기 동작은
+            // 생성기 0.2.13 DLL 재배포 후 실RUDP 경로가 담당한다.
+            Assert.AreEqual(4096, NetworkServer.MaxVersionDeclarationPayloadBytes, "선언 페이로드 상한");
         }
 
         private static NetworkServer.ServerConnection GetConn(NetworkServer server, long connId)

@@ -91,6 +91,7 @@
 - [[0044-재개-결과-통보와-자동-재시도]] — REC-001: ResumeSession 결과 열거형·wire 14 재개 결과 통보·소비/만료 토큰 툼스톤·SessionNotFound 자동 재시도(0.5s 간격) (0.7.0, 제너레이터 0.2.10)
 - [[0045-씬-전환-잔여-현재-씬-전달-레디-보고-전-캐치업-유보-낡은-보고-차단]] — SCN-001/002/003: 현재 씬 추적·레디 보고 전 캐치업 유보·낡은 보고 차단 (0.8.0, 와이어 불변·생성기 0.2.11 세대 캡처)
 - [[0046-자발-퇴장-통보-와이어15-IntentionalLeave-유예-세션-즉시-폐기]] — REC-002: 시스템 와이어 15 `IntentionalLeave`(C→S) 신설 — ClientStop이 close 직전 통보, 서버는 유예 저장 생략+토큰 툼스톤+즉시 재배정. ClientStop 유계 플러시 창(전송 Task 250ms+드레인 150ms). 구 클라 호환 (0.9.0)
+- [[0047-게임-접속-승인-콜백-와이어7-자격증명]] — CON-002: 와이어 7 페이로드 확장 `[version][credential]`(조건부 읽기로 구 클라 호환)·`UniNetEndpointOptions.ConnectionApprover/ConnectionCredential`·`UniNetDisconnectReason.ApprovalRejected = 6`·콜백 대기 중 CON-001 유예 상태 재사용·`VersionDeclareTimeoutMs` 총예산 재사용 (0.10.0)
 
 ### deployment — 배포
 
@@ -102,6 +103,7 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+- 2026-10-21 — **CON-002 v0.10.0 구현 — 게임 접속 승인 콜백 확장점** (ADR-0047·[[features/connection-lifecycle]] 갱신. 클라 옵션 `ConnectionCredential`이 와이어 7 선언에 자격 증명 동봉(페이로드 `[version][credential]` 확장 — 구 클라 잔여 0 호환·상한 4096바이트 파싱 전 폐기), 서버 옵션 `ConnectionApprover`(`Task<bool>` 콜백, 메인 시작·비동기 검증)이 승인/거부를 게임에 위임. 거부는 기존 킥 경로+`ApprovalRejected = 6`(열거값 명시·재번호 없음 — 비파괴). 콜백 대기 중 CON-001 유예 상태 재사용(게임 데이터 전면 유보·RPC 게이트), `VersionDeclareTimeoutMs` 총예산 스윕이 hang 콜백 마감. 재접속 재선언도 콜백 1회 통과. 생성기 0.2.13. **검증·배포 완료**: EditMode 221/221(신규 11종)·PlayMode 35/35(신규 3종)·실RUDP 승인/거부/초과페이로드 PASS·리뷰 r11(ISSUES — Core 디버그 트레이스 잔존 등)→r12 CLEAN(zai/glm-5.3-flash)·커밋 후 [v0.10.0 Release] 배포 — CON-002 CLOSED)
 - 2026-10-21 — **REC-002 v0.9.0 구현 — 자발 퇴장 통보와 유예 즉시 폐기** (ADR-0046·[[features/connection-lifecycle]] 갱신. 자발적 `ClientStop`은 재개 토큰을 소각하므로 유예 저장은 고아 세션만 남겼다 — ClientStop이 close 직전 시스템 **와이어 15 `IntentionalLeave`(C→S)**를 발사하고 서버는 유예 저장 생략+토큰 툼스톤(`UnknownToken`)+소유권 즉시 재배정으로 후발 클라의 즉시 입양을 허용. 전달 신뢰성: 전송 Task 250ms 유계 대기+150ms 드레인 창(사용자 승인 계약 — 미적용 시 실루프백 간헐 유실 관측). 구 클라 호환(미통보=기존 유예). 생성기 0.2.12. **검증·배포 완료**: EditMode 210/210·PlayMode 32/32·실루프백 3/3 연속·Arena 진단 PASS·음성 대조 RED 확인·리뷰 r9→r10 CLEAN(zai/glm-5.3-flash)·커밋 `87a3467` → [v0.9.0 Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.9.0)·CI 성공·신규 설치 PASS — REC-002 CLOSED)
 
 - 2026-10-20 — **SCN 리뷰 5: 유보된 파괴 전달 복구** — 승인된 씬 유보 연결의 파괴 ID를 보관, 등록 후 유효 ready에서 여전히 부재한 ID만 소유권/캐치업 기준선 전에 1회 전달. 같은 netId 재등록은 캐치업으로 대체, disconnect는 메인 큐에서 폐기. EditMode +3케이스(총 34, 부모 Unity 34/34 EditMode·1/1 PlayMode PASS)·순차 dotnet 빌드/패키지 검증·headless 5+기존 22종/음성 대조 PASS. 필수 독립 reviewer CLEAN·배포는 미완료, 커밋/릴리스 없음. [[features/connection-lifecycle]]·[[research/commercial-netcode-audit]] 참조.

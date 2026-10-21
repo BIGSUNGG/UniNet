@@ -38,6 +38,17 @@ namespace Arena
             {
                 // ADR-0028 — the demo declares its build version on both ends (mismatched builds reject with a VersionMismatch kick)
                 var options = new UniNet.Core.Hosting.UniNetEndpointOptions { ProtocolVersion = ArenaConfig.ProtocolVersion };
+                // CON-002 — demo approval gate (ADR-0047): the server admits only clients presenting a credential,
+                // and the client presents one. One options object serves both ends — each side reads only its own
+                // field (HostAsync passes it to ServerAsync and ClientAsync). Games swap the demo predicate for
+                // real token/DB validation; the callback runs on the main thread.
+                options.ConnectionApprover = request =>
+                {
+                    bool admit = !string.IsNullOrEmpty(request.Credential);
+                    Debug.Log($"[UNINET] 접속 승인 콜백 — connId={request.ConnId} credentialProvided={request.Credential.Length > 0} → {(admit ? "승인" : "거부 (ApprovalRejected)")}");
+                    return System.Threading.Tasks.Task.FromResult(admit);
+                };
+                options.ConnectionCredential = "arena-demo";
                 switch (role)
                 {
                     case ArenaRole.Server:

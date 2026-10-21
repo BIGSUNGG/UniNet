@@ -84,6 +84,24 @@ namespace UniNet.Core.Hosting
         /// with a VersionMismatch kick. Empty string disables the check.</summary>
         public string ExpectedProtocolVersion { get; set; } = UniNetInfo.Version;
 
+        /// <summary>
+        /// CON-002 — upper bound of a well-formed wire-7 (version declaration) payload: int32 length prefixes plus the version and
+        /// credential strings. The generated server handler rejects anything larger BEFORE parsing (quiet drop — unauthenticated
+        /// path, ADR-0041 precedent), so a forged length prefix can never drive allocation (MessageProtocol strings are
+        /// int32-length-prefixed UTF8 and the reader validates the declared length against the buffer before allocating).
+        /// </summary>
+        public const int MaxVersionDeclarationPayloadBytes = 4096;
+
+        /// <summary>
+        /// CON-002 — game approval callback, injected from UniNetEndpointOptions.ConnectionApprover by UniNetManager.ServerAsync
+        /// (same pattern as <see cref="ExpectedProtocolVersion"/>). When set, every connection additionally passes this gate after
+        /// its wire-7 declaration: true approves (the held CON-001 attach work runs), false kicks with
+        /// <see cref="UniNetDisconnectReason.ApprovalRejected"/>. Null (default) keeps the exact CON-001 behavior — no callback,
+        /// no credential requirement. The callback runs on the main thread; its time budget is
+        /// <see cref="VersionDeclareTimeoutMs"/> (a hung callback is swept like an undeclared connection — no indefinite holds).
+        /// </summary>
+        public UniNetConnectionApprover ConnectionApprover { get; set; }
+
         /// <summary>Server-side UniNet traffic counters (ADR-0029) — payload bytes/packets sent by this server. Per-connection view: <see cref="ServerConnection.RttMs"/>.</summary>
         public UniNetTrafficCounters TrafficStats { get; } = new();
 
@@ -263,6 +281,20 @@ namespace UniNet.Core.Hosting
                 internal set => System.Threading.Volatile.Write(ref _versionApproved, value ? 1 : 0);
             }
             private int _versionApproved;
+
+            /// <summary>
+            /// CON-002 — the approval callback has been dispatched for this connection (its declaration was accepted and the
+            /// game gate is queued or pending). Guards against duplicate callback dispatch: a re-declaration while the
+            /// callback awaits (or after it approved) is an idempotent no-op — the game's verdict must not be requested
+            /// twice per connection. Volatile-backed: written on the dispatch thread (wire-7 handler), read on the main
+            /// thread (re-declaration idempotency, same pattern as <see cref="VersionApproved"/>).
+            /// </summary>
+            public bool ApprovalRequested
+            {
+                get => System.Threading.Volatile.Read(ref _approvalRequested) != 0;
+                internal set => System.Threading.Volatile.Write(ref _approvalRequested, value ? 1 : 0);
+            }
+            private int _approvalRequested;
 
             /// <summary>Clock reading stamped on the main queue when the Welcome is sent (UniNetTime.LocalClock domain — same as the grace sweep) — NaN until then; drives the undeclared-connection timeout (CON-001). Stamped off the attach thread on purpose: Unity's clock throws off the main thread.</summary>
             public double AttachedAtClock { get; internal set; } = double.NaN;
@@ -475,7 +507,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>Attaches a new connection — schedules the Welcome; the remaining attach work (ownership reassignment, catch-up, the ClientConnected event) runs at approval (CON-001): immediately when version checking is inactive (empty <see cref="ExpectedProtocolVersion"/>), otherwise once the client's wire-7 declaration matches. An undeclared connection receives no game data and is swept by <see cref="SweepUnapprovedConnections"/>.</summary>
+        /// <summary>Attaches a new connection — schedules the Welcome; the remaining attach work (ownership reassignment, catch-up, the ClientConnected event) runs at approval (CON-001): immediately when version checking is inactive (empty <see cref="ExpectedProtocolVersion"/>) AND no <see cref="ConnectionApprover"/> is set, otherwise once the client's wire-7 declaration matches and — with an approver — the game approval callback accepts it. An undeclared or unapproved connection receives no game data and is swept by <see cref="SweepUnapprovedConnections"/>.</summary>
         public long AttachConnection(IUniNetSystemChannel channel)
         {
             lock (_gate)
@@ -486,11 +518,14 @@ namespace UniNet.Core.Hosting
                 // CON-001 — AttachedAtClock stays NaN here: this section runs on the DRPC ACCEPT thread and
                 // UniNetTime.LocalClock is Unity's Time.unscaledTimeAsDouble, which throws off the main thread —
                 // stamping here would abort the attach entirely. The queued main lambda stamps it instead.
-                if (string.IsNullOrEmpty(ExpectedProtocolVersion))
+                if (string.IsNullOrEmpty(ExpectedProtocolVersion) && ConnectionApprover == null)
                 {
-                    conn.VersionApproved = true;   // CON-001 — checking inactive: immediate synchronous approval, exact legacy behavior
+                    conn.VersionApproved = true;   // CON-001 — checking inactive and no game gate: immediate synchronous approval, exact legacy behavior
                     _approvedConns[conn.ConnId] = 1;   // hot-path index — kept in sync with the approval flag
                 }
+                // CON-002 — an approver keeps the hold until the wire-7 declaration (version + credential) passes the
+                // callback, even when version checking itself is inactive: the declaration is the only moment the
+                // credential arrives, so waiting for it is what makes the gate reachable on every connection.
                 _connections.Add(conn);
                 var connId = conn.ConnId;
                 var sessionToken = conn.SessionToken;
@@ -613,23 +648,49 @@ namespace UniNet.Core.Hosting
             lock (_gate) return _connections.ToArray();
         }
 
-        /// <summary>Applies a client's version declaration (ADR-0028 wire 7 — generated server hub). Returns whether the version was
-        /// accepted; a mismatch kicks the connection with the VersionMismatch reason (the generated hub logs the rejection).
-        /// CON-001: an accepted declaration approves the connection and releases the held attach work (main queue); a
-        /// redeclaration by an already-approved connection is idempotent (accepted, nothing re-runs).</summary>
+        /// <summary>Applies a client's version declaration (ADR-0028 wire 7 — generated server hub) without a game credential.
+        /// Kept for public-API compatibility (pre-CON-002 generated hubs and manual callers); the credential reads as empty.</summary>
         public bool OnClientVersionDeclared(long connId, string version)
+            => OnClientVersionDeclared(connId, version, string.Empty);
+
+        /// <summary>Applies a client's version declaration with its game credential (CON-002, wire 7 — generated server hub).
+        /// Returns whether the declaration itself was accepted; a version mismatch kicks with VersionMismatch (the generated
+        /// hub logs the rejection). CON-001: an accepted declaration approves the connection and releases the held attach
+        /// work (main queue); a redeclaration by an already-approved connection is idempotent (accepted, nothing re-runs).
+        /// CON-002: with a <see cref="ConnectionApprover"/> set, the accepted declaration instead queues the game approval
+        /// callback on the main thread — approval (and the held work) waits for its verdict, a false verdict kicks with
+        /// ApprovalRejected, and redeclarations while the callback is queued/pending never re-dispatch it.</summary>
+        public bool OnClientVersionDeclared(long connId, string version, string credential)
         {
             if (string.IsNullOrEmpty(ExpectedProtocolVersion) || version == ExpectedProtocolVersion)
             {
                 if (!string.IsNullOrEmpty(ExpectedProtocolVersion))
                 {
                     foreach (var conn in SnapshotConnections())
-                        if (conn.ConnId == connId && !conn.Disconnected && !conn.VersionApproved)
+                        if (conn.ConnId == connId && !conn.Disconnected && !conn.VersionApproved && ConnectionApprover == null)
                         {
                             conn.VersionApproved = true;
                             _approvedConns[conn.ConnId] = 1;   // hot-path index — kept in sync with the approval flag
                             UniNetEnvironment.QueueOnMain(() => RunPostApproval(conn));   // dispatch thread — held work runs in order on the main queue
                         }
+                }
+                var approver = ConnectionApprover;
+                if (approver != null)
+                {
+                    ServerConnection target = null;
+                    foreach (var conn in SnapshotConnections())
+                        if (conn.ConnId == connId && !conn.Disconnected) { target = conn; break; }
+                    // A detached connection has nothing to approve (the callback would no-op); ApprovalRequested makes a
+                    // redeclaration while the callback is queued/pending — or after it already approved — an idempotent no-op,
+                    // so the game sees exactly one request per connection (the verdict must not be solicited twice).
+                    if (target != null && !target.Disconnected && !target.ApprovalRequested && !target.VersionApproved)
+                    {
+                        target.ApprovalRequested = true;   // dispatch-thread write; read on the main queue and by later declarations
+                        UniNetEnvironment.QueueOnMain(() => RunApprovalAsync(target, version, credential));
+                    }
+                    else
+                    {
+                    }
                 }
                 return true;
             }
@@ -638,6 +699,47 @@ namespace UniNet.Core.Hosting
                 UniNetEnvironment.LogFault(new InvalidOperationException(
                     $"Version-mismatch kick found no connection {connId} — declaration raced attachment (ADR-0028). The mismatched client may survive this check."));   // surfaced instead of a silent false — the accept callback attaches synchronously so this window is theoretical, but never silent
             return false;
+        }
+
+        /// <summary>Runs the CON-002 approval callback on the main thread (invoked via the main queue from the wire-7
+        /// handler). The callback is user code: a throw is logged (LogFault) and treated as a rejection — a faulty
+        /// validator must not wedge a connection into the held state until the sweep. The await resumes off the main
+        /// thread, so the verdict lands back on the main queue (FinishApproval) — main-thread contract for the
+        /// post-callback state change, not relying on any SynchronizationContext.</summary>
+        private async void RunApprovalAsync(ServerConnection conn, string version, string credential)
+        {
+            var approver = ConnectionApprover;
+            if (approver == null) return;   // approver cleared mid-flight — nothing to consult; the sweep owns the held connection
+            bool approved;
+            try
+            {
+                approved = await approver(new UniNetApprovalRequest(conn.ConnId, version, credential)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                UniNetEnvironment.LogFault(ex);   // user-code fault surfaced, not swallowed — then handled like a rejection
+                approved = false;
+            }
+            UniNetEnvironment.QueueOnMain(() => FinishApproval(conn, approved));
+        }
+
+        /// <summary>Applies the CON-002 callback verdict (main thread). Approval sets the CON-001 approval state and runs
+        /// the held attach work; rejection reuses the existing kick path (notice → close) with ApprovalRejected. Completing
+        /// after a detach is a harmless no-op — the connection is already gone from every index.</summary>
+        private void FinishApproval(ServerConnection conn, bool approved)
+        {
+            if (approved)
+            {
+                if (conn.Disconnected || conn.VersionApproved) return;   // detached mid-callback / already approved (should not happen — ApprovalRequested guards re-entry)
+                conn.VersionApproved = true;
+                _approvedConns[conn.ConnId] = 1;   // hot-path index — kept in sync with the approval flag
+                RunPostApproval(conn);   // already on the main thread — direct call keeps the legacy release order
+            }
+            else
+            {
+                if (conn.Disconnected) return;   // the client dropped while the callback awaited — nothing to reject
+                DisconnectClient(conn.ConnId, UniNetDisconnectReason.ApprovalRejected);   // false here means the connection detached in this queue hop — quiet, expected race
+            }
         }
 
         /// <summary>Whether the connection has declared an accepted protocol version (CON-001) — the generated dispatch gate for game ServerRpcs. O(1) index lookup; unknown and detached connections report unapproved (safe default).</summary>
@@ -676,21 +778,26 @@ namespace UniNet.Core.Hosting
         public long IntentionalLeaves => System.Threading.Interlocked.Read(ref _intentionalLeaves);
 
         /// <summary>
-        /// How long an undeclared connection may stay attached before it is kicked with VersionMismatch (CON-001), in
-        /// milliseconds. Default 10000; 0 disables the sweep (undeclared connections stay held — still no game data).
-        /// Only applies while version checking is active (non-empty ExpectedProtocolVersion). Set from
-        /// UniNetEndpointOptions.VersionDeclareTimeoutMs by UniNetManager.ServerAsync.
+        /// How long a connection may stay attached without an accepted declaration AND — with a
+        /// <see cref="ConnectionApprover"/> — without the callback's approval (CON-001/CON-002: the total budget for the
+        /// whole declaration+approval flow), in milliseconds. Default 10000; 0 disables the sweep (held connections stay —
+        /// still no game data). Applies while version checking is active (non-empty ExpectedProtocolVersion) or an approver
+        /// is set. Set from UniNetEndpointOptions.VersionDeclareTimeoutMs by UniNetManager.ServerAsync.
         /// </summary>
         public int VersionDeclareTimeoutMs { get; set; } = 10000;
 
         /// <summary>
-        /// Kicks connections that never declared an accepted protocol version within VersionDeclareTimeoutMs (CON-001) —
-        /// VersionMismatch notice then close, reusing the existing kick path. Call from the driver tick alongside
-        /// SweepGraceSessions; the time argument shares UniNetTime.LocalClock's domain (the attach reading).
+        /// Kicks connections that are still unapproved within VersionDeclareTimeoutMs — VersionMismatch notice then close,
+        /// reusing the existing kick path. Unapproved means: never declared an accepted protocol version (CON-001) or
+        /// still inside the pending CON-002 approval callback (the budget covers the whole declaration+approval flow —
+        /// a hung callback is swept exactly like an undeclared connection, UE PreLoginAsync's hang warning has the same
+        /// rationale). Call from the driver tick alongside SweepGraceSessions; the time argument shares
+        /// UniNetTime.LocalClock's domain (the attach reading).
         /// </summary>
         public void SweepUnapprovedConnections(double time)
         {
-            if (VersionDeclareTimeoutMs <= 0 || string.IsNullOrEmpty(ExpectedProtocolVersion)) return;
+            if (VersionDeclareTimeoutMs <= 0) return;
+            if (string.IsNullOrEmpty(ExpectedProtocolVersion) && ConnectionApprover == null) return;   // nothing can hold a connection unapproved — the sweep would only see approved connections
             double timeout = VersionDeclareTimeoutMs / 1000.0;
             foreach (var conn in SnapshotConnections())
             {
