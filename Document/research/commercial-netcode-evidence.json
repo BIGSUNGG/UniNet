@@ -1,852 +1,1065 @@
 {
-  "schemaVersion": 1,
-  "status": "in_progress",
-  "scope": {
-    "unity": "6",
-    "runtimeApi": "netstandard2.1",
-    "validatedPlatforms": [
-      "Windows server",
-      "Windows client"
-    ],
-    "authority": "server-authoritative self-hosted netcode",
-    "excluded": [
-      "account/database/matchmaking/cloud service implementation",
-      "non-Windows execution guarantee",
-      "unconditional union of other networking paradigms"
-    ]
-  },
-  "baseline": {
-    "commit": "1cee018baf7d20a7ea01480f37eaafe013f04b83",
-    "packageVersion": "0.3.0",
-    "stateAndUserFileHashes": ".pi-subagents/artifacts/commercial-netcode/baseline/baseline.json",
-    "originalTestToolEvents": ".pi-subagents/artifacts/commercial-netcode/baseline/validation-events.jsonl",
-    "tokenPredictabilityProbe": ".pi-subagents/artifacts/commercial-netcode/baseline/security-token-probe.jsonl",
-    "runtimeCoverageCount": 44,
-    "coverageReport": "Document/research/commercial-netcode-audit.md",
-    "firstInternalZeroOpenCheckpoint": null,
-    "newCompetitorComparisonStarted": false
-  },
-  "maintenance": [
-    {
-      "id": "QA-001",
-      "status": "closed",
-      "kind": "test-isolation-only",
-      "commit": "d69739816e9f1d47678ac6d8060a2f4c0055cdf6",
-      "changedFiles": [
-        "Sandbox/Assets/Tests/EditMode/MoveSimulationTests.cs",
-        "Document/changelog.md"
-      ],
-      "worker": {
-        "model": "zai/glm-5.3",
-        "resolvedModelWithThinking": "zai/glm-5.3:high",
-        "initialRunId": "1690c8bf",
-        "completedRunId": "7f89c2eb",
-        "metadata": ".pi-subagents/artifacts/7f89c2eb_worker_meta.json",
-        "transcript": ".pi-subagents/artifacts/7f89c2eb_worker_transcript.jsonl",
-        "output": ".pi-subagents/artifacts/7f89c2eb_worker_output.md"
-      },
-      "reviewer": {
-        "model": "zai/glm-5.3-flash",
-        "initialRunId": "21c02b2e",
-        "completedRunId": "226be8e4",
-        "verdict": "CLEAN",
-        "metadata": ".pi-subagents/artifacts/226be8e4_reviewer_meta.json",
-        "transcript": ".pi-subagents/artifacts/226be8e4_reviewer_transcript.jsonl",
-        "output": ".pi-subagents/artifacts/226be8e4_reviewer_output.md",
-        "note": "Second response corrected the verdict envelope only; it did not change source or review conclusions."
-      },
-      "regressionTest": "UniNet.Tests.MoveSimulationTests.잘못된_페이로드는_버려지고_예외가_새지_않는다",
-      "validation": [
-        {
-          "kind": "targeted EditMode",
-          "jobId": "9e1859170206428f92a552cb6f87ecb0",
-          "total": 1,
-          "passed": 1,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full EditMode",
-          "jobId": "b9c3a0b1963749ee9ec965e6b9a4b758",
-          "total": 132,
-          "passed": 132,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full PlayMode",
-          "jobId": "daab8138afee4c8ab3545c9e2433c804",
-          "total": 27,
-          "passed": 27,
-          "failed": 0,
-          "skipped": 0
-        }
-      ],
-      "releaseVersion": null,
-      "arenaExampleRequired": false,
-      "consumerDocsRequired": false,
-      "exemptionReason": "Runtime code, public API, diagnostics and runtime log contracts were not changed. Only the test now captures and asserts its expected fault and restores the global logger. No functional release or new Arena example is claimed."
-    }
+ "schemaVersion": 1,
+ "status": "in_progress",
+ "scope": {
+  "unity": "6",
+  "runtimeApi": "netstandard2.1",
+  "validatedPlatforms": [
+   "Windows server",
+   "Windows client"
   ],
-  "environmentChanges": [
+  "authority": "server-authoritative self-hosted netcode",
+  "excluded": [
+   "account/database/matchmaking/cloud service implementation",
+   "non-Windows execution guarantee",
+   "unconditional union of other networking paradigms"
+  ]
+ },
+ "baseline": {
+  "commit": "1cee018baf7d20a7ea01480f37eaafe013f04b83",
+  "packageVersion": "0.3.0",
+  "stateAndUserFileHashes": ".pi-subagents/artifacts/commercial-netcode/baseline/baseline.json",
+  "originalTestToolEvents": ".pi-subagents/artifacts/commercial-netcode/baseline/validation-events.jsonl",
+  "tokenPredictabilityProbe": ".pi-subagents/artifacts/commercial-netcode/baseline/security-token-probe.jsonl",
+  "runtimeCoverageCount": 44,
+  "coverageReport": "Document/research/commercial-netcode-audit.md",
+  "firstInternalZeroOpenCheckpoint": null,
+  "newCompetitorComparisonStarted": false
+ },
+ "maintenance": [
+  {
+   "id": "QA-001",
+   "status": "closed",
+   "kind": "test-isolation-only",
+   "commit": "d69739816e9f1d47678ac6d8060a2f4c0055cdf6",
+   "changedFiles": [
+    "Sandbox/Assets/Tests/EditMode/MoveSimulationTests.cs",
+    "Document/changelog.md"
+   ],
+   "worker": {
+    "model": "zai/glm-5.3",
+    "resolvedModelWithThinking": "zai/glm-5.3:high",
+    "initialRunId": "1690c8bf",
+    "completedRunId": "7f89c2eb",
+    "metadata": ".pi-subagents/artifacts/7f89c2eb_worker_meta.json",
+    "transcript": ".pi-subagents/artifacts/7f89c2eb_worker_transcript.jsonl",
+    "output": ".pi-subagents/artifacts/7f89c2eb_worker_output.md"
+   },
+   "reviewer": {
+    "model": "zai/glm-5.3-flash",
+    "initialRunId": "21c02b2e",
+    "completedRunId": "226be8e4",
+    "verdict": "CLEAN",
+    "metadata": ".pi-subagents/artifacts/226be8e4_reviewer_meta.json",
+    "transcript": ".pi-subagents/artifacts/226be8e4_reviewer_transcript.jsonl",
+    "output": ".pi-subagents/artifacts/226be8e4_reviewer_output.md",
+    "note": "Second response corrected the verdict envelope only; it did not change source or review conclusions."
+   },
+   "regressionTest": "UniNet.Tests.MoveSimulationTests.잘못된_페이로드는_버려지고_예외가_새지_않는다",
+   "validation": [
     {
-      "id": "ENV-001",
-      "kind": "local-editor-module-installation",
-      "status": "verified",
-      "userApproved": true,
-      "unityVersion": "6000.0.83f1",
-      "module": "windows-server",
-      "officialInstaller": "Unity Hub headless install-modules",
-      "exitCode": 0,
-      "preflight": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-preflight.json",
-      "postflight": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-postflight.json",
-      "installLog": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-install.log",
-      "review": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-review.json",
-      "note": "Local Windows dedicated-server module installed without editor shutdown or scene save; actual build/run and final multi-process gates remain pending. No library functionality or package release is attributed to this installation."
+     "kind": "targeted EditMode",
+     "jobId": "9e1859170206428f92a552cb6f87ecb0",
+     "total": 1,
+     "passed": 1,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode",
+     "jobId": "b9c3a0b1963749ee9ec965e6b9a4b758",
+     "total": 132,
+     "passed": 132,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "daab8138afee4c8ab3545c9e2433c804",
+     "total": 27,
+     "passed": 27,
+     "failed": 0,
+     "skipped": 0
     }
-  ],
-  "functionalChanges": [
-    {
-      "id": "SEC-001",
-      "status": "closed",
-      "kind": "security-fix",
-      "adr": "Document/decisions/0041-세션-토큰-암호학적-난수-전환.md",
-      "featureDocument": "Document/features/connection-lifecycle.md",
-      "packageVersion": "0.4.0",
-      "generatorVersion": "0.2.8",
-      "worker": {
-        "model": "zai/glm-5.3",
-        "implementationRunId": "d6517bbf",
-        "implementationMetadata": ".pi-subagents/artifacts/d6517bbf_worker_meta.json",
-        "implementationTranscript": ".pi-subagents/artifacts/d6517bbf_worker_transcript.jsonl",
-        "fixPassMetadata": [
-          ".pi-subagents/artifacts/e46bf767_worker_meta.json",
-          ".pi-subagents/artifacts/fab09050_worker_meta.json",
-          ".pi-subagents/artifacts/bf6ad587_worker_meta.json",
-          ".pi-subagents/artifacts/66154991_worker_meta.json"
-        ],
-        "finalOutput": ".pi-subagents/artifacts/66154991_worker_output.md",
-        "modelsVerified": true
-      },
-      "regressionTests": [
-        "UniNet.Tests.ReconnectGraceTests.토큰은_256비트_난수_Base64이고_다중_발급이_유일하다",
-        "UniNet.Tests.ReconnectGraceTests.추측_토큰으로_피해자_소유권을_가로챌_수_없다",
-        "UniNet.Tests.ReconnectGraceTests.잘못된_connId_거절_후_올바른_연결로_재개_가능하다",
-        "UniNet.Tests.ReconnectGraceTests.중복_재개는_거부되고_소유권이_불변이다",
-        "UniNet.Tests.ReconnectGraceTests.재부착이_소유권을_새_연결로_이전한다",
-        "UniNet.Tests.ReconnectGraceTests.유예_만료_후_재배정이_고아를_입양한다",
-        "UniNet.Tests.ReconnectGraceTests.유예기간_중_소유권이_보존된다",
-        "UniNet.Tests.ReconnectGraceTests.유예_비활성_시_즉시_재배정",
-        "UniNet.Tests.ResumeRequestWireTests.정상_와이어_재개_요청은_생성_핸들러를_통해_소유권을_이전한다",
-        "UniNet.Tests.ResumeRequestWireTests.잘림_초과_위조_접두_요청은_세션을_소진하지_않고_이후_정상_재개가_성공한다"
-      ],
-      "arenaDiagnostic": {
-        "entry": "Arena scene (Play Mode) → ArenaBootstrap context menu → 'Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)'",
-        "precondition": "Play Mode only; active demo session is explicitly stopped first; re-entry guarded",
-        "subject": "NON-DYNAMIC marker in the real server registry; actual loopback RUDP client/server, marker ownership and player mapping; NOT full avatar recovery or the final three-process scenario",
-        "successLog": "[UNINET-VERIFY] SEC-001 DIAG PASS",
-        "run": {
-          "status": "passed",
-          "transport": "actual RUDP loopback in Unity Editor",
-          "rawEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
-          "assertions": [
-            "two forged tokens rejected",
-            "victim marker ownership unchanged",
-            "genuine resume succeeds after forgery attempts",
-            "player mapping restored",
-            "diagnostic runtime cleaned up"
-          ]
-        }
-      },
-      "validation": [
-        {
-          "kind": "targeted EditMode",
-          "jobId": "b28cdbfe217f4116a9db19375a4efde1",
-          "total": 10,
-          "passed": 10,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full EditMode",
-          "jobId": "b3af36a5ae554620ab7f71c4e3d920b2",
-          "total": 138,
-          "passed": 138,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full PlayMode",
-          "jobId": "12ff2e92346b46d8b97ba90bef5d2a74",
-          "total": 27,
-          "passed": 27,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "CodeGenerator Release build",
-          "exitCode": 0,
-          "log": ".pi-subagents/artifacts/commercial-netcode/sec001-codegen-build-r2.log",
-          "warning": "NU5128 analyzer-only package layout warning; no compiler errors"
-        },
-        {
-          "kind": "package validation",
-          "command": "bash Package/tools/validate-package.sh --tag v0.4.0",
-          "exitCode": 0,
-          "log": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation.log",
-          "precommitLog": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation-precommit.log"
-        },
-        {
-          "kind": "fresh Unity install from committed local Git URL",
-          "command": "timeout 600 bash Package/tools/verify-install.sh",
-          "exitCode": 0,
-          "commit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21",
-          "sampleCompiled": true,
-          "log": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local.log",
-          "unityLog": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-unity.log",
-          "packageLock": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-packages-lock.json",
-          "note": "This is the existing local-Git installation gate, not the final public-UPM-tag gate tracked by INSTALL-001."
-        }
-      ],
-      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
-      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/sec001-validated-input-blobs.json",
-      "analyzerReplacement": ".pi-subagents/artifacts/commercial-netcode/sec001-analyzer-replacement.json",
-      "review": {
-        "model": "zai/glm-5.3-flash",
-        "round": 3,
-        "verdict": "CLEAN",
-        "metadata": ".pi-subagents/artifacts/7a9d082e_reviewer_meta.json",
-        "output": ".pi-subagents/artifacts/7a9d082e_reviewer_output.md",
-        "history": [
-          {
-            "round": 1,
-            "verdict": "ISSUES",
-            "metadata": ".pi-subagents/artifacts/4dee4939_reviewer_0_meta.json",
-            "output": ".pi-subagents/artifacts/4dee4939_reviewer_0_output.md"
-          },
-          {
-            "round": 2,
-            "verdict": "ISSUES",
-            "metadata": ".pi-subagents/artifacts/105f3c09_reviewer_0_meta.json",
-            "output": ".pi-subagents/artifacts/105f3c09_reviewer_0_output.md"
-          }
-        ],
-        "documentationCheck": {
-          "status": "passed",
-          "verdict": "CLEAN",
-          "model": "zai/glm-5.3-flash",
-          "metadata": ".pi-subagents/artifacts/919b7a82_reviewer_meta.json",
-          "transcript": ".pi-subagents/artifacts/919b7a82_reviewer_transcript.jsonl",
-          "output": ".pi-subagents/artifacts/919b7a82_reviewer_output.md",
-          "scope": "Additional feature documentation and evidence consistency; source unchanged after round 3"
-        }
-      },
-      "synchronizedDocs": [
-        "Document/features/connection-lifecycle.md",
-        "Document/decisions/0041-세션-토큰-암호학적-난수-전환.md",
-        "Document/examples/arena-shooter.md",
-        "Document/overview.md",
-        "Document/deployment.md",
-        "Document/00-INDEX.md",
-        "Document/changelog.md",
-        "Package/CHANGELOG.md",
-        "README.md",
-        "skills/uninet/SKILL.md"
-      ],
-      "release": {
-        "status": "published",
-        "version": "0.4.0",
-        "tag": "v0.4.0",
-        "implementationCommit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21",
-        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.0",
-        "publishedAt": "2026-10-20T00:21:51Z",
-        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39347170086",
-        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39347170322",
-        "ciConclusion": "success",
-        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-ci-runs.json",
-        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-release.json",
-        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-remote-tag.txt",
-        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-remote-package.json",
-        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-commit-scope.json"
-      }
-    },
-    {
-      "id": "OWN-001",
-      "status": "closed",
-      "kind": "ownership-baseline-fix",
-      "packageVersion": "0.4.1",
-      "generatorVersion": "0.2.8",
-      "wireFormatChanged": false,
-      "featureDocuments": [
-        "Document/features/monobehaviour-rpc-replicate.md",
-        "Document/features/replication-p3-policy.md"
-      ],
-      "worker": {
-        "model": "zai/glm-5.3",
-        "resolvedModelWithThinking": "zai/glm-5.3:high",
-        "implementationRunId": "ec75860a-1ded-4a1c-9382-81883b9d6311",
-        "metadata": ".pi-subagents/artifacts/ec75860a-1ded-4a1c-9382-81883b9d6311_worker_meta.json",
-        "transcript": ".pi-subagents/artifacts/ec75860a-1ded-4a1c-9382-81883b9d6311_worker_transcript.jsonl",
-        "fixPassMetadata": [
-          ".pi-subagents/artifacts/4d4e1ca2_worker_meta.json",
-          ".pi-subagents/artifacts/bfcbc977_worker_meta.json",
-          ".pi-subagents/artifacts/5edd7b43_worker_meta.json",
-          ".pi-subagents/artifacts/6b568963_worker_meta.json",
-          ".pi-subagents/artifacts/52121ff1_worker_meta.json"
-        ],
-        "finalOutput": ".pi-subagents/artifacts/52121ff1_worker_output.md"
-      },
-      "preFixProbe": ".pi-subagents/artifacts/commercial-netcode/own001-pre-fix-probe.json",
-      "regressionFixture": "UniNet.Tests.OwnerBaselineTests",
-      "regressionCoverage": [
-        "live-owner scene and dynamic late join",
-        "scene and dynamic relevance re-entry",
-        "explicit zero owner replaces stale metadata",
-        "object-level baseline precedes multi-sub state",
-        "actual generated owner/replication receivers and Notify",
-        "initial BroadcastSpawn owner-before-spawn"
-      ],
-      "validation": [
-        {
-          "kind": "targeted EditMode",
-          "jobId": "12835612689e438b96f73fe1d9f5b824",
-          "total": 8,
-          "passed": 8,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full EditMode",
-          "jobId": "cfa15005754a46ae8d356c6b57cd9558",
-          "total": 146,
-          "passed": 146,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full PlayMode",
-          "jobId": "13d6c4af7c1c47ea8b2ed08db11ef4f3",
-          "total": 27,
-          "passed": 27,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "package validation",
-          "command": "bash Package/tools/validate-package.sh --tag v0.4.1",
-          "exitCode": 0,
-          "log": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation.log",
-          "precommitLog": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation-precommit.log"
-        },
-        {
-          "kind": "fresh Unity install from committed local Git URL",
-          "command": "timeout 600 bash Package/tools/verify-install.sh",
-          "exitCode": 0,
-          "commit": "380b2b44e5c30aea5fb3eec617f4fe50e3bc6614",
-          "sampleCompiled": true,
-          "log": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local.log",
-          "unityLog": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-unity.log",
-          "packageLock": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-packages-lock.json",
-          "note": "Local-Git gate, not the final public tag installation gate."
-        }
-      ],
-      "validationHistory": [
-        {
-          "jobId": "d4aa4c63c6a542529d8521f1a1c84086",
-          "total": 0,
-          "acceptedAsPass": false,
-          "reason": "New script was not imported by scripts-only refresh; force-all asset refresh required."
-        },
-        {
-          "jobId": "7ff6b5f2a16f44dfb5ad6235d6cef3b8",
-          "total": 7,
-          "failed": 2,
-          "reason": "Test helper looked up system wire 2 in general dispatch dictionary; fixed by invoking actual generated private handler."
-        },
-        {
-          "jobId": "daab037afc02444bbdbceee3439ed1ac",
-          "total": 146,
-          "failed": 1,
-          "reason": "Legacy ownership test did not count new catch-up notices; replaced with exact per-receiver, per-object and owner-value assertions, not a skip."
-        }
-      ],
-      "arenaDiagnostic": {
-        "entry": "ArenaBootstrap context menu: Diag/OWN-001 후발 소유권 기준선 (기존 세션 정지 후)",
-        "status": "passed",
-        "successLog": "[UNINET-VERIFY] OWN-001 DIAG PASS",
-        "scope": "Actual RUDP, one real client at a time: first client disconnects, grace keeps owner, fresh late client receives old owner. Timed relevance exit/re-entry restores a deliberately stale local zero-owner cache through the actual wire. Non-dynamic marker; not simultaneous two-client or avatar recovery or final three-process validation.",
-        "assertions": [
-          "first client baseline received",
-          "existing grace owner preserved on late join",
-          "stale-cache fault injection restored by actual re-entry wire",
-          "diagnostic runtime cleaned up"
-        ],
-        "sceneSaved": false
-      },
-      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/own001-validation-events.jsonl",
-      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/own001-validation-input-blobs.json",
-      "failedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/own001-failed-input-blobs.json",
-      "review": {
-        "model": "zai/glm-5.3-flash",
-        "round": 3,
-        "verdict": "CLEAN",
-        "metadata": ".pi-subagents/artifacts/d4872728_reviewer_meta.json",
-        "transcript": ".pi-subagents/artifacts/d4872728_reviewer_transcript.jsonl",
-        "output": ".pi-subagents/artifacts/d4872728_reviewer_output.md",
-        "history": [
-          {
-            "round": 1,
-            "verdict": "ISSUES",
-            "metadata": ".pi-subagents/artifacts/1066ab2f-47bd-42b0-b050-b7c4839a191e_reviewer_meta.json"
-          },
-          {
-            "round": 2,
-            "verdict": "CLEAN",
-            "metadata": ".pi-subagents/artifacts/40d65728_reviewer_meta.json",
-            "scope": "Before the final legacy notification-count assertion adjustment"
-          }
-        ],
-        "finalTestAndDocumentationCheck": "passed"
-      },
-      "synchronizedDocs": [
-        "Document/features/monobehaviour-rpc-replicate.md",
-        "Document/features/replication-p3-policy.md",
-        "Document/changelog.md",
-        "Document/00-INDEX.md",
-        "Document/examples/arena-shooter.md",
-        "Document/deployment.md",
-        "Document/research/commercial-netcode-audit.md",
-        "Package/CHANGELOG.md",
-        "README.md",
-        "skills/uninet/SKILL.md"
-      ],
-      "release": {
-        "status": "published",
-        "version": "0.4.1",
-        "tag": "v0.4.1",
-        "implementationCommit": "380b2b44e5c30aea5fb3eec617f4fe50e3bc6614",
-        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.1",
-        "publishedAt": "2026-10-20T01:07:09Z",
-        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39351613439",
-        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39351613072",
-        "ciConclusion": "success",
-        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-ci-runs.json",
-        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-release.json",
-        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-remote-tag.txt",
-        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-remote-package.json",
-        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-commit-scope.json"
-      }
-    },
-    {
-      "id": "MOV-001",
-      "status": "closed",
-      "kind": "movement-ownership-stream-fix",
-      "packageVersion": "0.5.0",
-      "generatorVersion": "0.2.8",
-      "wireSystemMessagesChanged": false,
-      "breakingChanges": [
-        "INetworkMoveSimulation.ResetOwnershipStream added to the public interface (custom engine implementers must add the member)",
-        "RpcSubmitMove envelope layout now [uint epoch][int length][bytes] — same-package ends only; the package-version handshake rejects mixed versions"
-      ],
-      "adr": "Document/decisions/0042-이동-소유권-전이-스트림-리셋-에포크.md",
-      "featureDocument": "Document/features/movement-prediction.md",
-      "worker": {
-        "model": "zai/glm-5.3",
-        "resolvedModelWithThinking": "zai/glm-5.3:high",
-        "implementationRunId": "621e0bde-0ea0-4100-ba1c-5a14a4802ab9",
-        "continuationRunIds": [
-          "3d829458",
-          "f9048c73",
-          "fb62aa94",
-          "618033f1",
-          "95a9ab14",
-          "2a060ecb",
-          "d3533f35",
-          "93543fba"
-        ],
-        "metadata": ".pi-subagents/artifacts/621e0bde-0ea0-4100-ba1c-5a14a4802ab9_worker_meta.json"
-      },
-      "preFixProbes": [
-        ".pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe.json",
-        ".pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe-2.json"
-      ],
-      "integrationDefectFoundDuringValidation": {
-        "defect": "Dynamic spawn whose owning connection attaches after the component's first Update: 0→nonzero adoption was misread as a tenure change (spurious epoch bump + reset), killing the first tenure's inputs during the handoff window",
-        "reproduced": "full-suite PlayMode failures (2 runs); passed in isolation",
-        "fix": "Tenure rule — bump+reset only on nonzero→different transitions (direct transfer, release); 0→nonzero adoption is a timing-independent baseline"
-      },
-      "regressionTests": [
-        "UniNet.Tests.MoveSimulationTests.소유권_스트림_리셋_후_새_소유자_seq1이_채택된다",
-        "UniNet.Tests.MoveSimulationTests.OnTeleport는_스트림_리셋_대용이_될_수_없다",
-        "UniNet.Tests.MoveSimulationTests.스트림_리셋은_권위_게임_상태를_보존한다",
-        "UniNet.Tests.NetworkTransformComponentTests.이전_임기_지연_입력은_epoch_불일치로_기각되고_새_스트림이_채택된다",
-        "UniNet.Tests.NetworkTransformComponentTests.소유자_값_불변시_epoch_범프_없이_스트림이_유지된다",
-        "UniNet.Tests.NetworkTransformComponentTests.실제_OwnerUpdate_수신기_경유_소유권_획득시_클라_스트림이_재바인딩된다",
-        "UniNet.Tests.NetworkTransformComponentTests.호스트_권위_인스턴스는_이벤트로_이중_리셋하지_않는다",
-        "UniNet.Tests.NetworkTransformComponentTests.다른_객체의_소유권_변화는_이_스트림을_건드리지_않는다",
-        "UniNet.Tests.OwnerBaselineTests.ApplyOwner_이벤트는_값이_실제로_바뀔_때만_발화한다"
-      ],
-      "arenaExample": {
-        "kind": "PlayMode test with real loopback RUDP",
-        "entry": "UniNet.Tests.MovementOwnershipPlayTests.소유권_사이클_후_이전_임기_입력은_epoch로_기각되고_새_스트림_ack가_재개된다",
-        "successLog": "[UNINET-VERIFY] MovementOwnership PASS",
-        "scope": "Real ownership cycle (release → reassignment adoption → same client re-gains) over loopback RUDP; stale-tenure input rejected at the epoch gate past the ownership gate; fresh stream adopted with acknowledgements resumed. Host topology single client — client prediction rebinding is covered by EditMode regressions; not two simultaneous clients or avatar recovery."
-      },
-      "validation": [
-        {
-          "kind": "targeted EditMode",
-          "jobId": "ea0a6feb90e54952954d480673318177",
-          "total": 28,
-          "passed": 28,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full EditMode",
-          "jobId": "5f87c48ba17b4bdda7a28eb2ea524314",
-          "total": 155,
-          "passed": 155,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full PlayMode",
-          "jobId": "196c505e110448c89a06bb59dee8b267",
-          "total": 28,
-          "passed": 28,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "package validation",
-          "command": "bash Package/tools/validate-package.sh --tag v0.5.0",
-          "exitCode": 0,
-          "log": ".pi-subagents/artifacts/commercial-netcode/mov001-package-validation.log",
-          "precommitLog": ".pi-subagents/artifacts/commercial-netcode/mov001-package-validation-precommit.log"
-        },
-        {
-          "kind": "fresh Unity install from committed local Git URL",
-          "command": "timeout 600 bash Package/tools/verify-install.sh",
-          "exitCode": 0,
-          "commit": "3c3b4df69a45e9db29d63bcca19bf408548ee86b",
-          "sampleCompiled": true,
-          "log": ".pi-subagents/artifacts/commercial-netcode/mov001-fresh-install-local.log",
-          "unityLog": ".pi-subagents/artifacts/commercial-netcode/mov001-fresh-install-local-unity.log",
-          "packageLock": ".pi-subagents/artifacts/commercial-netcode/mov001-fresh-install-local-packages-lock.json",
-          "note": "Local-Git gate; the final public-tag install gate remains."
-        }
-      ],
-      "validationHistory": [
-        {
-          "phase": "compile",
-          "issues": [
-            "missing using System (NetworkClient)",
-            "null-conditional event unsubscription (CS0079)",
-            "NUnit AreNotEqual overload misuse"
-          ],
-          "resolution": "fixed by the same worker; in-editor compile errors 0 verified"
-        },
-        {
-          "phase": "targeted EditMode",
-          "jobId": "4f5a4e19c6f3496585985130226a0c79",
-          "total": 28,
-          "failed": 4,
-          "resolution": "Envelope encoder omitted the length prefix (MessageProtocol WriteBytes is raw) — fixed with WriteInt32; one test expectation aligned with the documented first-assignment-no-event contract"
-        },
-        {
-          "phase": "full PlayMode",
-          "jobId": "8e9e959a6abb44a895b611135fe52549",
-          "failed": 1,
-          "resolution": "Reproduced the attach-race adoption misread; fixed by the tenure rule (history kept)"
-        },
-        {
-          "phase": "post-review allocation fix",
-          "change": "EncodeMoveInput single-allocation rewrite (BinaryPrimitives + BlockCopy) after review recommendation",
-          "revalidated": "targeted 28/28, EditMode 155/155, PlayMode 28/28, compile errors 0"
-        }
-      ],
-      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/mov001-validation-events.jsonl",
-      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/mov001-validation-input-blobs.json",
-      "review": {
-        "model": "zai/glm-5.3-flash",
-        "round": 2,
-        "verdict": "CLEAN",
-        "metadata": ".pi-subagents/artifacts/7be084eb_reviewer_meta.json",
-        "transcript": ".pi-subagents/artifacts/7be084eb_reviewer_transcript.jsonl",
-        "output": ".pi-subagents/artifacts/7be084eb_reviewer_output.md",
-        "history": [
-          {
-            "round": 1,
-            "verdict": "ISSUES (1 recommended — hot-path allocation)",
-            "metadata": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_meta.json",
-            "output": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_output.md",
-            "disposition": "accepted — single-allocation encoder fix applied and fully revalidated"
-          }
-        ]
-      },
-      "release": {
-        "status": "published",
-        "version": "0.5.0",
-        "tag": "v0.5.0",
-        "implementationCommit": "3c3b4df69a45e9db29d63bcca19bf408548ee86b",
-        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.5.0",
-        "publishedAt": "2026-10-20T03:44:56Z",
-        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39365890695",
-        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39365890801",
-        "ciConclusion": "success",
-        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-ci-runs.json",
-        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-release.json",
-        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-remote-tag.txt",
-        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-remote-package.json",
-        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-staged-paths.json"
-      }
-    },
-    {
-      "id": "CON-001",
-      "status": "closed",
-      "kind": "connection-approval-gate",
-      "packageVersion": "0.6.0",
-      "generatorVersion": "0.2.9",
-      "wireSystemMessagesChanged": false,
-      "breakingChanges": [
-        "A client that never declares its protocol version (wire 7) now receives no game data and is kicked after VersionDeclareTimeoutMs (default 10 s; 0 = hold). Generated clients always declare, so same-package consumers are unaffected; hand-rolled non-declaring clients lose the undocumented bypass."
-      ],
-      "adr": "Document/decisions/0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보.md",
-      "featureDocument": "Document/features/connection-lifecycle.md",
-      "worker": {
-        "model": "zai/glm-5.3",
-        "resolvedModelWithThinking": "zai/glm-5.3:high",
-        "implementationRunId": "07b84d4c",
-        "continuationRunIds": [
-          "b5b98a41",
-          "20162879",
-          "35e7df42",
-          "7eacf2ea"
-        ],
-        "metadata": ".pi-subagents/artifacts/07b84d4c_worker_meta.json"
-      },
-      "regressionsFoundDuringValidation": [
-        {
-          "defect": "AttachConnection stamped the approval clock via UniNetTime.LocalClock() on the DRPC accept thread — in Unity that is Time.unscaledTimeAsDouble, which throws UnityException off the main thread, silently aborting every real attach (22/29 PlayMode failures; EditMode fake channels run on the main thread and hid it)",
-          "fix": "Unstamped NaN sentinel + main-queue lambda stamps before Welcome + sweep skips unstamped + a thread-safety regression test"
-        },
-        {
-          "defect": "The rebuilt generator 0.2.9 DLL was never actually copied into the analyzers folder (byte-identical to 0.2.8; the worker's ASCII grep verification was invalid because .NET stores user strings as UTF-16LE)",
-          "fix": "Actual deployment verified by SHA-256 210455604c6f5f00e63118f5c248d4648b5b9d282f489163d31dc54cd9d659f2 (old a43b0d18…)"
-        }
-      ],
-      "regressionTests": [
-        "UniNet.Tests.ConnectionApprovalTests.빈_기대버전은_즉시_승인되어_현행_동작을_유지한다",
-        "UniNet.Tests.ConnectionApprovalTests.미선언_연결은_소유권_캐치업_이벤트_복제에서_제외된다",
-        "UniNet.Tests.ConnectionApprovalTests.승인_선언_도착_시_보류_작업이_순서대로_실행된다",
-        "UniNet.Tests.ConnectionApprovalTests.재선언은_멱등이다_보류_작업_재실행_없음",
-        "UniNet.Tests.ConnectionApprovalTests.미승인_발신_게임_RPC는_조용히_기각되고_카운터에_관측된다",
-        "UniNet.Tests.ConnectionApprovalTests.미선언_타임아웃은_VersionMismatch_킥으로_마감한다",
-        "UniNet.Tests.ConnectionApprovalTests.타임아웃_0은_스윕을_비활성화한다",
-        "UniNet.Tests.ConnectionApprovalTests.AttachConnection은_네트워크_스레드에서도_안전하다"
-      ],
-      "arenaExample": {
-        "kind": "PlayMode test with real loopback RUDP",
-        "entry": "UniNet.Tests.ConnectionApprovalPlayTests.실제_클라는_자동_선언으로_승인되고_미선언_연결은_유보_후_타임아웃_킥된다",
-        "scope": "Real server (500 ms timeout): the real client's automatic declaration is approved round-trip; a silent channel is held and then kicked at the driver cadence. A raw non-declaring socket client was not constructible in-process (DRPC hub session factory), so the undeclared path uses a real attach with a silent channel — documented honestly."
-      },
-      "validation": [
-        {
-          "kind": "targeted EditMode",
-          "jobId": "a1a9ce57bf974839a21767d1dac2939a",
-          "total": 8,
-          "passed": 8,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full EditMode",
-          "jobId": "a402419823144308b3243254ab33a9c6",
-          "total": 163,
-          "passed": 163,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "full PlayMode",
-          "jobId": "0268b9d1bb454eacbdcaaead1b2e3795",
-          "total": 29,
-          "passed": 29,
-          "failed": 0,
-          "skipped": 0
-        },
-        {
-          "kind": "package validation",
-          "command": "bash Package/tools/validate-package.sh --tag v0.6.0",
-          "exitCode": 0,
-          "log": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation.log",
-          "precommitLog": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation-precommit.log"
-        },
-        {
-          "kind": "fresh Unity install from committed local Git URL",
-          "command": "timeout 600 bash Package/tools/verify-install.sh",
-          "exitCode": 0,
-          "commit": "c2d4c8e7b3e915fcbd41ac3314584eaace812059",
-          "sampleCompiled": true,
-          "log": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local.log",
-          "unityLog": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local-unity.log",
-          "packageLock": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local-packages-lock.json",
-          "note": "Local-Git gate; the final public-tag install gate remains."
-        }
-      ],
-      "validationHistory": [
-        {
-          "phase": "targeted EditMode",
-          "jobId": "488d35a5d4494b1f88518a650602684d",
-          "failed": 1,
-          "resolution": "Idempotency test expected one owner notice where the standard adoption-broadcast + catch-up-baseline pair legitimately produces two; test aligned to assert no re-send"
-        },
-        {
-          "phase": "full PlayMode",
-          "jobId": "2e1446875735430b87e058c23e6b8e8d",
-          "failed": 22,
-          "resolution": "Accept-thread UnityException regression (above); fixed and fully revalidated"
-        },
-        {
-          "phase": "full PlayMode",
-          "jobId": "9c4814704d0a4d18841eec6b29724464",
-          "failed": 1,
-          "resolution": "Nondeterministic Welcome-wait flake in a different test each run; clean 29/29 on re-run (aa920d4c)"
-        },
-        {
-          "phase": "full PlayMode",
-          "jobId": "92828173f57f4b03b3a5c081eb1f4d2c",
-          "failed": 1,
-          "resolution": "MovementOwnershipPlayTests guest channel never declared (the very blind spot CON-001 closes) — declaration inserted, revalidated"
-        },
-        {
-          "phase": "post-review hot-path fix",
-          "change": "ConcurrentDictionary approval index replaces per-RPC SnapshotConnections allocation",
-          "revalidated": "targeted 8/8, EditMode 163/163, PlayMode 29/29"
-        }
-      ],
-      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/con001-validation-events.jsonl",
-      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/con001-validation-input-blobs.json",
-      "generatorDllSha256": "210455604c6f5f00e63118f5c248d4648b5b9d282f489163d31dc54cd9d659f2",
-      "review": {
-        "model": "zai/glm-5.3-flash",
-        "round": 2,
-        "verdict": "CLEAN",
-        "metadata": ".pi-subagents/artifacts/a704226d_reviewer_meta.json",
-        "transcript": ".pi-subagents/artifacts/a704226d_reviewer_transcript.jsonl",
-        "output": ".pi-subagents/artifacts/a704226d_reviewer_output.md",
-        "history": [
-          {
-            "round": 1,
-            "verdict": "ISSUES (1 recommended — per-RPC allocation in approval lookup)",
-            "metadata": ".pi-subagents/artifacts/725364af_reviewer_meta.json",
-            "output": ".pi-subagents/artifacts/725364af_reviewer_output.md",
-            "disposition": "accepted — ConcurrentDictionary approval index applied and fully revalidated"
-          }
-        ]
-      },
-      "release": {
-        "status": "published",
-        "version": "0.6.0",
-        "tag": "v0.6.0",
-        "implementationCommit": "c2d4c8e7b3e915fcbd41ac3314584eaace812059",
-        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.6.0",
-        "publishedAt": "2026-10-20T04:52:56Z",
-        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39371895239",
-        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39371895200",
-        "ciConclusion": "success",
-        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-ci-runs.json",
-        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-release.json",
-        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-remote-tag.txt",
-        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-remote-package.json",
-        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-staged-paths.json"
-      }
-    },
-    {
-      "id": "REC-001",
-      "status": "closed",
-      "kind": "resume-result-notification",
-      "packageVersion": "0.7.0",
-      "generatorVersion": "0.2.10",
-      "wireSystemMessagesChanged": "added client-bound wire 14 ResumeResult{ok, reason, retryableRemainingMs}",
-      "breakingChanges": ["NetworkServer.ResumeSession now returns GraceResumeResult instead of bool", "new system wire 14 (same-package ends; the package-version handshake rejects mixed versions)"],
-      "adr": "Document/decisions/0044-재개-결과-통보와-자동-재시도.md",
-      "featureDocument": "Document/features/connection-lifecycle.md",
-      "worker": {
-        "model": "zai/glm-5.3",
-        "resolvedModelWithThinking": "zai/glm-5.3:high",
-        "implementationRunId": "aa26fd0d",
-        "continuationRunIds": ["a66cc619", "2f5020c1", "a94be869", "424dcfee", "e4b5a83c", "fe62be5c"],
-        "metadata": ".pi-subagents/artifacts/aa26fd0d_worker_meta.json"
-      },
-      "regressionsFoundDuringValidation": [
-        {"defect": "Tombstone lookup was an unreachable else-branch — consumed/swept tokens always fell into the first SessionNotFound branch", "fix": "Tombstone check moved to the head of the not-found branch"},
-        {"defect": "Sweep-written tombstones used the original (already-past) expiry and were pruned by the same sweep — zero lifetime", "fix": "Sweep tombstones expire at sweep-time + one grace window"},
-        {"defect": "Test channel tried to override an interface DIM (CS0115)", "fix": "Explicit interface implementation"},
-        {"defect": "PlayMode test subscribed to a NetworkClient instance that ClientAsync replaces", "fix": "Sticky LastResumeResult polling; event contract stays EditMode-verified through the real generated receiver"}
-      ],
-      "regressionTests": [
-        "UniNet.Tests.ResumeResultTests.각_종결_사유가_요청_연결에_정확히_전달된다",
-        "UniNet.Tests.ResumeResultTests.SessionNotFound_재시도가_디태치_경합에서_재부착으로_수렴한다",
-        "UniNet.Tests.ResumeResultTests.이중_소비_패자는_UnknownToken으로_정확히_종결된다",
-        "UniNet.Tests.ResumeResultTests.실제_생성_수신기가_결과를_클라에_적용한다"
-      ],
-      "arenaExample": {
-        "kind": "PlayMode test with real loopback RUDP",
-        "entry": "UniNet.Tests.ResumeResultPlayTests.진짜_토큰은_재부착_결과를_위조_토큰은_거절_결과를_관측한다",
-        "scope": "Real wire: genuine preserved token observes Reattached (token re-seeded across the stop — the same test-procedure injection as the SEC-001 diagnostic; voluntary-stop token burn is REC-002, out of scope), forged token observes the exact rejection result"
-      },
-      "validation": [
-        {"kind": "targeted EditMode", "jobId": "99f01a14e3f149619f1e823a6554e45b", "total": 12, "passed": 12, "failed": 0, "skipped": 0},
-        {"kind": "full EditMode", "jobId": "0891be1e6ae44921b6969422a5afe026", "total": 167, "passed": 167, "failed": 0, "skipped": 0},
-        {"kind": "full PlayMode", "jobId": "4880fda06c574e1f85dfdd47aadb6c2d", "total": 30, "passed": 30, "failed": 0, "skipped": 0},
-        {"kind": "package validation", "command": "bash Package/tools/validate-package.sh --tag v0.7.0", "exitCode": 0, "log": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation.log", "precommitLog": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation-precommit.log"},
-        {"kind": "fresh Unity install from committed local Git URL", "command": "timeout 600 bash Package/tools/verify-install.sh", "exitCode": 0, "commit": "206fecf28a2cbc5345baa169c435bced9872abf7", "sampleCompiled": true, "log": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local.log", "unityLog": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local-unity.log", "packageLock": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local-packages-lock.json", "note": "Local-Git gate; the final public-tag install gate remains."}
-      ],
-      "validationHistory": [
-        {"phase": "compile", "issues": ["DIM override (CS0115)"], "resolution": "explicit interface implementation"},
-        {"phase": "targeted EditMode", "jobId": "7f32ebd21d7842d5b3c9fcd8d22b17f0", "failed": 4, "resolution": "tombstone branch-order + sweep-tombstone lifetime defects (above)"},
-        {"phase": "targeted EditMode", "jobId": "888b0d75b8064c8db2b2a3ac1e330a63", "failed": 2, "resolution": "sweep-tombstone zero-lifetime fix"},
-        {"phase": "targeted EditMode", "jobId": "79d40e98f62e479ebeadbd71606a2731", "failed": 1, "resolution": "test premise — invalid-connId case needs a live session token; reconstructed"},
-        {"phase": "full PlayMode", "jobId": "935f9db0cb194268bb001ea1466ba743", "failed": 1, "resolution": "event subscription on a replaced instance — sticky polling"}
-      ],
-      "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/rec001-validation-events.jsonl",
-      "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/rec001-validation-input-blobs.json",
-      "generatorDllSha256": "30ede5fced5373c48e031c578a8a5e5318828319610cf19280a8373b3abc26e6",
-      "review": {
-        "model": "zai/glm-5.3-flash",
-        "round": 1,
-        "verdict": "CLEAN",
-        "metadata": ".pi-subagents/artifacts/b0bcca71_reviewer_meta.json",
-        "transcript": ".pi-subagents/artifacts/b0bcca71_reviewer_transcript.jsonl",
-        "output": ".pi-subagents/artifacts/b0bcca71_reviewer_output.md",
-        "residualRiskResolved": "Reviewer flagged ResumeSession's LocalClock call thread-safety as unverified; parent confirmed the generated wire-10 handler wraps ResumeSession in QueueOnMain (Emitter.cs:289) — main-thread execution, safe."
-      },
-      "release": {
-        "status": "published",
-        "version": "0.7.0",
-        "tag": "v0.7.0",
-        "implementationCommit": "206fecf28a2cbc5345baa169c435bced9872abf7",
-        "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.7.0",
-        "publishedAt": "2026-10-20T05:40:21Z",
-        "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39376117381",
-        "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39376116865",
-        "ciConclusion": "success",
-        "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-ci-runs.json",
-        "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-release.json",
-        "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-remote-tag.txt",
-        "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-remote-package.json",
-        "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-staged-paths.json"
-      }
-    }
-  ],
-  "finalValidation": {
-    "status": "not_started",
-    "releasedCodeRef": null,
-    "editModeXml": "Builds/commercial-netcode-validation/EditMode.xml",
-    "playModeXml": "Builds/commercial-netcode-validation/PlayMode.xml",
-    "arenaResults": "Builds/commercial-netcode-validation/Arena-results.json",
-    "publicUpmInstall": null,
-    "remoteReleaseReconciliation": null
+   ],
+   "releaseVersion": null,
+   "arenaExampleRequired": false,
+   "consumerDocsRequired": false,
+   "exemptionReason": "Runtime code, public API, diagnostics and runtime log contracts were not changed. Only the test now captures and asserts its expected fault and restores the global logger. No functional release or new Arena example is claimed."
   }
+ ],
+ "environmentChanges": [
+  {
+   "id": "ENV-001",
+   "kind": "local-editor-module-installation",
+   "status": "verified",
+   "userApproved": true,
+   "unityVersion": "6000.0.83f1",
+   "module": "windows-server",
+   "officialInstaller": "Unity Hub headless install-modules",
+   "exitCode": 0,
+   "preflight": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-preflight.json",
+   "postflight": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-postflight.json",
+   "installLog": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-install.log",
+   "review": ".pi-subagents/artifacts/commercial-netcode/windows-server-module-review.json",
+   "note": "Local Windows dedicated-server module installed without editor shutdown or scene save; actual build/run and final multi-process gates remain pending. No library functionality or package release is attributed to this installation."
+  }
+ ],
+ "functionalChanges": [
+  {
+   "id": "SEC-001",
+   "status": "closed",
+   "kind": "security-fix",
+   "adr": "Document/decisions/0041-세션-토큰-암호학적-난수-전환.md",
+   "featureDocument": "Document/features/connection-lifecycle.md",
+   "packageVersion": "0.4.0",
+   "generatorVersion": "0.2.8",
+   "worker": {
+    "model": "zai/glm-5.3",
+    "implementationRunId": "d6517bbf",
+    "implementationMetadata": ".pi-subagents/artifacts/d6517bbf_worker_meta.json",
+    "implementationTranscript": ".pi-subagents/artifacts/d6517bbf_worker_transcript.jsonl",
+    "fixPassMetadata": [
+     ".pi-subagents/artifacts/e46bf767_worker_meta.json",
+     ".pi-subagents/artifacts/fab09050_worker_meta.json",
+     ".pi-subagents/artifacts/bf6ad587_worker_meta.json",
+     ".pi-subagents/artifacts/66154991_worker_meta.json"
+    ],
+    "finalOutput": ".pi-subagents/artifacts/66154991_worker_output.md",
+    "modelsVerified": true
+   },
+   "regressionTests": [
+    "UniNet.Tests.ReconnectGraceTests.토큰은_256비트_난수_Base64이고_다중_발급이_유일하다",
+    "UniNet.Tests.ReconnectGraceTests.추측_토큰으로_피해자_소유권을_가로챌_수_없다",
+    "UniNet.Tests.ReconnectGraceTests.잘못된_connId_거절_후_올바른_연결로_재개_가능하다",
+    "UniNet.Tests.ReconnectGraceTests.중복_재개는_거부되고_소유권이_불변이다",
+    "UniNet.Tests.ReconnectGraceTests.재부착이_소유권을_새_연결로_이전한다",
+    "UniNet.Tests.ReconnectGraceTests.유예_만료_후_재배정이_고아를_입양한다",
+    "UniNet.Tests.ReconnectGraceTests.유예기간_중_소유권이_보존된다",
+    "UniNet.Tests.ReconnectGraceTests.유예_비활성_시_즉시_재배정",
+    "UniNet.Tests.ResumeRequestWireTests.정상_와이어_재개_요청은_생성_핸들러를_통해_소유권을_이전한다",
+    "UniNet.Tests.ResumeRequestWireTests.잘림_초과_위조_접두_요청은_세션을_소진하지_않고_이후_정상_재개가_성공한다"
+   ],
+   "arenaDiagnostic": {
+    "entry": "Arena scene (Play Mode) → ArenaBootstrap context menu → 'Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)'",
+    "precondition": "Play Mode only; active demo session is explicitly stopped first; re-entry guarded",
+    "subject": "NON-DYNAMIC marker in the real server registry; actual loopback RUDP client/server, marker ownership and player mapping; NOT full avatar recovery or the final three-process scenario",
+    "successLog": "[UNINET-VERIFY] SEC-001 DIAG PASS",
+    "run": {
+     "status": "passed",
+     "transport": "actual RUDP loopback in Unity Editor",
+     "rawEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
+     "assertions": [
+      "two forged tokens rejected",
+      "victim marker ownership unchanged",
+      "genuine resume succeeds after forgery attempts",
+      "player mapping restored",
+      "diagnostic runtime cleaned up"
+     ]
+    }
+   },
+   "validation": [
+    {
+     "kind": "targeted EditMode",
+     "jobId": "b28cdbfe217f4116a9db19375a4efde1",
+     "total": 10,
+     "passed": 10,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode",
+     "jobId": "b3af36a5ae554620ab7f71c4e3d920b2",
+     "total": 138,
+     "passed": 138,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "12ff2e92346b46d8b97ba90bef5d2a74",
+     "total": 27,
+     "passed": 27,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "CodeGenerator Release build",
+     "exitCode": 0,
+     "log": ".pi-subagents/artifacts/commercial-netcode/sec001-codegen-build-r2.log",
+     "warning": "NU5128 analyzer-only package layout warning; no compiler errors"
+    },
+    {
+     "kind": "package validation",
+     "command": "bash Package/tools/validate-package.sh --tag v0.4.0",
+     "exitCode": 0,
+     "log": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation.log",
+     "precommitLog": ".pi-subagents/artifacts/commercial-netcode/sec001-package-validation-precommit.log"
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21",
+     "sampleCompiled": true,
+     "log": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local.log",
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-unity.log",
+     "packageLock": ".pi-subagents/artifacts/commercial-netcode/sec001-fresh-install-local-packages-lock.json",
+     "note": "This is the existing local-Git installation gate, not the final public-UPM-tag gate tracked by INSTALL-001."
+    }
+   ],
+   "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/sec001-validation-events.jsonl",
+   "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/sec001-validated-input-blobs.json",
+   "analyzerReplacement": ".pi-subagents/artifacts/commercial-netcode/sec001-analyzer-replacement.json",
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "round": 3,
+    "verdict": "CLEAN",
+    "metadata": ".pi-subagents/artifacts/7a9d082e_reviewer_meta.json",
+    "output": ".pi-subagents/artifacts/7a9d082e_reviewer_output.md",
+    "history": [
+     {
+      "round": 1,
+      "verdict": "ISSUES",
+      "metadata": ".pi-subagents/artifacts/4dee4939_reviewer_0_meta.json",
+      "output": ".pi-subagents/artifacts/4dee4939_reviewer_0_output.md"
+     },
+     {
+      "round": 2,
+      "verdict": "ISSUES",
+      "metadata": ".pi-subagents/artifacts/105f3c09_reviewer_0_meta.json",
+      "output": ".pi-subagents/artifacts/105f3c09_reviewer_0_output.md"
+     }
+    ],
+    "documentationCheck": {
+     "status": "passed",
+     "verdict": "CLEAN",
+     "model": "zai/glm-5.3-flash",
+     "metadata": ".pi-subagents/artifacts/919b7a82_reviewer_meta.json",
+     "transcript": ".pi-subagents/artifacts/919b7a82_reviewer_transcript.jsonl",
+     "output": ".pi-subagents/artifacts/919b7a82_reviewer_output.md",
+     "scope": "Additional feature documentation and evidence consistency; source unchanged after round 3"
+    }
+   },
+   "synchronizedDocs": [
+    "Document/features/connection-lifecycle.md",
+    "Document/decisions/0041-세션-토큰-암호학적-난수-전환.md",
+    "Document/examples/arena-shooter.md",
+    "Document/overview.md",
+    "Document/deployment.md",
+    "Document/00-INDEX.md",
+    "Document/changelog.md",
+    "Package/CHANGELOG.md",
+    "README.md",
+    "skills/uninet/SKILL.md"
+   ],
+   "release": {
+    "status": "published",
+    "version": "0.4.0",
+    "tag": "v0.4.0",
+    "implementationCommit": "ca13ee708b0f3beb49d6a93b4e19128d22b90d21",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.0",
+    "publishedAt": "2026-10-20T00:21:51Z",
+    "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39347170086",
+    "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39347170322",
+    "ciConclusion": "success",
+    "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-ci-runs.json",
+    "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-release.json",
+    "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-remote-tag.txt",
+    "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-remote-package.json",
+    "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/sec001-commit-scope.json"
+   }
+  },
+  {
+   "id": "OWN-001",
+   "status": "closed",
+   "kind": "ownership-baseline-fix",
+   "packageVersion": "0.4.1",
+   "generatorVersion": "0.2.8",
+   "wireFormatChanged": false,
+   "featureDocuments": [
+    "Document/features/monobehaviour-rpc-replicate.md",
+    "Document/features/replication-p3-policy.md"
+   ],
+   "worker": {
+    "model": "zai/glm-5.3",
+    "resolvedModelWithThinking": "zai/glm-5.3:high",
+    "implementationRunId": "ec75860a-1ded-4a1c-9382-81883b9d6311",
+    "metadata": ".pi-subagents/artifacts/ec75860a-1ded-4a1c-9382-81883b9d6311_worker_meta.json",
+    "transcript": ".pi-subagents/artifacts/ec75860a-1ded-4a1c-9382-81883b9d6311_worker_transcript.jsonl",
+    "fixPassMetadata": [
+     ".pi-subagents/artifacts/4d4e1ca2_worker_meta.json",
+     ".pi-subagents/artifacts/bfcbc977_worker_meta.json",
+     ".pi-subagents/artifacts/5edd7b43_worker_meta.json",
+     ".pi-subagents/artifacts/6b568963_worker_meta.json",
+     ".pi-subagents/artifacts/52121ff1_worker_meta.json"
+    ],
+    "finalOutput": ".pi-subagents/artifacts/52121ff1_worker_output.md"
+   },
+   "preFixProbe": ".pi-subagents/artifacts/commercial-netcode/own001-pre-fix-probe.json",
+   "regressionFixture": "UniNet.Tests.OwnerBaselineTests",
+   "regressionCoverage": [
+    "live-owner scene and dynamic late join",
+    "scene and dynamic relevance re-entry",
+    "explicit zero owner replaces stale metadata",
+    "object-level baseline precedes multi-sub state",
+    "actual generated owner/replication receivers and Notify",
+    "initial BroadcastSpawn owner-before-spawn"
+   ],
+   "validation": [
+    {
+     "kind": "targeted EditMode",
+     "jobId": "12835612689e438b96f73fe1d9f5b824",
+     "total": 8,
+     "passed": 8,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode",
+     "jobId": "cfa15005754a46ae8d356c6b57cd9558",
+     "total": 146,
+     "passed": 146,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "13d6c4af7c1c47ea8b2ed08db11ef4f3",
+     "total": 27,
+     "passed": 27,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "package validation",
+     "command": "bash Package/tools/validate-package.sh --tag v0.4.1",
+     "exitCode": 0,
+     "log": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation.log",
+     "precommitLog": ".pi-subagents/artifacts/commercial-netcode/own001-package-validation-precommit.log"
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "380b2b44e5c30aea5fb3eec617f4fe50e3bc6614",
+     "sampleCompiled": true,
+     "log": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local.log",
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-unity.log",
+     "packageLock": ".pi-subagents/artifacts/commercial-netcode/own001-fresh-install-local-packages-lock.json",
+     "note": "Local-Git gate, not the final public tag installation gate."
+    }
+   ],
+   "validationHistory": [
+    {
+     "jobId": "d4aa4c63c6a542529d8521f1a1c84086",
+     "total": 0,
+     "acceptedAsPass": false,
+     "reason": "New script was not imported by scripts-only refresh; force-all asset refresh required."
+    },
+    {
+     "jobId": "7ff6b5f2a16f44dfb5ad6235d6cef3b8",
+     "total": 7,
+     "failed": 2,
+     "reason": "Test helper looked up system wire 2 in general dispatch dictionary; fixed by invoking actual generated private handler."
+    },
+    {
+     "jobId": "daab037afc02444bbdbceee3439ed1ac",
+     "total": 146,
+     "failed": 1,
+     "reason": "Legacy ownership test did not count new catch-up notices; replaced with exact per-receiver, per-object and owner-value assertions, not a skip."
+    }
+   ],
+   "arenaDiagnostic": {
+    "entry": "ArenaBootstrap context menu: Diag/OWN-001 후발 소유권 기준선 (기존 세션 정지 후)",
+    "status": "passed",
+    "successLog": "[UNINET-VERIFY] OWN-001 DIAG PASS",
+    "scope": "Actual RUDP, one real client at a time: first client disconnects, grace keeps owner, fresh late client receives old owner. Timed relevance exit/re-entry restores a deliberately stale local zero-owner cache through the actual wire. Non-dynamic marker; not simultaneous two-client or avatar recovery or final three-process validation.",
+    "assertions": [
+     "first client baseline received",
+     "existing grace owner preserved on late join",
+     "stale-cache fault injection restored by actual re-entry wire",
+     "diagnostic runtime cleaned up"
+    ],
+    "sceneSaved": false
+   },
+   "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/own001-validation-events.jsonl",
+   "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/own001-validation-input-blobs.json",
+   "failedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/own001-failed-input-blobs.json",
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "round": 3,
+    "verdict": "CLEAN",
+    "metadata": ".pi-subagents/artifacts/d4872728_reviewer_meta.json",
+    "transcript": ".pi-subagents/artifacts/d4872728_reviewer_transcript.jsonl",
+    "output": ".pi-subagents/artifacts/d4872728_reviewer_output.md",
+    "history": [
+     {
+      "round": 1,
+      "verdict": "ISSUES",
+      "metadata": ".pi-subagents/artifacts/1066ab2f-47bd-42b0-b050-b7c4839a191e_reviewer_meta.json"
+     },
+     {
+      "round": 2,
+      "verdict": "CLEAN",
+      "metadata": ".pi-subagents/artifacts/40d65728_reviewer_meta.json",
+      "scope": "Before the final legacy notification-count assertion adjustment"
+     }
+    ],
+    "finalTestAndDocumentationCheck": "passed"
+   },
+   "synchronizedDocs": [
+    "Document/features/monobehaviour-rpc-replicate.md",
+    "Document/features/replication-p3-policy.md",
+    "Document/changelog.md",
+    "Document/00-INDEX.md",
+    "Document/examples/arena-shooter.md",
+    "Document/deployment.md",
+    "Document/research/commercial-netcode-audit.md",
+    "Package/CHANGELOG.md",
+    "README.md",
+    "skills/uninet/SKILL.md"
+   ],
+   "release": {
+    "status": "published",
+    "version": "0.4.1",
+    "tag": "v0.4.1",
+    "implementationCommit": "380b2b44e5c30aea5fb3eec617f4fe50e3bc6614",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.4.1",
+    "publishedAt": "2026-10-20T01:07:09Z",
+    "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39351613439",
+    "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39351613072",
+    "ciConclusion": "success",
+    "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-ci-runs.json",
+    "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-release.json",
+    "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-remote-tag.txt",
+    "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-remote-package.json",
+    "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/own001-commit-scope.json"
+   }
+  },
+  {
+   "id": "MOV-001",
+   "status": "closed",
+   "kind": "movement-ownership-stream-fix",
+   "packageVersion": "0.5.0",
+   "generatorVersion": "0.2.8",
+   "wireSystemMessagesChanged": false,
+   "breakingChanges": [
+    "INetworkMoveSimulation.ResetOwnershipStream added to the public interface (custom engine implementers must add the member)",
+    "RpcSubmitMove envelope layout now [uint epoch][int length][bytes] — same-package ends only; the package-version handshake rejects mixed versions"
+   ],
+   "adr": "Document/decisions/0042-이동-소유권-전이-스트림-리셋-에포크.md",
+   "featureDocument": "Document/features/movement-prediction.md",
+   "worker": {
+    "model": "zai/glm-5.3",
+    "resolvedModelWithThinking": "zai/glm-5.3:high",
+    "implementationRunId": "621e0bde-0ea0-4100-ba1c-5a14a4802ab9",
+    "continuationRunIds": [
+     "3d829458",
+     "f9048c73",
+     "fb62aa94",
+     "618033f1",
+     "95a9ab14",
+     "2a060ecb",
+     "d3533f35",
+     "93543fba"
+    ],
+    "metadata": ".pi-subagents/artifacts/621e0bde-0ea0-4100-ba1c-5a14a4802ab9_worker_meta.json"
+   },
+   "preFixProbes": [
+    ".pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe.json",
+    ".pi-subagents/artifacts/commercial-netcode/mov001-pre-fix-probe-2.json"
+   ],
+   "integrationDefectFoundDuringValidation": {
+    "defect": "Dynamic spawn whose owning connection attaches after the component's first Update: 0→nonzero adoption was misread as a tenure change (spurious epoch bump + reset), killing the first tenure's inputs during the handoff window",
+    "reproduced": "full-suite PlayMode failures (2 runs); passed in isolation",
+    "fix": "Tenure rule — bump+reset only on nonzero→different transitions (direct transfer, release); 0→nonzero adoption is a timing-independent baseline"
+   },
+   "regressionTests": [
+    "UniNet.Tests.MoveSimulationTests.소유권_스트림_리셋_후_새_소유자_seq1이_채택된다",
+    "UniNet.Tests.MoveSimulationTests.OnTeleport는_스트림_리셋_대용이_될_수_없다",
+    "UniNet.Tests.MoveSimulationTests.스트림_리셋은_권위_게임_상태를_보존한다",
+    "UniNet.Tests.NetworkTransformComponentTests.이전_임기_지연_입력은_epoch_불일치로_기각되고_새_스트림이_채택된다",
+    "UniNet.Tests.NetworkTransformComponentTests.소유자_값_불변시_epoch_범프_없이_스트림이_유지된다",
+    "UniNet.Tests.NetworkTransformComponentTests.실제_OwnerUpdate_수신기_경유_소유권_획득시_클라_스트림이_재바인딩된다",
+    "UniNet.Tests.NetworkTransformComponentTests.호스트_권위_인스턴스는_이벤트로_이중_리셋하지_않는다",
+    "UniNet.Tests.NetworkTransformComponentTests.다른_객체의_소유권_변화는_이_스트림을_건드리지_않는다",
+    "UniNet.Tests.OwnerBaselineTests.ApplyOwner_이벤트는_값이_실제로_바뀔_때만_발화한다"
+   ],
+   "arenaExample": {
+    "kind": "PlayMode test with real loopback RUDP",
+    "entry": "UniNet.Tests.MovementOwnershipPlayTests.소유권_사이클_후_이전_임기_입력은_epoch로_기각되고_새_스트림_ack가_재개된다",
+    "successLog": "[UNINET-VERIFY] MovementOwnership PASS",
+    "scope": "Real ownership cycle (release → reassignment adoption → same client re-gains) over loopback RUDP; stale-tenure input rejected at the epoch gate past the ownership gate; fresh stream adopted with acknowledgements resumed. Host topology single client — client prediction rebinding is covered by EditMode regressions; not two simultaneous clients or avatar recovery."
+   },
+   "validation": [
+    {
+     "kind": "targeted EditMode",
+     "jobId": "ea0a6feb90e54952954d480673318177",
+     "total": 28,
+     "passed": 28,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode",
+     "jobId": "5f87c48ba17b4bdda7a28eb2ea524314",
+     "total": 155,
+     "passed": 155,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "196c505e110448c89a06bb59dee8b267",
+     "total": 28,
+     "passed": 28,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "package validation",
+     "command": "bash Package/tools/validate-package.sh --tag v0.5.0",
+     "exitCode": 0,
+     "log": ".pi-subagents/artifacts/commercial-netcode/mov001-package-validation.log",
+     "precommitLog": ".pi-subagents/artifacts/commercial-netcode/mov001-package-validation-precommit.log"
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "3c3b4df69a45e9db29d63bcca19bf408548ee86b",
+     "sampleCompiled": true,
+     "log": ".pi-subagents/artifacts/commercial-netcode/mov001-fresh-install-local.log",
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/mov001-fresh-install-local-unity.log",
+     "packageLock": ".pi-subagents/artifacts/commercial-netcode/mov001-fresh-install-local-packages-lock.json",
+     "note": "Local-Git gate; the final public-tag install gate remains."
+    }
+   ],
+   "validationHistory": [
+    {
+     "phase": "compile",
+     "issues": [
+      "missing using System (NetworkClient)",
+      "null-conditional event unsubscription (CS0079)",
+      "NUnit AreNotEqual overload misuse"
+     ],
+     "resolution": "fixed by the same worker; in-editor compile errors 0 verified"
+    },
+    {
+     "phase": "targeted EditMode",
+     "jobId": "4f5a4e19c6f3496585985130226a0c79",
+     "total": 28,
+     "failed": 4,
+     "resolution": "Envelope encoder omitted the length prefix (MessageProtocol WriteBytes is raw) — fixed with WriteInt32; one test expectation aligned with the documented first-assignment-no-event contract"
+    },
+    {
+     "phase": "full PlayMode",
+     "jobId": "8e9e959a6abb44a895b611135fe52549",
+     "failed": 1,
+     "resolution": "Reproduced the attach-race adoption misread; fixed by the tenure rule (history kept)"
+    },
+    {
+     "phase": "post-review allocation fix",
+     "change": "EncodeMoveInput single-allocation rewrite (BinaryPrimitives + BlockCopy) after review recommendation",
+     "revalidated": "targeted 28/28, EditMode 155/155, PlayMode 28/28, compile errors 0"
+    }
+   ],
+   "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/mov001-validation-events.jsonl",
+   "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/mov001-validation-input-blobs.json",
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "round": 2,
+    "verdict": "CLEAN",
+    "metadata": ".pi-subagents/artifacts/7be084eb_reviewer_meta.json",
+    "transcript": ".pi-subagents/artifacts/7be084eb_reviewer_transcript.jsonl",
+    "output": ".pi-subagents/artifacts/7be084eb_reviewer_output.md",
+    "history": [
+     {
+      "round": 1,
+      "verdict": "ISSUES (1 recommended — hot-path allocation)",
+      "metadata": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_meta.json",
+      "output": ".pi-subagents/artifacts/cd26d068-da84-47e5-ac2d-547a6642bb08_reviewer_output.md",
+      "disposition": "accepted — single-allocation encoder fix applied and fully revalidated"
+     }
+    ]
+   },
+   "release": {
+    "status": "published",
+    "version": "0.5.0",
+    "tag": "v0.5.0",
+    "implementationCommit": "3c3b4df69a45e9db29d63bcca19bf408548ee86b",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.5.0",
+    "publishedAt": "2026-10-20T03:44:56Z",
+    "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39365890695",
+    "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39365890801",
+    "ciConclusion": "success",
+    "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-ci-runs.json",
+    "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-release.json",
+    "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-remote-tag.txt",
+    "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-remote-package.json",
+    "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/mov001-staged-paths.json"
+   }
+  },
+  {
+   "id": "CON-001",
+   "status": "closed",
+   "kind": "connection-approval-gate",
+   "packageVersion": "0.6.0",
+   "generatorVersion": "0.2.9",
+   "wireSystemMessagesChanged": false,
+   "breakingChanges": [
+    "A client that never declares its protocol version (wire 7) now receives no game data and is kicked after VersionDeclareTimeoutMs (default 10 s; 0 = hold). Generated clients always declare, so same-package consumers are unaffected; hand-rolled non-declaring clients lose the undocumented bypass."
+   ],
+   "adr": "Document/decisions/0043-연결-승인-수명주기-버전-선언-전-게임-데이터-유보.md",
+   "featureDocument": "Document/features/connection-lifecycle.md",
+   "worker": {
+    "model": "zai/glm-5.3",
+    "resolvedModelWithThinking": "zai/glm-5.3:high",
+    "implementationRunId": "07b84d4c",
+    "continuationRunIds": [
+     "b5b98a41",
+     "20162879",
+     "35e7df42",
+     "7eacf2ea"
+    ],
+    "metadata": ".pi-subagents/artifacts/07b84d4c_worker_meta.json"
+   },
+   "regressionsFoundDuringValidation": [
+    {
+     "defect": "AttachConnection stamped the approval clock via UniNetTime.LocalClock() on the DRPC accept thread — in Unity that is Time.unscaledTimeAsDouble, which throws UnityException off the main thread, silently aborting every real attach (22/29 PlayMode failures; EditMode fake channels run on the main thread and hid it)",
+     "fix": "Unstamped NaN sentinel + main-queue lambda stamps before Welcome + sweep skips unstamped + a thread-safety regression test"
+    },
+    {
+     "defect": "The rebuilt generator 0.2.9 DLL was never actually copied into the analyzers folder (byte-identical to 0.2.8; the worker's ASCII grep verification was invalid because .NET stores user strings as UTF-16LE)",
+     "fix": "Actual deployment verified by SHA-256 210455604c6f5f00e63118f5c248d4648b5b9d282f489163d31dc54cd9d659f2 (old a43b0d18…)"
+    }
+   ],
+   "regressionTests": [
+    "UniNet.Tests.ConnectionApprovalTests.빈_기대버전은_즉시_승인되어_현행_동작을_유지한다",
+    "UniNet.Tests.ConnectionApprovalTests.미선언_연결은_소유권_캐치업_이벤트_복제에서_제외된다",
+    "UniNet.Tests.ConnectionApprovalTests.승인_선언_도착_시_보류_작업이_순서대로_실행된다",
+    "UniNet.Tests.ConnectionApprovalTests.재선언은_멱등이다_보류_작업_재실행_없음",
+    "UniNet.Tests.ConnectionApprovalTests.미승인_발신_게임_RPC는_조용히_기각되고_카운터에_관측된다",
+    "UniNet.Tests.ConnectionApprovalTests.미선언_타임아웃은_VersionMismatch_킥으로_마감한다",
+    "UniNet.Tests.ConnectionApprovalTests.타임아웃_0은_스윕을_비활성화한다",
+    "UniNet.Tests.ConnectionApprovalTests.AttachConnection은_네트워크_스레드에서도_안전하다"
+   ],
+   "arenaExample": {
+    "kind": "PlayMode test with real loopback RUDP",
+    "entry": "UniNet.Tests.ConnectionApprovalPlayTests.실제_클라는_자동_선언으로_승인되고_미선언_연결은_유보_후_타임아웃_킥된다",
+    "scope": "Real server (500 ms timeout): the real client's automatic declaration is approved round-trip; a silent channel is held and then kicked at the driver cadence. A raw non-declaring socket client was not constructible in-process (DRPC hub session factory), so the undeclared path uses a real attach with a silent channel — documented honestly."
+   },
+   "validation": [
+    {
+     "kind": "targeted EditMode",
+     "jobId": "a1a9ce57bf974839a21767d1dac2939a",
+     "total": 8,
+     "passed": 8,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode",
+     "jobId": "a402419823144308b3243254ab33a9c6",
+     "total": 163,
+     "passed": 163,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "0268b9d1bb454eacbdcaaead1b2e3795",
+     "total": 29,
+     "passed": 29,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "package validation",
+     "command": "bash Package/tools/validate-package.sh --tag v0.6.0",
+     "exitCode": 0,
+     "log": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation.log",
+     "precommitLog": ".pi-subagents/artifacts/commercial-netcode/con001-package-validation-precommit.log"
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "c2d4c8e7b3e915fcbd41ac3314584eaace812059",
+     "sampleCompiled": true,
+     "log": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local.log",
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local-unity.log",
+     "packageLock": ".pi-subagents/artifacts/commercial-netcode/con001-fresh-install-local-packages-lock.json",
+     "note": "Local-Git gate; the final public-tag install gate remains."
+    }
+   ],
+   "validationHistory": [
+    {
+     "phase": "targeted EditMode",
+     "jobId": "488d35a5d4494b1f88518a650602684d",
+     "failed": 1,
+     "resolution": "Idempotency test expected one owner notice where the standard adoption-broadcast + catch-up-baseline pair legitimately produces two; test aligned to assert no re-send"
+    },
+    {
+     "phase": "full PlayMode",
+     "jobId": "2e1446875735430b87e058c23e6b8e8d",
+     "failed": 22,
+     "resolution": "Accept-thread UnityException regression (above); fixed and fully revalidated"
+    },
+    {
+     "phase": "full PlayMode",
+     "jobId": "9c4814704d0a4d18841eec6b29724464",
+     "failed": 1,
+     "resolution": "Nondeterministic Welcome-wait flake in a different test each run; clean 29/29 on re-run (aa920d4c)"
+    },
+    {
+     "phase": "full PlayMode",
+     "jobId": "92828173f57f4b03b3a5c081eb1f4d2c",
+     "failed": 1,
+     "resolution": "MovementOwnershipPlayTests guest channel never declared (the very blind spot CON-001 closes) — declaration inserted, revalidated"
+    },
+    {
+     "phase": "post-review hot-path fix",
+     "change": "ConcurrentDictionary approval index replaces per-RPC SnapshotConnections allocation",
+     "revalidated": "targeted 8/8, EditMode 163/163, PlayMode 29/29"
+    }
+   ],
+   "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/con001-validation-events.jsonl",
+   "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/con001-validation-input-blobs.json",
+   "generatorDllSha256": "210455604c6f5f00e63118f5c248d4648b5b9d282f489163d31dc54cd9d659f2",
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "round": 2,
+    "verdict": "CLEAN",
+    "metadata": ".pi-subagents/artifacts/a704226d_reviewer_meta.json",
+    "transcript": ".pi-subagents/artifacts/a704226d_reviewer_transcript.jsonl",
+    "output": ".pi-subagents/artifacts/a704226d_reviewer_output.md",
+    "history": [
+     {
+      "round": 1,
+      "verdict": "ISSUES (1 recommended — per-RPC allocation in approval lookup)",
+      "metadata": ".pi-subagents/artifacts/725364af_reviewer_meta.json",
+      "output": ".pi-subagents/artifacts/725364af_reviewer_output.md",
+      "disposition": "accepted — ConcurrentDictionary approval index applied and fully revalidated"
+     }
+    ]
+   },
+   "release": {
+    "status": "published",
+    "version": "0.6.0",
+    "tag": "v0.6.0",
+    "implementationCommit": "c2d4c8e7b3e915fcbd41ac3314584eaace812059",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.6.0",
+    "publishedAt": "2026-10-20T04:52:56Z",
+    "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39371895239",
+    "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39371895200",
+    "ciConclusion": "success",
+    "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-ci-runs.json",
+    "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-release.json",
+    "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-remote-tag.txt",
+    "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-remote-package.json",
+    "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/con001-staged-paths.json"
+   }
+  },
+  {
+   "id": "REC-001",
+   "status": "closed",
+   "kind": "resume-result-notification",
+   "packageVersion": "0.7.0",
+   "generatorVersion": "0.2.10",
+   "wireSystemMessagesChanged": "added client-bound wire 14 ResumeResult{ok, reason, retryableRemainingMs}",
+   "breakingChanges": [
+    "NetworkServer.ResumeSession now returns GraceResumeResult instead of bool",
+    "new system wire 14 (same-package ends; the package-version handshake rejects mixed versions)"
+   ],
+   "adr": "Document/decisions/0044-재개-결과-통보와-자동-재시도.md",
+   "featureDocument": "Document/features/connection-lifecycle.md",
+   "worker": {
+    "model": "zai/glm-5.3",
+    "resolvedModelWithThinking": "zai/glm-5.3:high",
+    "implementationRunId": "aa26fd0d",
+    "continuationRunIds": [
+     "a66cc619",
+     "2f5020c1",
+     "a94be869",
+     "424dcfee",
+     "e4b5a83c",
+     "fe62be5c"
+    ],
+    "metadata": ".pi-subagents/artifacts/aa26fd0d_worker_meta.json"
+   },
+   "regressionsFoundDuringValidation": [
+    {
+     "defect": "Tombstone lookup was an unreachable else-branch — consumed/swept tokens always fell into the first SessionNotFound branch",
+     "fix": "Tombstone check moved to the head of the not-found branch"
+    },
+    {
+     "defect": "Sweep-written tombstones used the original (already-past) expiry and were pruned by the same sweep — zero lifetime",
+     "fix": "Sweep tombstones expire at sweep-time + one grace window"
+    },
+    {
+     "defect": "Test channel tried to override an interface DIM (CS0115)",
+     "fix": "Explicit interface implementation"
+    },
+    {
+     "defect": "PlayMode test subscribed to a NetworkClient instance that ClientAsync replaces",
+     "fix": "Sticky LastResumeResult polling; event contract stays EditMode-verified through the real generated receiver"
+    }
+   ],
+   "regressionTests": [
+    "UniNet.Tests.ResumeResultTests.각_종결_사유가_요청_연결에_정확히_전달된다",
+    "UniNet.Tests.ResumeResultTests.SessionNotFound_재시도가_디태치_경합에서_재부착으로_수렴한다",
+    "UniNet.Tests.ResumeResultTests.이중_소비_패자는_UnknownToken으로_정확히_종결된다",
+    "UniNet.Tests.ResumeResultTests.실제_생성_수신기가_결과를_클라에_적용한다"
+   ],
+   "arenaExample": {
+    "kind": "PlayMode test with real loopback RUDP",
+    "entry": "UniNet.Tests.ResumeResultPlayTests.진짜_토큰은_재부착_결과를_위조_토큰은_거절_결과를_관측한다",
+    "scope": "Real wire: genuine preserved token observes Reattached (token re-seeded across the stop — the same test-procedure injection as the SEC-001 diagnostic; voluntary-stop token burn is REC-002, out of scope), forged token observes the exact rejection result"
+   },
+   "validation": [
+    {
+     "kind": "targeted EditMode",
+     "jobId": "99f01a14e3f149619f1e823a6554e45b",
+     "total": 12,
+     "passed": 12,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode",
+     "jobId": "0891be1e6ae44921b6969422a5afe026",
+     "total": 167,
+     "passed": 167,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode",
+     "jobId": "4880fda06c574e1f85dfdd47aadb6c2d",
+     "total": 30,
+     "passed": 30,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "package validation",
+     "command": "bash Package/tools/validate-package.sh --tag v0.7.0",
+     "exitCode": 0,
+     "log": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation.log",
+     "precommitLog": ".pi-subagents/artifacts/commercial-netcode/rec001-package-validation-precommit.log"
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "206fecf28a2cbc5345baa169c435bced9872abf7",
+     "sampleCompiled": true,
+     "log": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local.log",
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local-unity.log",
+     "packageLock": ".pi-subagents/artifacts/commercial-netcode/rec001-fresh-install-local-packages-lock.json",
+     "note": "Local-Git gate; the final public-tag install gate remains."
+    }
+   ],
+   "validationHistory": [
+    {
+     "phase": "compile",
+     "issues": [
+      "DIM override (CS0115)"
+     ],
+     "resolution": "explicit interface implementation"
+    },
+    {
+     "phase": "targeted EditMode",
+     "jobId": "7f32ebd21d7842d5b3c9fcd8d22b17f0",
+     "failed": 4,
+     "resolution": "tombstone branch-order + sweep-tombstone lifetime defects (above)"
+    },
+    {
+     "phase": "targeted EditMode",
+     "jobId": "888b0d75b8064c8db2b2a3ac1e330a63",
+     "failed": 2,
+     "resolution": "sweep-tombstone zero-lifetime fix"
+    },
+    {
+     "phase": "targeted EditMode",
+     "jobId": "79d40e98f62e479ebeadbd71606a2731",
+     "failed": 1,
+     "resolution": "test premise — invalid-connId case needs a live session token; reconstructed"
+    },
+    {
+     "phase": "full PlayMode",
+     "jobId": "935f9db0cb194268bb001ea1466ba743",
+     "failed": 1,
+     "resolution": "event subscription on a replaced instance — sticky polling"
+    }
+   ],
+   "rawValidationEvents": ".pi-subagents/artifacts/commercial-netcode/rec001-validation-events.jsonl",
+   "validatedInputBlobs": ".pi-subagents/artifacts/commercial-netcode/rec001-validation-input-blobs.json",
+   "generatorDllSha256": "30ede5fced5373c48e031c578a8a5e5318828319610cf19280a8373b3abc26e6",
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "round": 1,
+    "verdict": "CLEAN",
+    "metadata": ".pi-subagents/artifacts/b0bcca71_reviewer_meta.json",
+    "transcript": ".pi-subagents/artifacts/b0bcca71_reviewer_transcript.jsonl",
+    "output": ".pi-subagents/artifacts/b0bcca71_reviewer_output.md",
+    "residualRiskResolved": "Reviewer flagged ResumeSession's LocalClock call thread-safety as unverified; parent confirmed the generated wire-10 handler wraps ResumeSession in QueueOnMain (Emitter.cs:289) — main-thread execution, safe."
+   },
+   "release": {
+    "status": "published",
+    "version": "0.7.0",
+    "tag": "v0.7.0",
+    "implementationCommit": "206fecf28a2cbc5345baa169c435bced9872abf7",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.7.0",
+    "publishedAt": "2026-10-20T05:40:21Z",
+    "ciRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39376117381",
+    "mainCiRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39376116865",
+    "ciConclusion": "success",
+    "ciReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-ci-runs.json",
+    "releaseReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-release.json",
+    "remoteTagReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-remote-tag.txt",
+    "remotePackageReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-remote-package.json",
+    "commitScopeReceipt": ".pi-subagents/artifacts/commercial-netcode/rec001-staged-paths.json"
+   }
+  },
+  {
+   "id": "SCN-001",
+   "covers": [
+    "SCN-001",
+    "SCN-002",
+    "SCN-003"
+   ],
+   "status": "closed",
+   "kind": "scene-transition-fix",
+   "adr": "Document/decisions/0045-씬-전환-잔여-현재-씬-전달-레디-보고-전-캐치업-유보-낡은-보고-차단.md",
+   "featureDocument": "Document/features/connection-lifecycle.md",
+   "packageVersion": "0.8.0",
+   "generatorVersion": "0.2.11",
+   "wireSystemMessagesChanged": false,
+   "breakingChanges": [],
+   "planner": {
+    "model": "zai/glm-5.3-flash",
+    "planDocuments": [
+     ".pi-subagents/artifacts/commercial-netcode/scn-r6/playmode-scene-leak-fix-plan.md",
+     ".pi-subagents/artifacts/commercial-netcode/scn-r6/playmode-port-allocator-plan.md"
+    ],
+    "runs": [
+     "agent_mvgjuaus_3b0bfff8_3",
+     "agent_mvi11u0p_1ef786c6_1"
+    ]
+   },
+   "worker": {
+    "model": "zai/glm-5.3-flash",
+    "implementationNote": "SCN-001/002/003 본체와 리뷰 1~5 후속은 재개 전 세션 워커가 구현(감사 문서 scn-r4·scn-r5 산출물 참조). 본 골에서 워커는 리뷰 6 발견(PlayMode 테스트 간 LateScene 누수)의 수정을 수행.",
+    "runs": [
+     "agent_mvgk3feh_c633e814_4"
+    ]
+   },
+   "regressionTests": [
+    "UniNet.Tests.SceneTransitionTests (EditMode 34케이스 — 현재 씬 전달·레디 보고 전 캐치업 유보·송신 전 낡은 보고 거부·세대 불일치 거부·유보 중 파괴 전달·동명 재전환·2단계 조합)",
+    "UniNet.Tests.CurrentSceneJoinPlayTests.완료된_전환_후_재접속_클라는_현재_씬을_받고_보고_후_해제된다 (PlayMode 실RUDP)"
+   ],
+   "validation": [
+    {
+     "kind": "targeted EditMode (SceneTransitionTests)",
+     "jobId": "ece5ab18f3f34cccb3cc7813ad733e98",
+     "total": 34,
+     "passed": 34,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "targeted PlayMode (CurrentSceneJoinPlayTests)",
+     "jobId": "6c7c7a306ca94ef0826f0d90d68c0860",
+     "total": 1,
+     "passed": 1,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full EditMode",
+     "jobId": "93c300840c164d69af45354621316c21",
+     "total": 202,
+     "passed": 202,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode (run 1 of 2)",
+     "jobId": "bd52731bde084b489cbac929779dc2e2",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "full PlayMode (run 2 of 2 — same editor session, port-reuse proof)",
+     "jobId": "bd2c38fff936414b8e9a5aa04eea609b",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0
+    },
+    {
+     "kind": "fresh Unity install from committed local Git URL",
+     "command": "timeout 600 bash Package/tools/verify-install.sh",
+     "exitCode": 0,
+     "commit": "1de0a40b0752135e4f6f0d37fb7854c8afdf2d6e",
+     "sampleCompiled": true,
+     "unityLog": ".pi-subagents/artifacts/commercial-netcode/scn080-fresh-install-unity.log",
+     "note": "Local-Git gate; the final public-tag install gate is ledger item INSTALL-001."
+    }
+   ],
+   "review": {
+    "model": "zai/glm-5.3-flash",
+    "rounds": [
+     {
+      "round": "r6 (runtime SCN v0.8.0 review-5 code)",
+      "runId": "agent_mvgidmwc_7f8f535a_1",
+      "verdict": "ISSUES",
+      "issues": "문서-코드 불일치(생성기 0.2.11·신규 API 2종을 '무변경'으로 기록한 7개 문서) + 2인자 오버로드 낡은 XML 주석 — 런타임 구현은 전부 정확 판정"
+     },
+     {
+      "round": "r7 (doc corrections)",
+      "runId": "agent_mvgjb63x_8920daf4_2",
+      "verdict": "CLEAN",
+      "issues": "r6 이슈 2건 완전 해소 확인, 문서 간 모순·버전 불일치 없음"
+     },
+     {
+      "round": "r8 (test infra: port allocator + scene leak fix + changelog)",
+      "runId": "agent_mvi2dey4_5b919521_3",
+      "verdict": "CLEAN",
+      "issues": "비차단 advisory 3건(할당자 클래스 주석 과대 주장·동적 포트 범위 부분 겹침·changelog 시점 표기) — 다음 테스트 인프라 변경 시 반영 후보"
+     }
+    ]
+   },
+   "testInfrastructureNote": "검증 중 발견된 스위트 결함 2종을 본 골에서 정비: (1) PlayMode 테스트 간 LateScene 누수 — CurrentSceneJoinPlayTests TearDown 언로드 + SceneLoadRegistrationTests UnitySetUp 자가 치유 가드(애디티브·활성 씬 케이스), (2) 20개 픽스처의 static readonly 포트(도메인당 1회 평가 → 이전 실행 잔존 소켓과 재충돌) — TestPortAllocator(호출마다 신규 포트) 도입. 플래너·워커 계약 준수(계획 문서 2종 연결).",
+   "release": {
+    "status": "published",
+    "version": "0.8.0",
+    "tag": "v0.8.0",
+    "implementationCommit": "1de0a40b0752135e4f6f0d37fb7854c8afdf2d6e",
+    "url": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.8.0",
+    "ciTagRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39598549289",
+    "ciMainRun": "https://github.com/BIGSUNGG/UniNet/actions/runs/39598544339",
+    "ciConclusion": "success",
+    "receipts": [
+     ".pi-subagents/artifacts/commercial-netcode/scn080-release.json",
+     ".pi-subagents/artifacts/commercial-netcode/scn080-ci-runs.json",
+     ".pi-subagents/artifacts/commercial-netcode/scn080-fresh-install-unity.log"
+    ]
+   }
+  }
+ ],
+ "finalValidation": {
+  "status": "not_started",
+  "releasedCodeRef": null,
+  "editModeXml": "Builds/commercial-netcode-validation/EditMode.xml",
+  "playModeXml": "Builds/commercial-netcode-validation/PlayMode.xml",
+  "arenaResults": "Builds/commercial-netcode-validation/Arena-results.json",
+  "publicUpmInstall": null,
+  "remoteReleaseReconciliation": null
+ }
 }
