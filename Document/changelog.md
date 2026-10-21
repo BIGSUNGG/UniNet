@@ -3,7 +3,11 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
-## [2026-10-20]
+## [2026-10-21]
+
+### Fixed (OWN-003 — 파괴 시 owner 캐시 정리, v0.12.0)
+
+- `NetworkClient.Unregister`가 객체 사전(`_objects`)만 정리하고 owner 캐시(`_owners`)를 남겨, 파괴된 netId에 대해 `GetOwner`가 마지막 소유자를 계속 반환했다(문서 계약 "0 = unassigned" 위반). `NetworkBehaviour.IsOwner`도 파괴 직후 잔존값으로 true를 유지할 수 있었고, 캐시는 세션 내 스폰/파괴 반복마다 무한 증가했다(느린 누수; 세션 간은 연결 시작 시 `new NetworkClient()`로 폐기돼 영향 없음). 수정: Unregister가 동일 lock 안에서 `_owners.Remove(netId)`를 수행해 파괴 후 `GetOwner`가 0을 반환하고 잔존 엔트리가 누적되지 않는다. 반환값 계약("등록되어 있었는지")은 불변. **동작 변화**(이전 결함 상태에 의존한 코드는 영향): 파괴된 netId의 `GetOwner`가 스테일 값 → 0. `OwnershipChanged`는 파괴 시 발화하지 않는다 — 이벤트는 살아있는 객체의 재배정 통보 전용이며, 파괴 후 늦게 도착하는 OwnerUpdate는 기존 ApplyOwner 시맨틱대로 first baseline으로 조용히 적용된다(와이어 2/3/4 동일 ReliableOrdered 채널 순서 보장 + 파괴 netId 재통보 서버 경로 부재로 재삽입 위험은 낮음). 공개 API·와이어·생성기(0.2.13) 무변경, 파괴적 변경 없음. 검증: 플래너 계획 `.pi-subagents/artifacts/commercial-netcode/own003-plan.md`, EditMode T1~T4(OwnerBaselineTests — 100회 스폰/파괴 후 `_owners` 0엔트리 반사 단정 포함)·PlayMode T5~T8(신규 DestroyOwnershipPlayTests — 실RUDP 파괴 왕복, 10사이클, 호스트 모드, Arena식 퇴장 `DestroyObjectsOwnedBy` 후 생존 관찰자 캐시 정리+씬 객체 생존) 추가, EditMode 234/234(job `34a0e2d3…`, `5d52fe8b…`)·PlayMode 40/40(job `fe631b90…`, `bfaefb5c…`) PASS, 리뷰 r15 ISSUES(T3 누적 단정 보강)→r16 CLEAN.
 
 ### Fixed (SCN 검증 후속 — 배포 전)
 

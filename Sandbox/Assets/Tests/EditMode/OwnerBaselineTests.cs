@@ -328,6 +328,83 @@ namespace UniNet.Tests
             Assert.IsNull(client.Get(999999), "미등록 객체 조회 — null (구독자 널가드 계약)");
         }
 
+        // ── OWN-003 — owner cache hygiene on destroy: Unregister must clear the netId's cached owner so
+        // GetOwner returns 0 ("unassigned") after destruction instead of the last owner ──
+
+        [Test]
+        public void 파괴_해제후_소유자_캐시가_지워져_GetOwner가_0을_반환한다()
+        {
+            var client = new NetworkClient();
+            const ulong netId = 8101;
+            client.Register(netId, new object[] { new object() });
+            client.ApplyOwner(netId, 5);
+            Assert.AreEqual(5, client.GetOwner(netId), "파괴 전 — 통보된 소유자");
+
+            Assert.IsTrue(client.Unregister(netId), "등록 해제 성공");
+
+            Assert.AreEqual(0, client.GetOwner(netId), "파괴 후 — 0 (미배정 계약, 잔존 소유자 없음)");
+        }
+
+        [Test]
+        public void 미등록_netId_해제는_false를_반환하고_타_netId_캐시를_훼손하지_않는다()
+        {
+            var client = new NetworkClient();
+            const ulong liveId = 8201;
+            client.Register(liveId, new object[] { new object() });
+            client.ApplyOwner(liveId, 7);
+
+            Assert.IsFalse(client.Unregister(999999), "미등록 netId — false 반환 (반환 계약 유지)");
+
+            Assert.AreEqual(7, client.GetOwner(liveId), "타 netId 소유자 캐시 불변");
+            Assert.IsNotNull(client.Get(liveId), "타 netId 등록 불변");
+            Assert.AreEqual(0, client.GetOwner(999999), "미등록 netId 조회 — 0");
+        }
+
+        [Test]
+        public void 같은_netId_스폰_파괴_100회_반복후에도_캐시가_누적되지_않는다()
+        {
+            var client = new NetworkClient();
+            const ulong netId = 8301;
+
+            for (int cycle = 0; cycle < 100; cycle++)
+            {
+                client.Register(netId, new object[] { new object() });
+                client.ApplyOwner(netId, (cycle % 3) + 1);   // 스폰마다 다른 소유자 통보 — 매 사이클 새 기준선
+                Assert.AreEqual((cycle % 3) + 1, client.GetOwner(netId), $"사이클 {cycle} — 통보 소유자");
+
+                client.Unregister(netId);
+                Assert.AreEqual(0, client.GetOwner(netId), $"사이클 {cycle} — 파괴 후 0 (잔존 없음의 간접 검증)");
+            }
+
+            Assert.AreEqual(0, client.GetOwner(netId), "100회 반복 후 — 최종 0");
+
+            // OWN-003 direct accumulation check (r15 ISSUE-1): the stale-GetOwner contract alone
+            // could pass with a keep-entry-but-zero-on-read design — assert the cache dict is empty.
+            var ownersField = typeof(NetworkClient).GetField("_owners",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Assert.IsNotNull(ownersField, "_owners 필드 존재");
+            var owners = ownersField.GetValue(client) as System.Collections.IDictionary;
+            Assert.IsNotNull(owners, "_owners 사전 접근");
+            Assert.AreEqual(0, owners.Count, "100회 스폰/파괴 후 owner 캐시 0엔트리 (누적 없음의 직접 검증)");
+        }
+
+        [Test]
+        public void 파괴_해제후_재통보는_첫_기준선으로_조용히_적용된다()
+        {
+            var client = new NetworkClient();
+            const ulong netId = 8401;
+            var fired = new System.Collections.Generic.List<(ulong NetId, long Prev, long Next)>();
+            client.OwnershipChanged += (netId, prev, next) => fired.Add((netId, prev, next));
+
+            client.Register(netId, new object[] { new object() });
+            client.ApplyOwner(netId, 3);   // 첫 배정 — 기준선, 미발화
+            client.Unregister(netId);      // 파괴 — 상태 위생, 미발화 (D2)
+
+            client.ApplyOwner(netId, 9);   // 파괴 후 늦은 재통보 — 캐시가 비어 첫 기준선으로 처리
+            Assert.AreEqual(0, fired.Count, "파괴·기준선 모두 미발화 — 이벤트는 살아있는 객체의 재배정 통보 전용 (D2)");
+            Assert.AreEqual(9, client.GetOwner(netId), "재통보 값은 캐시에 적용");
+        }
+
         // System wire messages (1~12, e.g. OwnerUpdate) live in the generated hubs' MethodCallActions — NOT in the
         // general UniNetDispatch client table (only per-type __Replicate handlers register there). Mirror ResumeRequestWireTests:
         // locate the emitted UniNetClientHub.__OwnerUpdate_Requested by reflection and invoke what runs in production.

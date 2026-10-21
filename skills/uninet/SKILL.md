@@ -162,6 +162,8 @@ var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
         });
     ```
 
+- **Destroy clears the client owner cache (0.12.0, OWN-003)** — when a networked object is destroyed (`NetworkDestroy` / `DestroyObjectsOwnedBy`), the receiving clients' `Unregister` clears both the object registration and the cached owner: `GetOwner(netId)` returns `0` (unassigned) afterwards and `IsOwner` cannot stay stale-true. `OwnershipChanged` does **not** fire for destroys — treat it as a live-reassignment signal only.
+
 - **Movement objects survive ownership transfers (0.5.0)** — a `NetworkTransform` with an injected simulation bumps a server-authoritative movement epoch on every tenure→tenure owner change (direct transfer, or release) and resets the input stream (sequence guards included, **authoritative state preserved** — the new owner's stream starts at seq 1 immediately; a stale in-flight packet from the previous owner is dropped at the epoch gate, observable via `NetworkTransform.MoveEpochMismatches` on the server). Adoption from unowned (0 → conn — initial spawn, post-release reassignment) is a baseline: no bump, no reset. Nothing to opt in; `SetOwner`/reassignment/resume all benefit.
 - Transform is propagated **once at spawn**. Ongoing movement is your job: `[Replicated]` fields or the `NetworkTransform` component (see Advanced).
 

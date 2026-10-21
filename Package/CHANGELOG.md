@@ -1,3 +1,12 @@
+## 0.12.0
+
+**Destroy-time owner-cache cleanup (OWN-003 — no wire/generator/public-API change).** `NetworkClient.Unregister` removed the object from the registry but left its entry in the client's owner cache, so `GetOwner` kept returning the last owner for a destroyed `netId` (violating the documented "0 = unassigned" contract) and the cache grew unboundedly across spawn/destroy cycles within a session.
+
+### Fixed
+
+- `Unregister` now clears the `netId`'s cached owner inside the same lock, so `GetOwner` returns 0 ("unassigned") after a network destroy and `IsOwner` cannot stay stale-true on destroyed objects. The return value contract ("was it registered?") is unchanged.
+- `OwnershipChanged` deliberately does **not** fire for destroys — the event signals live reassignments only; a late OwnerUpdate for a destroyed id is silently adopted as a first baseline (consistent with existing ApplyOwner semantics).
+
 ## 0.11.0
 
 **Ownership-transfer condition-field baselines (OWN-002, ADR-0048 — no wire/generator/public-API change).** Ownership transfers (`SetOwner`, `ResumeSession` reattach, orphan adoption) propagated only the OwnerUpdate — unchanged `[Replicated(OwnerOnly/InitialOnly)]` fields never reached the new owner (stuck at defaults), the previous owner kept viewing SkipOwner fields as defaults, and RepNotify never fired for the delivered values.

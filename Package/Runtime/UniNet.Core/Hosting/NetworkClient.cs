@@ -61,10 +61,26 @@ namespace UniNet.Core.Hosting
             lock (_gate) _objects[netId] = components;
         }
 
-        /// <summary>Removes a registration (destroy sync). Returns true if it was registered.</summary>
+        /// <summary>
+        /// Removes a registration (destroy sync) — and with it the object's cached owner (OWN-003), so
+        /// <see cref="GetOwner"/> returns 0 ("unassigned") for a destroyed netId instead of its last owner.
+        /// Returns true if it was registered.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="OwnershipChanged"/> is deliberately NOT raised here: that event notifies subscribers about
+        /// owner REASSIGNMENT of a live object (MOV-001), while destruction is state hygiene — firing it for every
+        /// destroy would flood subscribers during Arena-style bulk departures. Should the server ever re-announce an
+        /// owner for this netId anyway, that notice enters as a first-ever baseline in <see cref="ApplyOwner"/> and
+        /// stays silent — consistent with the spawn-baseline contract.
+        /// </remarks>
         public bool Unregister(ulong netId)
         {
-            lock (_gate) return _objects.Remove(netId);
+            lock (_gate)
+            {
+                bool wasRegistered = _objects.Remove(netId);
+                _owners.Remove(netId);   // OWN-003 — a destroyed netId must not keep reporting its last owner (GetOwner's 0 = unassigned contract, and IsOwner with it)
+                return wasRegistered;
+            }
         }
 
         /// <summary>Returns the object's component array (null if unknown) — for object-level checks.</summary>
