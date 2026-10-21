@@ -129,6 +129,7 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 - **OwnerOnly|SkipOwner 동시 지정** — 모순이라 컴파일 타임 진단(UNINET010)
 - **스냅샷 계약** — 서버 스냅샷은 수신 그룹별로 분리하지 않는다: 소유자가 없는 상태에서 변경된 OwnerOnly 필드는 새 소유자에게 중간값이 유실될 수 있다 (ADR-0009)
 - **호스트 RepNotify** — 호스트(서버=클라 동일 인스턴스)는 권위 원본이라 값 재기록 없이 Notify만 호출된다
+- **소유권 이전 시 baseline 재전송(OWN-002/ADR-0048)** — `SetOwner`·`ResumeSession` 재부착·고아 입양으로 소유권이 바뀌면 새 owner(Owner 뷰)와 직전 owner(Others 뷰)에게 조건 필드(OwnerOnly/SkipOwner/InitialOnly 포함)의 현재값 baseline이 재전달되고 RepNotify가 발화한다(prev = 수신자 직전 뷰). 예산 연기 델타는 baseline이 대체(스테일 오버라이드 없음), 관련성 게이트 준수, 즉시 캐치업이 따르는 연결은 중복 baseline 억제(캐치업이 전체상태 전송)
 
 ## 다중 NetworkBehaviour (2층 식별자)
 
@@ -192,6 +193,7 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 
 ## 변경 이력
 
+- 2026-10-21 — OWN-002/ADR-0048: 소유권 이전 시 조건 필드 baseline 재전송 — 신규 owner(Owner 뷰)·직전 owner(Others 뷰)에 현재값 재전달+RepNotify(prev = 수신자 직전 뷰), InitialOnly 포함, 예산 연기 델타 대체, 관련성 게이트·즉시 캐치업 억제. 와이어/생성기 무변경. 0.11.0. 회귀 9+1종·전수 230/36 2회 연속
 - 2026-10-20 — OWN-001: 후발 캐치업·씬/동적 가시성 재진입·초기 동적 스폰에서 객체 소유권(0 포함)을 상태/스폰보다 먼저 전달. 기존 와이어 2와 동기 캐시 재사용, 조건부 필드 reseed·이동 예측 재설정은 별도 문제로 유지. 회귀 8종·전수 146/27·Arena RUDP 진단 검증.
 - 2026-09-14 — 최초 작성 (구현 완료와 함께)
 - 2026-09-15 — [Message] 타입 매개변수·필드 지원 추가 (다형성 공식 계약 — MessageSupportTests·호스트 왕복 검증)
