@@ -7,6 +7,9 @@ using UnityEngine;
 
 namespace Arena
 {
+    /// <summary>Combat stance demo enum (GEN-003 example) — int-backed; on the wire it is byte-identical to its underlying int.</summary>
+    internal enum ArenaStance { Idle, Guard, Chase }
+
     /// <summary>
     /// Arena player — demonstrates all implemented UniNet features (P1 RPC + P2 replication + P3 policies + P4 hooks) in one class.
     ///
@@ -56,6 +59,7 @@ namespace Arena
         private float _nextFireAllowed;
         private float _nextAmmoRegen;
         private float _respawnAt;
+        private ArenaStance _stance;   // GEN-003 demo — enum RPC parameter, server-side copy (read via ServerStance)
         private bool _dormancyArmed;   // P3-③ — enter dormancy on the next server tick, after the death delta has gone out
 
         // ---- Local (client) state ----
@@ -107,6 +111,9 @@ namespace Arena
 
         /// <summary>Replicated-value getter for the HUD.</summary>
         public int HudAmmo => _ammo;
+
+        /// <summary>Last stance the server accepted (GEN-003 enum RPC example — keeps the demo state observable).</summary>
+        internal ArenaStance ServerStance => _stance;
 
         /// <summary>Replicated-value getter for the HUD.</summary>
         public int HudScore => _score;
@@ -360,6 +367,10 @@ namespace Arena
         [ServerRpc(Validate = true)]
         private partial void RpcTeleport();
 
+        /// <summary>Client → server stance request — GEN-003 example: an enum parameter rides its underlying integer's codec (no extra validation needed; range checks would belong in a _Validate).</summary>
+        [ServerRpc]
+        private partial void RpcSubmitStance(ArenaStance stance);
+
         /// <summary>Server → everyone hitscan tracer. Loss-tolerant (unreliable) — the next shot's tracer naturally replaces it.</summary>
         [MulticastRpc(Delivery.Unreliable)]
         private partial void RpcPlayTracer(float fromX, float fromZ, float toX, float toZ, int colorSeed);
@@ -392,6 +403,11 @@ namespace Arena
                                && hitTime <= UniNetTime.Now + 1.0);   // reject future aim times (trust boundary — the server clamps the past)
 
         private Task<bool> RpcTeleport_Validate() => Task.FromResult(true);
+
+        private void RpcSubmitStance_Implementation(ArenaStance stance)
+        {
+            _stance = stance;   // demo-only state — no gameplay consumer yet
+        }
 
         private void RpcTeleport_Implementation()
         {

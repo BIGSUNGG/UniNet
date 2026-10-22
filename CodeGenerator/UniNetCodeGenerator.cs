@@ -582,7 +582,7 @@ namespace UniNet.CodeGenerator
             Make(3, "RPC 메서드는 partial 선언이어야 함", "RPC 메서드 '{0}' ({1}) 은(는) 본문 없이 partial 로 선언하고 구현은 {0}_Implementation 에 작성해야 합니다", DiagnosticSeverity.Error);
 
         public static readonly DiagnosticDescriptor UnsupportedType =
-            Make(2, "지원하지 않는 타입", "타입 '{0}' 은(는) RPC/리플리케이션 매개변수로 지원되지 않습니다 ('{1}') — 기본형·string 또는 [Message] 마킹 타입(NonId 제외)만 지원", DiagnosticSeverity.Error);
+            Make(2, "지원하지 않는 타입", "타입 '{0}' 은(는) RPC/리플리케이션 매개변수로 지원되지 않습니다 ('{1}') — 기본형·string 또는 [Message] 마킹 타입(NonId 제외)만 지원 (enum은 underlying 정수형으로 지원)", DiagnosticSeverity.Error);
 
         public static readonly DiagnosticDescriptor ImplementationMissing =
             Make(4, "_Implementation 누락/불일치", "RPC '{0}' 에 대응하는 '{0}_Implementation' 메서드가 없거나 시그니처가 일치하지 않습니다", DiagnosticSeverity.Error);

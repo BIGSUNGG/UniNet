@@ -1,3 +1,14 @@
+## 0.18.0
+
+**Enum RPC parameters and replicated fields (GEN-003 — no wire change; generator 0.2.16).** `[ServerRpc]`/`[ClientRpc]`/`[MulticastRpc]` parameters and `[Replicated]` fields rejected enums with UNINET002 — users had to wrap every enum in a [Message].
+
+### Added
+
+- Enums are now accepted everywhere primitives are: the generator resolves an enum to its declared underlying integer (byte..ulong) and emits the same codec with an explicit cast — the wire bytes are identical to the backing primitive (wire-compatible). Covers RPC parameters, replicated fields (delta/full/array element paths), and collection element types. Nullable enums are not supported.
+- Out-of-range values pass through unvalidated by design (UE/Photon parity) — server-authoritative range checks belong in the user's `[ServerRpc(Validate = true)]` hook.
+- UNINET002's message now states that enums are supported through their underlying integer.
+- Tests: EditMode `EnumRpcWireTests` — int/byte/ulong-backed roundtrips, byte-for-byte payload equality with the raw primitive, out-of-range pass-through, replicated enum scalar + enum array sync. Fixtures live in `Tests/Fixtures` (see the note in Gen003EnumFixtures.cs about why NetworkBehaviour fixtures must not live in test assemblies).
+
 ## 0.17.0
 
 **Dispatch registration-collision guard (GEN-001 — no wire/generator change).** The dispatch table silently overwrote an existing handler on any re-registration (a lone `Debug.WriteLine` was the only trace) — a cross-assembly FNV-1a method-ID clash would hijack the dispatch invisibly.

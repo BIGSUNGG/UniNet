@@ -17,7 +17,10 @@
         "nunit.framework.dll",
         "DRPC.Attribute.dll",
         "DRPC.Shared.dll",
-        "MessageProtocol.Core.dll"
+        "MessageProtocol.Core.dll",
+        "DRPC.Client.dll",
+        "DRPC.Server.dll",
+        "Communication.Shared.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [

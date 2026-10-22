@@ -23,9 +23,14 @@ namespace UniNet.CodeGenerator
         const string TaskOfBytes = "global::System.Threading.Tasks.Task<byte[]>";
         const string Empty = "global::System.Array.Empty<byte>()";
 
-        /// <summary>Type → MessageBufferWriter write-method name (null for unsupported types).</summary>
+        /// <summary>Underlying primitive of an enum type (GEN-003) — an enum shares the wire with its backing integer; null for non-enums.</summary>
+        static INamedTypeSymbol? EnumUnderlying(ITypeSymbol type)
+            => type.TypeKind == TypeKind.Enum && type is INamedTypeSymbol named ? named.EnumUnderlyingType : null;
+
+        /// <summary>Type → MessageBufferWriter write-method name (null for unsupported types). Enums resolve to their backing integer's codec (GEN-003).</summary>
         public static string? WriteCall(ITypeSymbol type)
         {
+            if (EnumUnderlying(type) is { } underlying) type = underlying;   // GEN-003 — enum rides the existing underlying-codec mapping (wire bytes identical)
             switch (type.SpecialType)
             {
                 case SpecialType.System_Boolean: return "WriteBoolean";
@@ -44,9 +49,10 @@ namespace UniNet.CodeGenerator
             }
         }
 
-        /// <summary>Type → MessageBufferReader read-method name.</summary>
+        /// <summary>Type → MessageBufferReader read-method name. Enums resolve to their backing integer's codec (GEN-003).</summary>
         public static string? ReadCall(ITypeSymbol type)
         {
+            if (EnumUnderlying(type) is { } underlying) type = underlying;   // GEN-003 — same resolution as WriteCall so the null checks stay symmetric
             switch (type.SpecialType)
             {
                 case SpecialType.System_Boolean: return "ReadBoolean";
@@ -64,6 +70,14 @@ namespace UniNet.CodeGenerator
                 default: return null;
             }
         }
+
+        /// <summary>Argument expression for a write call — C# has no implicit enum→underlying conversion, so enums need an explicit narrowing cast (GEN-003); non-enums pass through untouched.</summary>
+        public static string WriteValue(ITypeSymbol type, string value)
+            => EnumUnderlying(type) is { } underlying ? $"({KeywordOrGlobal(underlying)}){value}" : value;
+
+        /// <summary>Read expression — the underlying integer read converts back with an explicit cast (GEN-003). Out-of-range values pass through unvalidated (server-authoritative validation is the user's _Validate concern).</summary>
+        public static string ReadValue(ITypeSymbol type, string receiver)
+            => EnumUnderlying(type) != null ? $"({KeywordOrGlobal(type)})({receiver}.{ReadCall(type)}())" : $"{receiver}.{ReadCall(type)}()";
 
         public static string Emit(List<TypeModel> models, string assemblyName)
         {
@@ -777,7 +791,7 @@ namespace UniNet.CodeGenerator
                 if (p.IsMessage)
                     sb.AppendLine($"                var {p.Name} = ({KeywordOrGlobal(p.Type)})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref r);");
                 else
-                    sb.AppendLine($"                var {p.Name} = r.{ReadCall(p.Type)}();");
+                    sb.AppendLine($"                var {p.Name} = " + ReadValue(p.Type, "r") + ";");
             }
             sb.AppendLine($"                var o = {envSlot}?.Get(netId, subId) as {TypeDisplay2(m)};");
             sb.AppendLine("                if (o != null)");
@@ -926,7 +940,7 @@ namespace UniNet.CodeGenerator
                         if (p.IsMessage)
                             sb.AppendLine($"            global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter({p.Name}, ref w);   // [Message] — includes the MessageId header (polymorphism)");
                         else
-                            sb.AppendLine($"            w.{WriteCall(p.Type)}({p.Name});");
+                            sb.AppendLine($"            w.{WriteCall(p.Type)}({WriteValue(p.Type, p.Name)});");
                     }
                     sb.AppendLine("            return w.ToArray();");
                     sb.AppendLine("        }");
@@ -1117,7 +1131,7 @@ sb.AppendLine("        }");
                         else if (f.IsMessage)
                             sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter(o.{f.Name}, ref w);");
                         else
-                            sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(o.{f.Name});");
+                            sb.AppendLine($"            if ((mask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(" + WriteValue(f.Type, "o." + f.Name) + ");");
                     }
                     sb.AppendLine("            return w.ToArray();");
                     sb.AppendLine("        }");
@@ -1136,7 +1150,7 @@ sb.AppendLine("        }");
                         else if (f.IsMessage)
                             sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter(o.{f.Name}, ref w);");
                         else
-                            sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(o.{f.Name});");
+                            sb.AppendLine($"            if ((includeMask & {1u << f.Index}u) != 0) w.{WriteCall(f.Type)}(" + WriteValue(f.Type, "o." + f.Name) + ");");
                     }
                     sb.AppendLine("            return w.ToArray();");
                     sb.AppendLine("        }");
@@ -1169,7 +1183,7 @@ sb.AppendLine("        }");
                             }
                             else
                             {
-                                sb.AppendLine($"                var __v = reader.{ReadCall(f.Type)}();");
+                                sb.AppendLine("                var __v = " + ReadValue(f.Type, "reader") + ";");
                                 sb.AppendLine($"                if (!o.IsServer) o.{f.Name} = __v;   // host keeps the server-authoritative original");
                             }
                         }
@@ -1237,7 +1251,7 @@ sb.AppendLine("        }");
                 else if (f.ElemIsMessage)
                     sb.AppendLine($"                    global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter({e}, ref w);");
                 else
-                    sb.AppendLine($"                    w.{WriteCall(f.ElementType!)}({e});");
+                    sb.AppendLine($"                    w.{WriteCall(f.ElementType!)}({WriteValue(f.ElementType!, e)});");
                 if (elemNullable)
                     sb.AppendLine("                }");
             }
@@ -1248,7 +1262,7 @@ sb.AppendLine("        }");
                     ? $"{f.SerializerType}.Read(ref reader)"
                     : f.ElemIsMessage
                         ? $"({T})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref reader)"
-                        : $"reader.{ReadCall(f.ElementType!)}()";
+                        : ReadValue(f.ElementType!, "reader");
                 return elemNullable ? $"(reader.ReadBoolean() ? ({T})null : {core})" : core;
             }
 

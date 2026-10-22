@@ -5,6 +5,10 @@
 
 ## [2026-10-22]
 
+### Added (GEN-003 — enum RPC 매개변수·Replicated 필드 지원, v0.18.0)
+
+- RPC 직접 매개변수와 [Replicated] 필드가 enum을 UNINET002로 거부해 모든 enum을 [Message]로 감싸야 했다. 추가: 생성기가 enum을 선언된 underlying 정수형(byte~ulong)으로 리졸브해 동일 codec에 명시 캐스트로 emit — 와이어 바이트가 underlying primitive와 동일(와이어 호환). RPC 매개변수·Replicated 필드(델타/전체/배열 원소)·컬렉션 원소 타입 전부 커버. Nullable enum 미지원. 미정의 값은 검증 없이 통과(UE/Photon 패리티 — 서버 권위 범위 검증은 Validate 훅 사용자 역할, D3). UNINET002 메시지에 enum 지원 문구 추가. 생성기 0.2.16. **검증 중 발견·수정**: 테스트 픽스처 NetworkBehaviour를 테스트 어셈블리에 선언하면 생성기가 그 어셈블리 전용 `__UniNetRegistration`을 emit해 CS0436-모호한 기존 등록 호출이 소스 어셈블리로 바인딩되어 Fixtures 어셈블리 타입의 등록이 실행되지 않는 함정(25개 테스트 일제 실패로 실증) — 픽스처를 Tests/Fixtures 어셈블리로 이동해 해결(Gen003EnumFixtures.cs에 함정 문서화). 검증: EditMode 268/268 ×2(job `d28f24f3`·`6ab1a436`)·PlayMode 42/42(job `632e65d5`) — 신규 EnumRpcWireTests T1~T6. 리뷰 r24 진행 중. 계획 `.pi-subagents/artifacts/commercial-netcode/gen003-plan.md`.
+
 ### Fixed (GEN-001 — Dispatch 등록 충돌 구분, v0.17.0)
 
 - `UniNetDispatch.Add`가 충돌 시 기존 핸들러를 Debug.WriteLine 뒤 무음 덮어써, 크로스 어셈블리 FNV-1a method-ID 충돌이 디스패치를 조용히 탈취할 수 있었다(생성기의 충돌 검사는 어셈블리 내부 한정). 수정: 사용자 구간(ID ≥ 64)은 델리게이트 **메서드 동일성**으로 멱등 재등록(메서드 그룹의 새 델리게이트 인스턴스 오탐 방지)과 실충돌을 구분 — 실충돌은 `LogFault(InvalidOperationException: 테이블·ID·기존/신규 메서드)`로 관측 후 **거부**(first-wins), same-handler+다른 delivery mode도 엄격 충돌 처리. 예약 구간(ID < 64 — 와이어 13/14 다중 어셈블리 "idempotent across assemblies")은 무음 덮어쓰기 유지. `Debug.WriteLine` 제거. 검증: EditMode 262/262 ×2(job `4217fc99`·`c2e9dc7d`)·PlayMode 42/42(job `4ec14995`)+킥 테스트 단독 통과 — 신규 `UniNetDispatchRegistrationTests` T1~T4. 리뷰 r23 CLEAN. 계획 `.pi-subagents/artifacts/commercial-netcode/gen001-plan.md`.
