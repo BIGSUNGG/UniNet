@@ -1717,6 +1717,59 @@
         "Nullable enum 미지원(문서화)",
         "sbyte/short/ushort/uint/long underlying 개별 테스트는 선택 보강(r24 Follow-up 5)"
       ]
+    },
+    {
+      "id": "LIF-001",
+      "title": "종료·실패·재시작 경로 대칭 정리 + 등록 세대 스탬프 (ServerStopAsync 스윕·listen 실패 롤백·재시작 후 씬 객체 자동 재등록)",
+      "version": "0.19.0",
+      "commit": "7d95131",
+      "tag": "v0.19.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.19.0",
+      "ciRunIds": [
+        39755335413
+      ],
+      "adr": "Document/decisions/0052-정지-실패-경로-대칭-정리-등록-세대.md",
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/lif001-plan.md",
+      "plannerAgent": "agent_mvj9q55p_deb68939_15",
+      "workerAgent": "agent_mvja1pv3_26824193_16",
+      "reviews": [
+        {
+          "round": "r26",
+          "agent": "agent_mvjb6yw7_e3cb4732_17",
+          "verdict": "ISSUES",
+          "issues": [
+            "I-1 Low: ServerStopAsync XML 'no-op when not listening' 계약이 무조건 스윕과 모순(클라 전용 미러 파괴 위험) -> server!=null||handle!=null 게이트"
+          ]
+        },
+        {
+          "round": "r27",
+          "agent": "agent_mvjbxcp9_cafa987d_18",
+          "verdict": "CLEAN",
+          "notes": "게이트 조건 3관 확인(클라 전용 스킵·실제 정지 스윕·계약 복원)+T1~T5 정합+ADR-0052 정확성"
+        }
+      ],
+      "tests": {
+        "editmodeJobs": [
+          "7491b78df7ac4707a793d9d54cfb764d",
+          "6f37c024dc95468c8f6a9f41a4af32c3",
+          "c9be2ebd7bf742ddbe16d4f7b0db3b90"
+        ],
+        "playmodeJobs": [
+          "8af1ec74a3034b2bac8f623707966a01",
+          "015c7ab04b0448d58e4452ec9a9980b2",
+          "60ea66b54ca444098cf36dddc1e0b7f3",
+          "d944813ac2a348889454b11cef6a028c"
+        ],
+        "redJobs": [
+          "bff7128fa747425fbf4fa016fc63bd5d"
+        ],
+        "summary": "EditMode 268/268 ×3, PlayMode 47/47 ×4(전부 스윕 활성 상태); RED 1건(스윕 비활성 시 T1/T2 실패); 신규 ServerRestartSweepPlayTests T1~T5"
+      },
+      "verifyInstall": {
+        "result": "PASS",
+        "log": ".pi-subagents/artifacts/commercial-netcode/lif001-fresh-install-unity.log"
+      },
+      "residuals": []
     }
   ],
   "finalValidation": {
