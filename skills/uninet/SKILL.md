@@ -165,7 +165,9 @@ var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
         });
     ```
 
-- **Targeted ClientRpc companions (0.15.0, ADR-0051)** — every `[ClientRpc]` gains `{Name}To(long connId, args)` (one connection) and `{Name}ToOwner(args)` (the object's owner) alongside the unchanged broadcast call. Same methodId/payload/delivery as the broadcast — wire-compatible; filtering is server-side only (client calls stay no-ops). `To` with an unknown connId is a silent no-op; `ToOwner` with owner==0 logs one warning and skips. Requires generator 0.2.14.
+- **Malformed-payload guards (0.16.0)** — the generated OwnerUpdate and single-Replicate receivers contain their parse failures at the handler boundary: a truncated or forged payload is dropped (counted in `NetworkClient.FaultedPayloadCount` and surfaced through `LogFault`) and the next well-formed message applies normally. `FaultedPayloadCount` is the log-independent way to observe silent drops.
+
+- **Targeted ClientRpc companions (0.15.0, ADR-0051)**- **Targeted ClientRpc companions (0.15.0, ADR-0051)** — every `[ClientRpc]` gains `{Name}To(long connId, args)` (one connection) and `{Name}ToOwner(args)` (the object's owner) alongside the unchanged broadcast call. Same methodId/payload/delivery as the broadcast — wire-compatible; filtering is server-side only (client calls stay no-ops). `To` with an unknown connId is a silent no-op; `ToOwner` with owner==0 logs one warning and skips. Requires generator 0.2.14.
 
 - **Destroy clears the client owner cache (0.12.0, OWN-003)** — when a networked object is destroyed (`NetworkDestroy` / `DestroyObjectsOwnedBy`), the receiving clients' `Unregister` clears both the object registration and the cached owner: `GetOwner(netId)` returns `0` (unassigned) afterwards and `IsOwner` cannot stay stale-true. `OwnershipChanged` does **not** fire for destroys — treat it as a live-reassignment signal only.
 

@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.15.0";   // 0.15.0 — targeted ClientRpc (RPC-001): generator 0.2.14 emits {Name}To(long connId, args) / {Name}ToOwner(args) companions per [ClientRpc] — same methodId/payload/delivery as the broadcast (encode reuse), wire & protocol version unchanged
+        public const string Version = "0.16.0";   // 0.16.0 — RPC-002 containment: generator 0.2.15 wraps the OwnerUpdate (wire 2) and single Replicate receivers in fault guards — malformed payloads die at the handler boundary and are dropped observably (NetworkClient.FaultedPayloadCount) instead of escaping into DRPC dispatch; wire & protocol version unchanged
     }
 }

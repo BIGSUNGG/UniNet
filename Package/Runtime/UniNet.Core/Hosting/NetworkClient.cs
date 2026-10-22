@@ -55,6 +55,23 @@ namespace UniNet.Core.Hosting
         }
         private int _lastDisconnectReason = (int)UniNetDisconnectReason.None;
 
+        private long _faultedPayloadCount;
+
+        /// <summary>
+        /// Malformed inbound payloads (short/truncated/oversized) dropped by the generated client hub's parsing
+        /// guards (RPC-002). Log-independent observability — the counter, not the log, is the contract: a drop is
+        /// always observable here even when fault logging is disabled or a no-op (engine-less hosts), and the
+        /// deliberately silent per-drop path avoids log spam under a hostile stream (subscribers may throttle).
+        /// Written on the DRPC dispatch thread — Interlocked-backed.
+        /// </summary>
+        public long FaultedPayloadCount => System.Threading.Interlocked.Read(ref _faultedPayloadCount);
+
+        /// <summary>Records one dropped malformed payload — called by the generated client hub's parsing guards (RPC-002).
+        /// Deliberately public: the generated receive guards are emitted into EVERY assembly that owns NetworkBehaviours
+        /// (game code included), and UniNet.Core only grants InternalsVisibleTo to the test assemblies — an internal
+        /// member here would fail to compile in UniNet.Unity and user assemblies (CS0122).</summary>
+        public void CountFaultedPayload() => System.Threading.Interlocked.Increment(ref _faultedPayloadCount);
+
         /// <summary>Registers an object — binds a NetworkBehaviour component array (in slot order) to a netId. Shared by scene objects and dynamic spawns.</summary>
         public void Register(ulong netId, object[] components)
         {

@@ -1,3 +1,13 @@
+## 0.16.0
+
+**Receive-path payload guards (RPC-002 — no wire/protocol change; generator 0.2.15).** The generated OwnerUpdate receiver (wire 2) had no try/catch — unlike its seven sibling system handlers — and the single-Replicate receiver parsed before its queue registration unguarded: a truncated or forged payload threw out of the handler into DRPC dispatch.
+
+### Fixed
+
+- The generated `__OwnerUpdate_Requested` and `__Replicate_{Name}_Requested` handlers now wrap parsing in an outer try/catch (mirroring the batch wire-13 pattern): a malformed payload dies at the handler boundary — no exception escapes into DRPC dispatch, no queue entry is registered, and the next well-formed message applies normally (per-message isolation).
+- The drop is observable without relying on log settings: `NetworkClient.FaultedPayloadCount` (public, Interlocked) increments on every guarded payload drop, plus `LogFault` fires. Intentionally NOT logged-and-hidden.
+- Tests: EditMode `OwnerUpdateWireTests` — truncation at every parse boundary (counter + ownership invariance), malformed→valid isolation, empty-delta and forged length-prefix cases, batch-path regression pin.
+
 ## 0.15.0
 
 **Targeted ClientRpc companions (RPC-001, ADR-0051 — no wire/protocol change; generator 0.2.14).** `[ClientRpc]` methods were broadcast-only: there was no generated API to send a server-authoritative RPC to the object's owner or to one specific connection.

@@ -29,6 +29,7 @@
 - **MulticastRpc** — 호출측에서 `_Implementation` 로컬 실행 + (서버면) 전 클라 전파. 호스트 동일 인스턴스 이중 실행 방지(`IsServer` 가드)
 - **ClientRpc** — 서버 호출만 전파(클라 호출 무시). UE ClientRpc와 동일
 - **대상 지정 ClientRpc (ADR-0051)** — 모든 `[ClientRpc]`에 생성기가 동반 2메서드를 emit한다(0.15.0, 생성기 0.2.14): `{Name}To(long connId, args)`(특정 연결 1회 송신 — FishNet TargetRpc 패리티)·`{Name}ToOwner(args)`(오브젝트 소유자 1회 송신 — UE owner ClientRpc 패리티). 기존 `{Name}(args)` 브로드캐스트는 완전 불변. methodId·payload·delivery는 브로드캐스트와 동일(와이어 무변경) — 수신자 필터링은 서버 송신 루프에서만 일어난다. `To`는 미발견 connId 무예외 무송신, `ToOwner`는 owner==0이면 경고 1줄+미송신. 클라에서 호출하면 기존과 동일하게 무시된다(서버 권위) — RPC-001
+- **수신 파싱 방어 (RPC-002)** — 생성 OwnerUpdate·단일 Replicate 수신기가 잘린·위조 페이로드를 핸들러 경계에서 소멸시킨다(예외가 DRPC 디스패치로 새지 않음, 큐 등록 없음) — 정상 후속 메시지는 메시지 단위 격리로 적용된다. 폐기는 `NetworkClient.FaultedPayloadCount`(public 카운터 — 로그 설정과 무관)+`LogFault`로 관측된다
 - **리플리케이션** — 서버 틱마다 스냅샷 폴링 비교→변경 필드만 `[mask][값...]` 델타→전 클라. 클라 적용 시 `__uninetSeen`(이전값) 기반으로 Notify(이전값) 호출
 - **보안·속도 설정** — `UniNetEndpointOptions`(연결 키·타임아웃·연결 상한·CRC32c·DTLS 인증서/핀닝)가 DRPC 옵션으로 매핑. 게임 코드는 DRPC·MP 타입 노출 없음
 - **스레딩** — DRPC 수신은 네트워크 스레드→메인 큐 적재→UniNetDriver.Update에서 실행 (Unity 스레드 안전)
@@ -194,6 +195,8 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 사용법 예제: `Sandbox/Assets/Scripts/Arena/` — ArenaBootstrap(관리 스폰 NetworkInstantiate+configure)·ArenaPlayer(RPC 3종·조건부 리플리케이션 전종·RepNotify)
 
 ## 변경 이력
+
+- 2026-10-21 — RPC-002 — OwnerUpdate·단일 Replicate 수신 파싱 방어+FaultedPayloadCount(0.16.0, 생성기 0.2.15)
 
 - 2026-10-21 — RPC-001(ADR-0051) — 대상 지정 ClientRpc 동반 메서드 `{Name}To`/`{Name}ToOwner`(0.15.0, 생성기 0.2.14)
 

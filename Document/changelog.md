@@ -5,6 +5,10 @@
 
 ## [2026-10-21]
 
+### Fixed (RPC-002 — 수신 파싱 방어, v0.16.0)
+
+- 생성 OwnerUpdate 수신기(와이어 2)에 try/catch가 없어(형제 시스템 핸들러 7종은 모두 보유) 잘린 페이로드의 예외가 DRPC 디스패치로 전파됐고, 단일 Replicate 수신기도 큐 등록 전 파싱이 무방비했다. 수정: 두 핸들러에 outer try/catch(배치 와이어 13 패턴 복제, 기존 QueueOnMain 내부 가드 유지) — 잘린·위조 페이로드는 핸들러 경계에서 소멸하고 정상 후속 메시지는 메시지 단위 격리로 적용된다(T2·T3 실증). 폐기는 `NetworkClient.FaultedPayloadCount`(public, Interlocked — 로그 설정과 무관한 관측)+`LogFault`로 관측된다(단순 로그 숨김 금지 충족). 워커가 중괄호 불균형 emission(CS1520/CS0501/CS0535로 발현)을 남겨 리더가 수정 후 로컬 생성 프로브로 균형 검증. 생성기 0.2.15. 검증: EditMode 258/258 ×2(job `a56fbc90`·`9b54eb41`)·PlayMode 42/42 ×2(job `4c6983d2`·`3a18e703`) — 신규 `OwnerUpdateWireTests` T1~T4. 리뷰 r22 CLEAN. 계획 `.pi-subagents/artifacts/commercial-netcode/rpc002-plan.md`.
+
 ### Added (RPC-001 — 대상 지정 ClientRpc, v0.15.0)
 
 - `[ClientRpc]`가 브로드캐스트만 가능해 소유자 전용 알림·특정 연결 응답을 서버 권위로 표현할 수 없었다. 추가: 생성기가 모든 `[ClientRpc]`에 동반 2메서드를 emit — `{Name}To(long connId, args)`(특정 연결 1회 송신 — FishNet TargetRpc 패리티)·`{Name}ToOwner(args)`(소유자 1회 송신 — UE owner ClientRpc 패리티, 네이밍은 사용자 승인). 기존 `{Name}(args)` 브로드캐스트 바이트 동일, methodId·payload·delivery 불변(**와이어 무변경** — 필터링은 서버 송신 루프 전용). `To` 미발견 connId 무예외 무송신, `ToOwner` owner==0 경고 1줄+미송신, 클라 호출 무시(기존 동일). 동반 메서드는 정규 메서드로 emit(사용자 선언 부재 — partial 구현부로 emit 시 CS0759, 리더 수정; 이름 충돌은 CS0111로 조기 발견). 생성기 0.2.14(분석기 DLL+로컬 피드 재배포). 검증: EditMode 254/254(job `fe312da4`)·PlayMode 42/42 ×2(job `fa6dd906`·`06f32ce5`) — 신규 `TargetedRpcTests` T1~T6+`TargetedRpcPlayTests` T7. ADR-0051, 계획 `.pi-subagents/artifacts/commercial-netcode/rpc001-plan.md`.
