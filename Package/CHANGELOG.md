@@ -1,3 +1,13 @@
+## 0.22.0
+
+**Generator type support expansion (GEN-002/GEN-004, generator 0.2.17 — no runtime change).**
+
+### Added
+
+- Nested NetworkBehaviour support: the generated partial now wraps in the ContainingType chain (`partial class Outer { partial class Inner { ... } }`), enabling RPC/replication on nested classes.
+- Generic NetworkBehaviour definitions emit error UNINET016 (Unity cannot attach generic MonoBehaviour components).
+- RPC parameters accept Vector2/3/4, Quaternion (uncompressed float decomposition), and 1-D `T[]`/`List<T>` (null flag + UInt16 length prefix + sequential elements).
+
 ## 0.21.0
 
 **Persistent rotation/scale sync on NetworkTransform, opt-in (TRS-001, ADR-0054 — generator unchanged; new [Replicated] fields ride the existing generic codec).** NetworkTransform only ever replicated position — rotation was spawn-time-only (frozen after join) and scale was not on the wire at all.
