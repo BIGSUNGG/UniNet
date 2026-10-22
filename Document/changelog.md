@@ -5,6 +5,10 @@
 
 ## [2026-10-22]
 
+### Added (INSTALL-001 — 공개 UPM 태그 설치·컴파일 게이트, 도구 전용)
+
+- `Package/tools/verify-install-public.sh` 신설 — 푸시된 공개 태그를 신규 Unity 프로젝트에 소비자 URL(`github.com/BIGSUNGG/UniNet.git?path=/Package#TAG`)로 설치·임포트·샘플 컴파일까지 검증하는 반복 가능한 게이트(기존 verify-install.sh는 로컬 clone/file URL만 검증). 판정 강화: packages-lock.json에 git 소스 기록 단언(file:// 폴백 오판 차단), 실행 전 `git ls-remote` 원격 태그 확인, PackageCache에서 샘플 추출(태그가 배포한 내용 그대로 검증). 태그 기본값은 package.json 버전에 `v` 접두 자동 부여. 실측: v0.19.0 양성 PASS(설치·샘플·lock 단언), v0.0.0 음성 FAIL. CI 연계는 Unity 라이선스 부재로 보류(문서화). deployment.md에 태그 푸시→Release 후 실행 절차 추가.
+
 ### Fixed (ARENA-001 — Arena 데모 빌드 프리팹 로드, 패키지 0.19.0 유지)
 
 - `ArenaBootstrap.LoadPlayerPrefab`이 `#if UNITY_EDITOR` AssetDatabase 분기 외 빌드에서 null을 반환해 플레이어 빌드 스폰이 실패했다. 수정: 프리팹을 `Assets/Resources/Arena/`으로 GUID 보존 이동(git mv — 베이크 테이블 참조 무결)하고 `ArenaPrefabs.LoadPlayer()`(Resources.Load 단일 경로, null 시 LogError)로 교체 — ArenaTwoProcessRunner도 동일. ArenaPrefabBaker에 `#if UNITY_EDITOR` 감쌈(Arena.asmdef가 all-platforms라 플레이어 빌드 컴파일 실패 해소). **검증 인프라 신설**: `ArenaPlayerBuilder`(BuildServer=Windows64+Server 서브타입/BuildClient), `--arena-role=server|client` CLI 역할, `--arena-smoke` 스모크 드라이버(아바타 스폰+이름·탄약 OwnerOnly 왕복·피해→킬피드/FX 왕복 관측). **실측**: Windows 전용 서버(headless)+별도 클라 2프로세스 — 양측 `[ARENA-BUILD-2PROC] PASS`, 서버 RTT 16-27ms. 테스트 인프라: Fixtures asmdef defineConstraints UNITY_INCLUDE_TESTS(플레이어 빌드 테스트 픽스처 배제), 테스트 asmdef DRPC.Client/Server·Communication.Shared 참조 보강. 리뷰 r28 CLEAN. 계획 `.pi-subagents/artifacts/commercial-netcode/arena001-plan.md`. Package 런타임 무변경 — 0.19.0 유지.

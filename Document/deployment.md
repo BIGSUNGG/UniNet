@@ -40,6 +40,7 @@ Package/tools/update-dlls.sh          # C:/Projects/DS/unity-nuget의 nupkg에�
 
 - 배치 검증: `Sandbox`에서 EditMode/PlayMode 전수 테스트 통과
 - 신규 프로젝트 재현: `Package/tools/verify-install.sh` — 빈 Unity 프로젝트에 로컬 git URL로 설치 → 컴파일 에러 0 확인 (file://+`.git` 접미사로 git 전송 경로 실측)
+- 공개 태그 게이트 (배포 절차 2의 태그 푸시→Release **후** 실행): `Package/tools/verify-install-public.sh [TAG=package.json version]` — `git ls-remote`로 원격 태그 존재 확인 → 소비자 계약 URL(`https://github.com/BIGSUNGG/UniNet.git?path=/Package#TAG`)로 빈 프로젝트 설치 → PackageCache에서 샘플 추출·재임포트 컴파일 → `packages-lock.json`이 git 소스(github.com/BIGSUNGG/UniNet)로 git 소스로 기록됐는지 단언(해시는 로그 에코). PASS면 배포 완료. 태그 재지정 금지 — 수정 배포는 항상 새 태그
 - 로컬 정적 검증: `Package/tools/validate-package.sh [--tag vX.Y.Z]` (CI와 동일 스크립트)
 
 ## 잔여 리스크

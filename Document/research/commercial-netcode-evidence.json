@@ -1808,6 +1808,56 @@
       "verifyInstall": {
         "result": "n/a (package unchanged)"
       }
+    },
+    {
+      "id": "INSTALL-001",
+      "title": "공개 UPM 태그 설치·컴파일 게이트 (verify-install-public.sh)",
+      "version": "0.19.0 (tool-only — package unchanged)",
+      "commit": "pending-this-commit",
+      "tag": "none (tool-only)",
+      "releaseUrl": "n/a — tool/docs change",
+      "ciRunIds": [],
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/install001-plan.md",
+      "plannerAgent": "agent_mvjfz55v_363d0d37_1c",
+      "workerAgent": "agent_mvjg5coq_12e888f2_1d",
+      "reviews": [
+        {
+          "round": "r29",
+          "agent": "agent_mvjgi12d_d39b9ce6_1e",
+          "verdict": "ISSUES",
+          "issues": [
+            "P1: TAG 기본값 v 접두 부재(항상 실패 dead path) -> 정규화 추가",
+            "P1: lock 증거 파일 부재 -> FreshProject에서 복사 보존",
+            "P2: changelog 누락 -> 추가"
+          ]
+        },
+        {
+          "round": "r30",
+          "agent": "agent_mvjgvunu_0ad7dd53_1f",
+          "verdict": "ISSUES",
+          "issues": [
+            "P3: 정규화가 기본 경로에 한정 -> fail-fast 뒤로 이동(인자 경로 커버)"
+          ]
+        },
+        {
+          "round": "r31",
+          "agent": "agent_mvjh6c4j_f8cf2111_1g",
+          "verdict": "CLEAN",
+          "notes": "정규화 위치 확인 + 잔존 이슈 부재"
+        }
+      ],
+      "tests": {
+        "positive": "verify-install-public.sh v0.19.0 -> PASS (원격 태그 확인 → 공개 URL 설치 임포트 → PackageCache 샘플 추출 → 재임포트 컴파일 → packages-lock git-소스 단언)",
+        "negative": "v0.0.0 -> FAIL (원격 태그 없음 정상 거부)",
+        "logs": [
+          ".pi-subagents/artifacts/commercial-netcode/install001-positive-unity-install.log",
+          ".pi-subagents/artifacts/commercial-netcode/install001-positive-unity-sample.log",
+          ".pi-subagents/artifacts/commercial-netcode/install001-packages-lock.json"
+        ]
+      },
+      "verifyInstall": {
+        "result": "n/a — this item IS the install gate"
+      }
     }
   ],
   "finalValidation": {
