@@ -1953,6 +1953,40 @@
       "residuals": [
         "최소3성분 쿼터니언 압축은 별도 항목(표현 불일치 기각)"
       ]
+    },
+    {
+      "id": "GEN-002",
+      "title": "중첩 NetworkBehaviour 지원 + 제네릭 NB UNINET016 진단 (생성기 0.2.17)",
+      "version": "0.22.0",
+      "commit": "af7606e",
+      "tag": "v0.22.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.22.0",
+      "ciRunIds": [
+        39805096267
+      ],
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/gen002-004-plan.md",
+      "plannerAgent": "agent_mvjm3s7i_016b60f1_1o",
+      "workerAgent": "agent_mvjmdsse_d1945666_1p",
+      "tests": {
+        "summary": "EditMode 288 중 286 통과(2 Ignored: 크로스 어셈블리 등록 — PlayMode 필요), PlayMode 별도 실행 권장"
+      }
+    },
+    {
+      "id": "GEN-004",
+      "title": "RPC Vector2/3/4·Quaternion·1-D T[]/List<T> 인자 직접 지원 (생성기 0.2.17)",
+      "version": "0.22.0",
+      "commit": "af7606e",
+      "tag": "v0.22.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.22.0",
+      "ciRunIds": [
+        39805096267
+      ],
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/gen002-004-plan.md",
+      "plannerAgent": "agent_mvjm3s7i_016b60f1_1o",
+      "workerAgent": "agent_mvjmdsse_d1945666_1p",
+      "tests": {
+        "summary": "EditMode 288 중 286 통과 — Vector/Quaternion/컬렉션 왕복 테스트 포함(단, 2 cross-assembly 테스트 Ignored)"
+      }
     }
   ],
   "finalValidation": {
