@@ -1625,6 +1625,46 @@
         "log": ".pi-subagents/artifacts/commercial-netcode/rpc002-fresh-install-unity.log"
       },
       "residuals": []
+    },
+    {
+      "id": "GEN-001",
+      "title": "Dispatch 등록 충돌 구분 — 멱등 재등록 vs 실충돌 거부(first-wins)+LogFault",
+      "version": "0.17.0",
+      "commit": "eff180d",
+      "tag": "v0.17.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.17.0",
+      "ciRunIds": [
+        39731042772
+      ],
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/gen001-plan.md",
+      "plannerAgent": "agent_mvj3cgga_ebf6bdc6_y",
+      "workerAgent": "agent_mvj3lk0f_b85d65b7_z",
+      "reviews": [
+        {
+          "round": "r23",
+          "agent": "agent_mvj4bsjc_4dee3b00_10",
+          "verdict": "CLEAN",
+          "notes": "1라운드 통과 — lock 경계·스냅샷 정합·와이어 13/14 보존·도메인 리로드 멱등성·LogFault 계약·버전 동기 확인"
+        }
+      ],
+      "tests": {
+        "editmodeJobs": [
+          "4217fc99f83542fd8ca41ec29da34081",
+          "c2e9dc7dd7de4198870b080f1bcff391"
+        ],
+        "playmodeJobs": [
+          "4ec14995433f47c7af6789074370ba9a"
+        ],
+        "summary": "EditMode 262/262 ×2, PlayMode 42/42 (+킥 테스트 단독 통과 ×2 — 환경성 대조); 신규 UniNetDispatchRegistrationTests T1~T4"
+      },
+      "verifyInstall": {
+        "result": "PASS",
+        "log": ".pi-subagents/artifacts/commercial-netcode/gen001-fresh-install-unity.log"
+      },
+      "residuals": [
+        "예약 구간(<64) 무음 덮어쓰기 잔존 — 다중 어셈블리 와이어 13/14 시맨틱(문서화)",
+        "NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화 — diff 무관)"
+      ]
     }
   ],
   "finalValidation": {
