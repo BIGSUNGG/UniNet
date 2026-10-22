@@ -1,3 +1,14 @@
+## 0.19.0
+
+**Symmetric stop/fail/restart lifecycle cleanup (LIF-001, ADR-0052 — no wire/protocol change).** Three coupled lifecycle defects: `ServerStopAsync` skipped the dynamic-spawn sweep that the synchronous `ServerStop` performed (ghost netIds aliasing onto the next session after a restart); a failed `ServerAsync` listen left a zombie server attached to the scene (no rollback); and `NetworkBehaviour`'s registration flags had no reset path, so after a stop/restart cycle scene objects were silently never re-registered to the new server instance.
+
+### Changed
+
+- `ServerStopAsync` now sweeps dynamically spawned objects exactly like the synchronous stop (main-thread contract unchanged).
+- `ServerAsync` wraps the listen in try/catch — a failure (e.g. port already in use) detaches the environment (`SetServer(null)`) before rethrowing, leaving a clean slate for a retry on another port.
+- Registration tracking replaced with generation stamps: `NetworkServer.Generation` / `NetworkClient.Generation` (public static counters) and per-behaviour `_registeredServerGen/_registeredClientGen`. Registration skips and `IsServer`/`IsClient` compare against the current instance's generation — every new server/client instance re-registers all scene objects automatically, and same-generation re-calls stay idempotent. User-visible improvement: scene objects now re-register automatically after a stop/restart cycle (previously silently dropped). Generation values never leave the process (wire/protocol unchanged).
+- Tests: PlayMode `ServerRestartSweepPlayTests` — async-stop sweep, same-port restart with non-aliasing netIds, scene re-registration after restart, listen-failure rollback, host restart loopback. RED evidence: disabling the sweep fails T1/T2.
+
 ## 0.18.0
 
 **Enum RPC parameters and replicated fields (GEN-003 — no wire change; generator 0.2.16).** `[ServerRpc]`/`[ClientRpc]`/`[MulticastRpc]` parameters and `[Replicated]` fields rejected enums with UNINET002 — users had to wrap every enum in a [Message].

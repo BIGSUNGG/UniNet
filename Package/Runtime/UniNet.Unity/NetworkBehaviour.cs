@@ -22,8 +22,13 @@ namespace UniNet.Unity
         private bool _netIdComputed;
         private bool _netIdIsDynamic;   // 서버가 부여한 동적 스폰 아이디 — 낡은 판의 잔재 재등록 방지용
         private byte _subId;
-        private bool _registeredServer;
-        private bool _registeredClient;
+        // LIF-001 — registration STAMPS, not one-way flags: the generation of the server/client instance this
+        // object registered under (0 = never registered). Comparing against the current NetworkServer.Generation /
+        // NetworkClient.Generation makes a stop → start restart invalidate the old stamp on its own — the previous
+        // booleans could only ever go true, so scene objects were silently never re-registered with a restarted
+        // server (they became unreachable on the new session).
+        private ulong _registeredServerGen;
+        private ulong _registeredClientGen;
 
         /// <summary>Networked object ID — one per GameObject. Scene objects prefer the edit-time-stamped serialized ID (GlobalObjectId hash — stable across structure and build differences); unsaved/never-stamped objects fall back to the FNV-1a 64-bit hierarchy-path hash; dynamic spawns use a server-assigned value (AssignNetId preempts both).</summary>
         public ulong NetId
@@ -42,11 +47,11 @@ namespace UniNet.Unity
         /// <summary>This component's sub-slot within its object — GetComponents order (assigned on registration).</summary>
         public byte SubId => _subId;
 
-        /// <summary>True when running with server authority (on server or host).</summary>
-        public bool IsServer => UniNetEnvironment.Server != null && _registeredServer;
+        /// <summary>True when running with server authority (on server or host). LIF-001 — requires a registration stamp from the CURRENT server generation, so a restarted server reports false until the object re-registers.</summary>
+        public bool IsServer => UniNetEnvironment.Server != null && _registeredServerGen == NetworkServer.Generation;
 
-        /// <summary>True when connected as a client (on client or host).</summary>
-        public bool IsClient => UniNetEnvironment.Client != null && _registeredClient;
+        /// <summary>True when connected as a client (on client or host). LIF-001 — requires a registration stamp from the CURRENT client generation, matching the server-side restart semantics.</summary>
+        public bool IsClient => UniNetEnvironment.Client != null && _registeredClientGen == NetworkClient.Generation;
 
         /// <summary>True when the local player's connection owns this object (gate input and authority decisions on this — object-wide).</summary>
         public bool IsOwner
@@ -151,11 +156,11 @@ namespace UniNet.Unity
         /// netIds, so both must ignore them.</summary>
         internal bool IsDynamicSpawn => _netIdIsDynamic;
 
-        /// <summary>Marks server registration complete (activates IsServer).</summary>
-        internal void MarkServerRegistered() => _registeredServer = true;
+        /// <summary>Marks server registration complete (activates IsServer). LIF-001 — stamped with the CURRENT server generation, so the mark dies with the server instance that granted it and cannot leak into a restarted session.</summary>
+        internal void MarkServerRegistered() => _registeredServerGen = NetworkServer.Generation;
 
-        /// <summary>Marks client registration complete (activates IsClient).</summary>
-        internal void MarkClientRegistered() => _registeredClient = true;
+        /// <summary>Marks client registration complete (activates IsClient). LIF-001 — stamped with the CURRENT client generation (restart parity with the server stamp).</summary>
+        internal void MarkClientRegistered() => _registeredClientGen = NetworkClient.Generation;
 
         /// <summary>Writes the current transform in spawn wire format (the server attaches this to spawn messages).</summary>
         void IUniNetSpawnTransform.GetSpawnTransform(
@@ -184,7 +189,7 @@ namespace UniNet.Unity
             int registered = 0;
             foreach (var comps in CollectSceneObjects())
             {
-                if (comps[0]._registeredServer) continue;   // already registered this session — scene-load re-runs skip
+                if (comps[0]._registeredServerGen == NetworkServer.Generation) continue;   // already registered with THIS server generation — scene-load re-runs skip (LIF-001: a restarted server's new generation re-admits the object)
                 if (comps.Length > byte.MaxValue)
                 {
                     Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 등록 건너뜀: {comps[0].gameObject.name}");
@@ -194,7 +199,7 @@ namespace UniNet.Unity
                 for (byte i = 0; i < comps.Length; i++)
                 {
                     comps[i].AssignSubId(i);
-                    comps[i]._registeredServer = true;
+                    comps[i]._registeredServerGen = NetworkServer.Generation;
                 }
                 registered++;
             }
@@ -211,7 +216,7 @@ namespace UniNet.Unity
             int registered = 0;
             foreach (var comps in CollectSceneObjects())
             {
-                if (comps[0]._registeredClient) continue;   // already registered this session — snapshot init must not re-run over live state
+                if (comps[0]._registeredClientGen == NetworkClient.Generation) continue;   // already registered with THIS client generation — snapshot init must not re-run over live state (LIF-001: a restarted client's new generation re-admits the object)
                 if (comps.Length > byte.MaxValue)
                 {
                     Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 등록 건너뜀: {comps[0].gameObject.name}");
@@ -221,7 +226,7 @@ namespace UniNet.Unity
                 for (byte i = 0; i < comps.Length; i++)
                 {
                     comps[i].AssignSubId(i);
-                    comps[i]._registeredClient = true;
+                    comps[i]._registeredClientGen = NetworkClient.Generation;
                     UniNetTypeRegistry.Find(comps[i].GetType())?.InitClientSnapshot(comps[i]);
                 }
                 registered++;

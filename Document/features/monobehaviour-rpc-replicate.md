@@ -195,7 +195,7 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 2-프로세스 왕복: `Sandbox/Assets/Tests/Fixtures/TwoProcessRunner.cs` (`--uninet-role=server|client`) — 프로세스 간 RUDP — RPC·리플리케이션 + `[UNINET-2PROC] DYNAMIC-SPAWN-DESTROY PASS`(캐치업·브로드캐스트·조건 3종·파괴) + `[UNINET-2PROC] MULTI-COMPONENT PASS`(다중 서브 스폰·서브별 델타·슬롯·파괴) (로그: `Sandbox-2proc-*.log`)
 - 사용법 예제: `Sandbox/Assets/Scripts/Arena/` — ArenaBootstrap(관리 스폰 NetworkInstantiate+configure)·ArenaPlayer(RPC 3종·조건부 리플리케이션 전종·RepNotify)
 
-## 변경 이력
+- 2026-10-22 — LIF-001(ADR-0052) — 정지→재시작 후 씬 객체 자동 재등록(등록 세대 스탬프)·ServerStopAsync 스윕·listen 실패 롤백(0.19.0)
 
 - 2026-10-22 — GEN-003 — enum RPC 매개변수·Replicated 필드 지원(0.18.0, 생성기 0.2.16)
 

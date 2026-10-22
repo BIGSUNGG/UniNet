@@ -5,6 +5,10 @@
 
 ## [2026-10-22]
 
+### Fixed (LIF-001 — 종료·실패·재시작 경로 대칭 정리, v0.19.0)
+
+- 세 개의 결합된 생명주기 결함 수정: ① `ServerStopAsync`가 동기 `ServerStop`의 `SweepDynamicSpawns()`를 누락 — 정지된 서버의 동적 객체가 캐시 netId를 유지한 채 잔존해 재시작 시 재활용 ID와 충돌(RED job `bff7128f` — 스윕 비활성 시 T1/T2 실패) ② `ServerAsync` listen 실패 시 좀비 서버 잔존(롤백 부재) ③ `NetworkBehaviour` 등록 플래그의 리셋 경로 전무 — 정지→재시작 후 씬 객체가 새 서버에 조용히 미재등록. 수정: ① 스윕 추가(동기와 동일 위치·메인 스레드 계약) ② listen try/catch → 실패 시 `SetServer(null)` 후 재던짐 ③ 등록 추적을 세대 스탬프로 교체(`NetworkServer.Generation`/`NetworkClient.Generation` public static — IVT 제약으로 public, CountFaultedPayload 선례 — + Behaviour별 세대 필드, 현재 세대 일치 스킵/스탬프, IsServer/IsClient 갱신). **사용자 가시 개선**: 재시작 후 씬 객체 자동 재등록(기존 조용한 누락 수정). 세대 값은 와이어 미전송(프로토콜 불변). 검증: RED job `bff7128f`, EditMode 268/268(job `6f37c024`)·PlayMode 47/47 ×3(job `8af1ec74`·`015c7ab0`·`60ea66b5`) — 신규 ServerRestartSweepPlayTests T1~T5. ADR-0052, 계획 `.pi-subagents/artifacts/commercial-netcode/lif001-plan.md`.
+
 ### Added (GEN-003 — enum RPC 매개변수·Replicated 필드 지원, v0.18.0)
 
 - RPC 직접 매개변수와 [Replicated] 필드가 enum을 UNINET002로 거부해 모든 enum을 [Message]로 감싸야 했다. 추가: 생성기가 enum을 선언된 underlying 정수형(byte~ulong)으로 리졸브해 동일 codec에 명시 캐스트로 emit — 와이어 바이트가 underlying primitive와 동일(와이어 호환). RPC 매개변수·Replicated 필드(델타/전체/배열 원소)·컬렉션 원소 타입 전부 커버. Nullable enum 미지원. 미정의 값은 검증 없이 통과(UE/Photon 패리티 — 서버 권위 범위 검증은 Validate 훅 사용자 역할, D3). UNINET002 메시지에 enum 지원 문구 추가. 생성기 0.2.16. **검증 중 발견·수정**: 테스트 픽스처 NetworkBehaviour를 테스트 어셈블리에 선언하면 생성기가 그 어셈블리 전용 `__UniNetRegistration`을 emit해 CS0436-모호한 기존 등록 호출이 소스 어셈블리로 바인딩되어 Fixtures 어셈블리 타입의 등록이 실행되지 않는 함정(25개 테스트 일제 실패로 실증) — 픽스처를 Tests/Fixtures 어셈블리로 이동해 해결(Gen003EnumFixtures.cs에 함정 문서화). 검증: EditMode 268/268 ×2(job `d28f24f3`·`6ab1a436`)·PlayMode 42/42(job `632e65d5`) — 신규 EnumRpcWireTests T1~T6. 리뷰 r24 진행 중. 계획 `.pi-subagents/artifacts/commercial-netcode/gen003-plan.md`.

@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.18.0";   // 0.18.0 — GEN-003: enum RPC/Replicated parameters ride their underlying integer codec (explicit casts emitted by the generator); the wire BYTES are identical to the underlying primitive, but the handshake version string follows the package bump as usual (ADR-0028)
+        public const string Version = "0.19.0";   // 0.19.0 — LIF-001: server-restart hygiene — ServerStopAsync sweeps dynamic spawns (sync-stop parity), a failed listen rolls the environment back (no zombie server), and registration tracking uses per-instance generation stamps so scene objects re-register after a stop → start restart. Wire bytes are unchanged; the handshake version string follows the package bump as usual (ADR-0028)
     }
 }

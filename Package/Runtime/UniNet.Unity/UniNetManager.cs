@@ -56,13 +56,26 @@ namespace UniNet.Unity
             UniNetEnvironment.SetServer(server);
             NetworkBehaviour.RegisterAllToServer();
 
-            var handle = options != null
-                ? await RpcHost.ListenWithOptionsAsync<HubBase>(port, options.ToRpcEndpointOptions(),
-                    factory.CreateServerHub, OnConnected(server))
-                : await RpcHost.ListenAsync<HubBase>(port, null,
-                    factory.CreateServerHub, OnConnected(server));
+            // LIF-001 — the registrations above run before the socket binds: a failed listen (port already bound,
+            // transport fault) must roll the environment back (detach the server) and rethrow, instead of leaving a
+            // zombie server attached that IsServer and NetworkInstantiate treat as live. No flag un-registration is
+            // needed — objects stamped under the failed instance's generation stop matching the next instance's
+            // generation and are re-admitted automatically (NetworkServer.Generation comparison).
+            try
+            {
+                var handle = options != null
+                    ? await RpcHost.ListenWithOptionsAsync<HubBase>(port, options.ToRpcEndpointOptions(),
+                        factory.CreateServerHub, OnConnected(server))
+                    : await RpcHost.ListenAsync<HubBase>(port, null,
+                        factory.CreateServerHub, OnConnected(server));
 
-            _listenHandle = handle;
+                _listenHandle = handle;
+            }
+            catch
+            {
+                UniNetEnvironment.SetServer(null);
+                throw;
+            }
         }
 
         /// <summary>
@@ -243,7 +256,7 @@ namespace UniNet.Unity
             }
         }
 
-        /// <summary>Stops the dedicated server — tells every client the shutdown is intentional (ADR-0027 notice, flushed to the wire), stops the listener (unbinding the socket), and clears environment state. Idempotent: no-op when not listening.</summary>
+        /// <summary>Stops the dedicated server — tells every client the shutdown is intentional (ADR-0027 notice, flushed to the wire), stops the listener (unbinding the socket), clears environment state, and destroys dynamically spawned objects (LIF-001 — same sweep as the synchronous ServerStop, so stale netIds cannot alias onto the next session). Idempotent: no-op when not listening.</summary>
         public static async Task ServerStopAsync()
         {
             var handle = _listenHandle;
@@ -258,6 +271,13 @@ namespace UniNet.Unity
             UniNetEnvironment.SetServer(null);
             if (handle != null)
                 await handle.DisposeAsync();
+            // LIF-001 — sweep dynamic spawns exactly like the synchronous ServerStop does: a stopped server's
+            // dynamic objects keep cached server-assigned netIds that would alias onto the next session's recycled
+            // ids. Only the synchronous path swept before, so an async stop leaked ghosts across restarts.
+            // Gated on "this call actually stopped something" (r26 I-1): a client-only process calling
+            // ServerStopAsync must not have its mirrors destroyed by a server-lifecycle sweep.
+            if (server != null || handle != null)
+                SweepDynamicSpawns();
         }
 
         /// <summary>Stops the dedicated server synchronously — for paths that cannot await (e.g. right before application quit). Performs the same cleanup as ServerStopAsync via synchronous Dispose.</summary>

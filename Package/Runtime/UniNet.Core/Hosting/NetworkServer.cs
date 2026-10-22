@@ -76,6 +76,26 @@ namespace UniNet.Core.Hosting
         // by the grace window, never grows unboundedly. Guarded by _gate.
         private readonly Dictionary<string, (byte Reason, double ExpiresAt)> _closedResumeTokens = new();
 
+        // LIF-001 — process-wide server-generation counter. Every NetworkServer instance creation stamps the next
+        // generation (1-based; 0 = "no instance yet"). A stop → start restart always creates a new instance, so
+        // per-object registration stamps taken under the previous server stop matching — that is what lets scene
+        // objects re-register after a restart without any caller-side flag reset (the one-way booleans this replaces
+        // silently skipped re-registration forever). Interlocked because instances are created from arbitrary threads;
+        // the value is process-local identity only — never a session token, never on the wire.
+        private static long _generationCounter;
+
+        /// <summary>
+        /// LIF-001 — generation of the most recently created NetworkServer instance (starts at 1). NetworkBehaviour
+        /// compares its registration stamp against this to decide whether it is already registered with the CURRENT
+        /// server. Deliberately public, not internal: UniNet.Core grants InternalsVisibleTo to the test assemblies
+        /// only (AssemblyInfo.cs), and UniNet.Unity's NetworkBehaviour reads this across the assembly boundary — same
+        /// precedent as NetworkClient.CountFaultedPayload.
+        /// </summary>
+        public static ulong Generation => (ulong)System.Threading.Interlocked.Read(ref _generationCounter);
+
+        /// <summary>LIF-001 — stamps a fresh generation at instance creation (see <see cref="Generation"/>): a restart-created instance never shares a generation with its predecessor, making stale registration state self-invalidating.</summary>
+        public NetworkServer() => System.Threading.Interlocked.Increment(ref _generationCounter);
+
         /// <summary>Global replication byte budget per tick — 0 = unlimited (default). Exceeding deltas are deferred to a queue and sent on the next tick.</summary>
         public int ReplicationBudgetPerTickBytes { get; set; }
 

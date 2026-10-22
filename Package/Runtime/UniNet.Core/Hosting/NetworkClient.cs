@@ -9,6 +9,20 @@ namespace UniNet.Core.Hosting
     /// </summary>
     public sealed class NetworkClient
     {
+        // LIF-001 — process-wide client-generation counter — parity with NetworkServer.Generation: every
+        // NetworkClient instance creation stamps the next generation (1-based), so a client stop → start (new
+        // instance) invalidates NetworkBehaviour registration stamps on its own, exactly like a server restart
+        // does. Deliberately public for the same reason as NetworkServer.Generation (UniNet.Core grants
+        // InternalsVisibleTo to test assemblies only, and UniNet.Unity reads this across the boundary).
+        // Process-local identity — never on the wire.
+        private static long _generationCounter;
+
+        /// <summary>LIF-001 — generation of the most recently created NetworkClient instance (starts at 1).</summary>
+        public static ulong Generation => (ulong)System.Threading.Interlocked.Read(ref _generationCounter);
+
+        /// <summary>LIF-001 — stamps a fresh generation at instance creation (see <see cref="Generation"/>).</summary>
+        public NetworkClient() => System.Threading.Interlocked.Increment(ref _generationCounter);
+
         private readonly object _gate = new();
         private readonly Dictionary<ulong, object[]> _objects = new();
         private readonly Dictionary<ulong, long> _owners = new();

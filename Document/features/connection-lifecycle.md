@@ -125,6 +125,8 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - 2-프로세스 `KICK-REASON PASS` (ADR-0027) + `VERSION-MISMATCH PASS` (ADR-0028) — 서버 킥 → 클라 사유 수신 왕복·버전 불일치 재접속 거부 (기존 3종 PASS 유지)
 - 2026-10-12: EditMode 87/87 · PlayMode 22/22 (MCP 에디터) · 2-프로세스 킥·버전 왕복 PASS
 
+- **종료·실패·재시작 대칭 정리 (LIF-001/ADR-0052)** — `ServerStopAsync`도 동기 정지와 동일하게 동적 스폰을 스윕하고(메인 스레드 계약), `ServerAsync` listen 실패는 환경 탈착 후 재던진다. 등록 추적은 세대 스탬프(`NetworkServer.Generation`/`NetworkClient.Generation`)로 교체 — 새 서버/클라 인스턴스마다 씬 객체가 자동 재등록되고 같은 세대 재호출은 멱등이다. 세대 값은 와이어 미전송(0.19.0).
+
 ## 변경 이력
 - 2026-10-21 — ADR-0047 연결 승인 콜백: 와이어 7 페이로드 확장 `[version][credential]`(조건부 읽기로 구 클라 호환)·`UniNetEndpointOptions.ConnectionApprover/ConnectionCredential`·`UniNetDisconnectReason.ApprovalRejected = 6`·콜백 대기 중 CON-001 유예 상태 재사용·`VersionDeclareTimeoutMs` 총예산 재사용. 0.10.0 (CON-002 CLOSED — EditMode 221/221·PlayMode 35/35·실RUDP 승인/거부/초과페이로드 PASS·리뷰 r11→r12 CLEAN)
 - 2026-10-21 — ADR-0046 자발 퇴장 통보: 시스템 와이어 15 `IntentionalLeave`(C→S) 신설 — ClientStop이 close 직전 통보, 서버는 유예 저장 생략+토큰 툼스톤+소유권 즉시 재배정. 전송 신뢰성: SendRPC Task 250ms 유계 대기 + 150ms 드레인 창. 구 클라 호환(미통보 = 기존 유예). 0.9.0 (REC-002 CLOSED — 실루프백 3/3·Arena 진단 PASS·전수 209/32 PASS)
