@@ -981,6 +981,43 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine("            // called on a client: server-authoritative — nothing to send");
                         sb.AppendLine("        }");
                         sb.AppendLine();
+                        // RPC-001 — targeted companion {Name}To(connId, args): single-connection send (FishNet TargetRpc parity).
+                        // Same methodId/payload/delivery as the broadcast (encode reuse) — wire unchanged, receiver side untouched.
+                        sb.AppendLine($"        {rpc.Accessibility} void {rpc.Name}To(long connId{ParamsSignature(rpc)})");   // regular method — no user declaration pairs with it (CS0759); collision = CS0111 (accepted, R2)
+                        sb.AppendLine("        {");
+                        sb.AppendLine($"            var server = {Env}.Server;");
+                        sb.AppendLine("            if (server != null && IsServer)");
+                        sb.AppendLine("            {");
+                        sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
+                        sb.AppendLine("                {");
+                        sb.AppendLine("                    if (conn.ConnId != connId) continue;");
+                        sb.AppendLine("                    if (conn.Disconnected || !(conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)) return;   // known but unsendable — no exception, no send");
+                        sb.AppendLine($"                    ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine("                    return;   // targeted — exactly one send");
+                        sb.AppendLine("                }");
+                        sb.AppendLine("                return;   // unknown connId — no exception, no send");
+                        sb.AppendLine("            }");
+                        sb.AppendLine("            // called on a client: server-authoritative — nothing to send");
+                        sb.AppendLine("        }");
+                        sb.AppendLine();
+                        // RPC-001 — targeted companion {Name}ToOwner(args): owner-only send (UE owner ClientRpc parity). Reuses the To path.
+                        sb.AppendLine($"        {rpc.Accessibility} void {rpc.Name}ToOwner({ParamsDeclaration(rpc)})");   // regular method — same reasoning as To
+                        sb.AppendLine("        {");
+                        sb.AppendLine($"            var server = {Env}.Server;");
+                        sb.AppendLine("            if (server != null && IsServer)");
+                        sb.AppendLine("            {");
+                        sb.AppendLine("                var owner = server.GetOwner(NetId);");
+                        sb.AppendLine("                if (owner == 0)");
+                        sb.AppendLine("                {");
+                        sb.AppendLine($"                    UnityEngine.Debug.LogWarning($\"[UniNet] {m.Name}.{rpc.Name}ToOwner — 소유자 미배정(netId={{NetId}}): 송신 생략\");   // low-frequency programming error signal — no rate limit");
+                        sb.AppendLine("                    return;");
+                        sb.AppendLine("                }");
+                        sb.AppendLine($"                {rpc.Name}To(owner{callArgs});");
+                        sb.AppendLine("                return;");
+                        sb.AppendLine("            }");
+                        sb.AppendLine("            // called on a client: server-authoritative — nothing to send");
+                        sb.AppendLine("        }");
+                        sb.AppendLine();
 sb.AppendLine($"        internal static void __UniNetClientDispatch_{rpc.Name}({m.Name} o{ParamsSignature(rpc)})");
 sb.AppendLine("        {");
 sb.AppendLine("            try");

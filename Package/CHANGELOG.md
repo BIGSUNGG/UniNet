@@ -1,3 +1,14 @@
+## 0.15.0
+
+**Targeted ClientRpc companions (RPC-001, ADR-0051 — no wire/protocol change; generator 0.2.14).** `[ClientRpc]` methods were broadcast-only: there was no generated API to send a server-authoritative RPC to the object's owner or to one specific connection.
+
+### Added
+
+- The generator now emits two companions for every `[ClientRpc]`: `{Name}To(long connId, args)` (single-connection send — FishNet TargetRpc parity) and `{Name}ToOwner(args)` (owner-only send — UE owner ClientRpc parity). Accessibility mirrors the declaration; methodId/payload/delivery are identical to the broadcast (wire unchanged — receiver side untouched; filtering happens in the server send loop only).
+- The existing `{Name}(args)` broadcast is byte-identical. `To` with an unknown/disconnected connId: no exception, no send. `ToOwner` with owner==0: one warning line, no send. Called on a client: silently ignored (server-authoritative, same as the broadcast).
+- Companions are emitted as regular methods (not partials) — no user declaration pairs with them; a name collision with existing game code surfaces as CS0111 at compile time.
+- Tests: EditMode `TargetedRpcTests` (broadcast invariance, ToOwner single-receiver, To targeting + payload identity, owner==0 warning, dead connId, client guard) + PlayMode `TargetedRpcPlayTests` (real-loopback 2-connection non-owner non-receipt).
+
 ## 0.14.0
 
 **Opt-in server input expiry (MOV-003, ADR-0050 — no wire/generator change; additive constructor option only).** `MoveSimulation.TickServer` re-applied the last input indefinitely while the input queue is starved (hold-last): a connection stall or a grace-session owner kept the server simulating the final forward input forever.

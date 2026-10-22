@@ -58,6 +58,36 @@ namespace UniNet.Tests
         private void RpcFx_Implementation()
             => ClientFxRan = true;
 
+        // ── RPC-001 targeted ClientRpc verification (see TargetedRpcTests / TargetedRpcPlayTests) ──
+
+        /// <summary>Whether the toast broadcast ran on a client (parameterless broadcast baseline — fresh methodId, distinct from RpcFx).</summary>
+        public bool ToastRan;
+
+        [ClientRpc]
+        internal partial void RpcToast();
+
+        private void RpcToast_Implementation()
+            => ToastRan = true;
+
+        /// <summary>Last coins applied by RpcAward on a client (targeted or broadcast).</summary>
+        public int AwardCoins;
+
+        /// <summary>Last reason applied by RpcAward on a client.</summary>
+        public string AwardReason = "";
+
+        /// <summary>Whether RpcAward ran on a client (targeted or broadcast).</summary>
+        public bool AwardRan;
+
+        [ClientRpc]
+        internal partial void RpcAward(int coins, string reason);
+
+        private void RpcAward_Implementation(int coins, string reason)
+        {
+            AwardRan = true;
+            AwardCoins = coins;
+            AwardReason = reason;
+        }
+
         [MulticastRpc]
         internal partial void RpcDeath();
 

@@ -28,6 +28,7 @@
 - **RPC 호출 분기** — 서버/호스트: 검증→`_Implementation` 즉시(메인 큐). 전용 클라: 페이로드=`[netId][인자...]` 직렬화→DRPC 전송. 오프라인: 로컬 실행
 - **MulticastRpc** — 호출측에서 `_Implementation` 로컬 실행 + (서버면) 전 클라 전파. 호스트 동일 인스턴스 이중 실행 방지(`IsServer` 가드)
 - **ClientRpc** — 서버 호출만 전파(클라 호출 무시). UE ClientRpc와 동일
+- **대상 지정 ClientRpc (ADR-0051)** — 모든 `[ClientRpc]`에 생성기가 동반 2메서드를 emit한다(0.15.0, 생성기 0.2.14): `{Name}To(long connId, args)`(특정 연결 1회 송신 — FishNet TargetRpc 패리티)·`{Name}ToOwner(args)`(오브젝트 소유자 1회 송신 — UE owner ClientRpc 패리티). 기존 `{Name}(args)` 브로드캐스트는 완전 불변. methodId·payload·delivery는 브로드캐스트와 동일(와이어 무변경) — 수신자 필터링은 서버 송신 루프에서만 일어난다. `To`는 미발견 connId 무예외 무송신, `ToOwner`는 owner==0이면 경고 1줄+미송신. 클라에서 호출하면 기존과 동일하게 무시된다(서버 권위) — RPC-001
 - **리플리케이션** — 서버 틱마다 스냅샷 폴링 비교→변경 필드만 `[mask][값...]` 델타→전 클라. 클라 적용 시 `__uninetSeen`(이전값) 기반으로 Notify(이전값) 호출
 - **보안·속도 설정** — `UniNetEndpointOptions`(연결 키·타임아웃·연결 상한·CRC32c·DTLS 인증서/핀닝)가 DRPC 옵션으로 매핑. 게임 코드는 DRPC·MP 타입 노출 없음
 - **스레딩** — DRPC 수신은 네트워크 스레드→메인 큐 적재→UniNetDriver.Update에서 실행 (Unity 스레드 안전)
@@ -193,6 +194,8 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 사용법 예제: `Sandbox/Assets/Scripts/Arena/` — ArenaBootstrap(관리 스폰 NetworkInstantiate+configure)·ArenaPlayer(RPC 3종·조건부 리플리케이션 전종·RepNotify)
 
 ## 변경 이력
+
+- 2026-10-21 — RPC-001(ADR-0051) — 대상 지정 ClientRpc 동반 메서드 `{Name}To`/`{Name}ToOwner`(0.15.0, 생성기 0.2.14)
 
 - 2026-10-21 — OWN-002/ADR-0048: 소유권 이전 시 조건 필드 baseline 재전송 — 신규 owner(Owner 뷰)·직전 owner(Others 뷰)에 현재값 재전달+RepNotify(prev = 수신자 직전 뷰), InitialOnly 포함, 예산 연기 델타 대체, 관련성 게이트·즉시 캐치업 억제. 와이어/생성기 무변경. 0.11.0. 회귀 9+1종·전수 230/36 2회 연속
 - 2026-10-20 — OWN-001: 후발 캐치업·씬/동적 가시성 재진입·초기 동적 스폰에서 객체 소유권(0 포함)을 상태/스폰보다 먼저 전달. 기존 와이어 2와 동기 캐시 재사용, 조건부 필드 reseed·이동 예측 재설정은 별도 문제로 유지. 회귀 8종·전수 146/27·Arena RUDP 진단 검증.

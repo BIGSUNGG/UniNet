@@ -5,6 +5,10 @@
 
 ## [2026-10-21]
 
+### Added (RPC-001 — 대상 지정 ClientRpc, v0.15.0)
+
+- `[ClientRpc]`가 브로드캐스트만 가능해 소유자 전용 알림·특정 연결 응답을 서버 권위로 표현할 수 없었다. 추가: 생성기가 모든 `[ClientRpc]`에 동반 2메서드를 emit — `{Name}To(long connId, args)`(특정 연결 1회 송신 — FishNet TargetRpc 패리티)·`{Name}ToOwner(args)`(소유자 1회 송신 — UE owner ClientRpc 패리티, 네이밍은 사용자 승인). 기존 `{Name}(args)` 브로드캐스트 바이트 동일, methodId·payload·delivery 불변(**와이어 무변경** — 필터링은 서버 송신 루프 전용). `To` 미발견 connId 무예외 무송신, `ToOwner` owner==0 경고 1줄+미송신, 클라 호출 무시(기존 동일). 동반 메서드는 정규 메서드로 emit(사용자 선언 부재 — partial 구현부로 emit 시 CS0759, 리더 수정; 이름 충돌은 CS0111로 조기 발견). 생성기 0.2.14(분석기 DLL+로컬 피드 재배포). 검증: EditMode 254/254(job `fe312da4`)·PlayMode 42/42 ×2(job `fa6dd906`·`06f32ce5`) — 신규 `TargetedRpcTests` T1~T6+`TargetedRpcPlayTests` T7. ADR-0051, 계획 `.pi-subagents/artifacts/commercial-netcode/rpc001-plan.md`.
+
 ### Added (MOV-003 — 서버 입력 만료 옵트인, v0.14.0)
 
 - `MoveSimulation.TickServer`는 입력 큐가 비면 마지막 입력을 무기한 재적용(hold-last — 기존 문서 계약)이라, 클라 전송 중단·ADR-0034 유예 세션(유예 소유자는 재배정에서 건너뛰므로 오브젝트가 소유자 있음으로 계속 시뮬)에서 마지막 전진 입력이 유예/단절 내내 재적용됐다(의도치 않은 무한 주동). 추가: `MoveSimulation` 생성자 옵션 `inputExpirySteps`(기본 0=비활성 — 기존 동작 바이트 동일, ADR-0034 `SessionGraceSeconds` 패턴). 입력 공급이 그 스텝 수만큼 끊기면 `_input`을 `default(TInput)`으로 정확히 1회 스왑 후 새 입력 채택까지 적용(멱등); `OnTeleport`·`ResetOwnershipStream`·`DropPendingHistory` 경계에서 타이머 0화. hold-last 기본 유지(파괴적 변경 없음), decay-to-zero 기각(TInput 의미는 게임 소유·결정론 계약 — ADR-0038). 리뷰 r19에서 SetInput 갱신이 만료 카운터를 리셋하지 않아 리슨서버 호스트의 살아있는 입력이 만료되는 문제(Medium)가 지적돼 `SetInput`도 타이머를 0화하도록 보강 + 핀 테스트 T6·T7(음수 거부) 추가. 인터페이스·NetworkTransform·와이어·생성기(0.2.13) 무변경. 검증: EditMode 248/248(job `91e29bbd` — T6·T7 포함)·PlayMode 41/41(job `31770d29` — r19 수정 포함) PASS — T1(기본 600틱 hold-last 고정)·T2(만료 컷오프)·T3(재공급 리셋)·T4(10,000틱 멱등)·T5(경계 리셋). ADR-0050, 계획 `.pi-subagents/artifacts/commercial-netcode/mov003-plan.md`.

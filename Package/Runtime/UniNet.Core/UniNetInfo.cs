@@ -6,6 +6,6 @@ namespace UniNet.Core
     public static class UniNetInfo
     {
         /// <summary>Package version (kept in sync with package.json). Also the default protocol-handshake version (ADR-0028) — same-package ends always match.</summary>
-        public const string Version = "0.14.0";   // 0.14.0 — opt-in server input expiry (MOV-003): MoveSimulation ctor option inputExpirySteps (default 0 = hold-last forever, today's behavior); after the grace window of inputless server steps the held input swaps to default(TInput) exactly once and then applies idempotently until a fresh adoption; the idle clock zeroes at OnTeleport / ResetOwnershipStream / DropPendingHistory
+        public const string Version = "0.15.0";   // 0.15.0 — targeted ClientRpc (RPC-001): generator 0.2.14 emits {Name}To(long connId, args) / {Name}ToOwner(args) companions per [ClientRpc] — same methodId/payload/delivery as the broadcast (encode reuse), wire & protocol version unchanged
     }
 }
