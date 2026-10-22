@@ -1858,6 +1858,46 @@
       "verifyInstall": {
         "result": "n/a — this item IS the install gate"
       }
+    },
+    {
+      "id": "TIM-001",
+      "title": "서버 시간 동기화 계약 정립 + 측정 테스트 (Phase A — 코드 로직 무변경)",
+      "version": "0.20.0",
+      "commit": "b0fc50a",
+      "tag": "v0.20.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.20.0",
+      "ciRunIds": [
+        39779087197
+      ],
+      "adr": "Document/decisions/0053-서버-시간-동기화-계약-편도-바이어스-수용.md",
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/tim001-plan.md",
+      "plannerAgent": "agent_mvjhbccr_1cf97dcb_1h",
+      "workerAgent": "agent_mvjhj4ou_452e611b_1i",
+      "reviews": [
+        {
+          "round": "r32",
+          "agent": "agent_mvji7abi_6d10fd99_1j",
+          "verdict": "CLEAN",
+          "notes": "로직 100% 무변경(편집 전 스냅샷 대조)·계약 5조항 수학적 정확성·T1~T5 결정론·버전 동기 전부 확인; 클럭 스큐 ppm 각주 1줄 권장(ADR 반영 예정)"
+        }
+      ],
+      "tests": {
+        "editmodeJobs": [
+          "5689d72a3c6d4b6995badf0206f8cd8f"
+        ],
+        "playmodeJobs": [
+          "06082f6bb0f04de281e49386046daacd"
+        ],
+        "summary": "EditMode 273/273(T1~T5 포함), PlayMode 47/47; T5 측정 [TIM-001] bias=50ms→오차 50ms(Phase B 게이트 자료)"
+      },
+      "verifyInstall": {
+        "result": "PASS — 공개 태그 v0.20.0 설치·컴파일(verify-install-public.sh 신규 게이트 사용)",
+        "log": ".pi-subagents/artifacts/commercial-netcode/tim001-public-install-unity.log"
+      },
+      "residuals": [
+        "Phase B(RTT/2 보정)는 T5 측정으로 게이트된 별도 항목",
+        "클럭 스큐 ppm 항 ADR 각주 권장(r32)"
+      ]
     }
   ],
   "finalValidation": {
