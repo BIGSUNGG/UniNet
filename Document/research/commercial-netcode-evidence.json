@@ -1770,6 +1770,44 @@
         "log": ".pi-subagents/artifacts/commercial-netcode/lif001-fresh-install-unity.log"
       },
       "residuals": []
+    },
+    {
+      "id": "ARENA-001",
+      "title": "Arena 데모 빌드 프리팹 로드 수정 + Windows 서버/클라 빌드 파이프라인·스모크 실측",
+      "version": "0.19.0 (package unchanged — demo/docs only)",
+      "commit": "13a5fd5",
+      "tag": "none (package unchanged)",
+      "releaseUrl": "n/a — demo/docs change; verification evidence is the Windows build run itself",
+      "ciRunIds": [],
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/arena001-plan.md",
+      "plannerAgent": "agent_mvjcax13_5a003450_19",
+      "workerAgent": "agent_mvjcnpcl_87ff0d26_1a",
+      "reviews": [
+        {
+          "round": "r28",
+          "agent": "agent_mvjfkefy_64529b46_1b",
+          "verdict": "CLEAN",
+          "notes": "근본 수정(Resources 단일 경로+GUID 체인 완결)·빌드 인프라·스모크 관측 3종의 실제 통신 증거성·범위 적절성 전부 확인"
+        }
+      ],
+      "tests": {
+        "playmodeJobs": [
+          "077c9fca8d094a2e8e469ccb028dde5a"
+        ],
+        "summary": "ArenaRoundtripTests 2/2, PlayMode 47/47 (prefab move 회귀 무손상)"
+      },
+      "buildEvidence": {
+        "server": "Builds/arena-server/ArenaServer.exe (84MB, StandaloneWindows64+Server subtarget) — batchmode headless 실행",
+        "client": "Builds/arena-client/ArenaClient.exe (88MB, subtarget=Player)",
+        "smokeLogs": [
+          ".pi-subagents/artifacts/commercial-netcode/arena001-server.log",
+          ".pi-subagents/artifacts/commercial-netcode/arena001-client.log"
+        ],
+        "result": "양측 [ARENA-BUILD-2PROC] PASS(서버: 스폰·발사·사망 처리, 클라: 아바타+이름·탄약·킬피드/FX), 서버 RTT 16-27ms 라이브 트래픽, 클라 미지 프리팹 에러 부재"
+      },
+      "verifyInstall": {
+        "result": "n/a (package unchanged)"
+      }
     }
   ],
   "finalValidation": {
