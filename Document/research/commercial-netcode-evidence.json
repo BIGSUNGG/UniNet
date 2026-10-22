@@ -1665,6 +1665,58 @@
         "예약 구간(<64) 무음 덮어쓰기 잔존 — 다중 어셈블리 와이어 13/14 시맨틱(문서화)",
         "NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화 — diff 무관)"
       ]
+    },
+    {
+      "id": "GEN-003",
+      "title": "enum RPC 매개변수·Replicated 필드 지원 (생성기 0.2.16 — underlying codec 리졸브+명시 캐스트)",
+      "version": "0.18.0",
+      "commit": "6513eff",
+      "tag": "v0.18.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.18.0",
+      "ciRunIds": [
+        39746273257
+      ],
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/gen003-plan.md",
+      "plannerAgent": "agent_mvj4vdmd_3066f48f_11",
+      "workerAgent": "agent_mvj539dc_24a8ed4a_12",
+      "reviews": [
+        {
+          "round": "r24",
+          "agent": "agent_mvj8xieb_dcde3c86_13",
+          "verdict": "ISSUES",
+          "issues": [
+            "BLOCKER: REGTEMP/ADDTEMP 임시 진단 잔존(제거 스크립트 파스 실패) -> 라인 단위 제거",
+            "LOW: git diff 범위 대조 -> 커밋 직전 실행",
+            "INFO: [Message] enum D5 유예·Nullable enum 미지원 문서화 -> changelog/features 반영"
+          ]
+        },
+        {
+          "round": "r25",
+          "agent": "agent_mvj9g7s2_0cb06bf4_14",
+          "verdict": "CLEAN",
+          "notes": "진단 제거 라인 단위 확인·부작용 없음·using System 잔존 타당"
+        }
+      ],
+      "tests": {
+        "editmodeJobs": [
+          "d28f24f36a1442728c92ad9d9aeaa13d",
+          "6ab1a436c7cb494a95f5433758fec1bc",
+          "911fcf19b77941a1a732363d806ce8fe"
+        ],
+        "playmodeJobs": [
+          "632e65d5e7b741fa93b20fc670e59a79"
+        ],
+        "summary": "EditMode 268/268 ×3, PlayMode 42/42 (+1회 RTT 플레이크 외 41/42); 신규 EnumRpcWireTests T1~T6"
+      },
+      "verifyInstall": {
+        "result": "PASS",
+        "log": ".pi-subagents/artifacts/commercial-netcode/gen003-fresh-install-unity.log"
+      },
+      "residuals": [
+        "[Message] 내부 enum은 D5 유예 — 프로브 실패 시 별도 대장 항목",
+        "Nullable enum 미지원(문서화)",
+        "sbyte/short/ushort/uint/long underlying 개별 테스트는 선택 보강(r24 Follow-up 5)"
+      ]
     }
   ],
   "finalValidation": {
