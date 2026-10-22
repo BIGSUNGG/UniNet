@@ -1544,6 +1544,47 @@
       "residuals": [
         "NetworkStatsPlayTests RTT 세션-에이징 플레이크(기존 문서화 — diff 무관, green 런에서 통과)"
       ]
+    },
+    {
+      "id": "RPC-001",
+      "title": "대상 지정 ClientRpc 동반 메서드 ({Name}To / {Name}ToOwner — 생성기 0.2.14)",
+      "version": "0.15.0",
+      "commit": "1708a53",
+      "tag": "v0.15.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.15.0",
+      "ciRunIds": [
+        39714619174
+      ],
+      "adr": "Document/decisions/0051-대상-지정-ClientRpc-동반-메서드-네이밍.md",
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/rpc001-plan.md",
+      "plannerAgent": "agent_mvif55mk_9862c1e7_k",
+      "workerAgent": "agent_mviwsi74_4c7e5e0c_t",
+      "reviews": [
+        {
+          "round": "r21",
+          "agent": "agent_mvixxqye_75761141_u",
+          "verdict": "CLEAN",
+          "notes": "emission 정확성·partial→정규 메서드 수정 정당성·계약 준수·테스트 충족도 전부 확인; N1(예약 이름 규약 → ADR 반영)·N2(수용) 비차단"
+        }
+      ],
+      "leaderFix": "워커 emission이 partial 구현부(정의부 부재)로 CS0759 → 정규 메서드 emit으로 수정 후 전수 GREEN",
+      "tests": {
+        "editmodeJobs": [
+          "fe312da4332b4a5bb40ed4dbdaaad2af"
+        ],
+        "playmodeJobs": [
+          "fa6dd906ac41499baada48b4e02df47d",
+          "06f32ce5188b4bf098c8bcd21742c3f8"
+        ],
+        "summary": "EditMode 254/254, PlayMode 42/42 ×2; 신규 TargetedRpcTests T1~T6 + TargetedRpcPlayTests T7"
+      },
+      "verifyInstall": {
+        "result": "PASS",
+        "log": ".pi-subagents/artifacts/commercial-netcode/rpc001-fresh-install-unity.log"
+      },
+      "residuals": [
+        "T8(Arena ToOwner 변형) 미구현 — 계획상 리더 판단 사항, 타깃 송신 커버리지는 T2/T3/T7로 고정"
+      ]
     }
   ],
   "finalValidation": {
