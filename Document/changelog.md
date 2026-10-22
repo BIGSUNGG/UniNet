@@ -5,6 +5,10 @@
 
 ## [2026-10-22]
 
+### Fixed (ARENA-001 — Arena 데모 빌드 프리팹 로드, 패키지 0.19.0 유지)
+
+- `ArenaBootstrap.LoadPlayerPrefab`이 `#if UNITY_EDITOR` AssetDatabase 분기 외 빌드에서 null을 반환해 플레이어 빌드 스폰이 실패했다. 수정: 프리팹을 `Assets/Resources/Arena/`으로 GUID 보존 이동(git mv — 베이크 테이블 참조 무결)하고 `ArenaPrefabs.LoadPlayer()`(Resources.Load 단일 경로, null 시 LogError)로 교체 — ArenaTwoProcessRunner도 동일. ArenaPrefabBaker에 `#if UNITY_EDITOR` 감쌈(Arena.asmdef가 all-platforms라 플레이어 빌드 컴파일 실패 해소). **검증 인프라 신설**: `ArenaPlayerBuilder`(BuildServer=Windows64+Server 서브타입/BuildClient), `--arena-role=server|client` CLI 역할, `--arena-smoke` 스모크 드라이버(아바타 스폰+이름·탄약 OwnerOnly 왕복·피해→킬피드/FX 왕복 관측). **실측**: Windows 전용 서버(headless)+별도 클라 2프로세스 — 양측 `[ARENA-BUILD-2PROC] PASS`, 서버 RTT 16-27ms. 테스트 인프라: Fixtures asmdef defineConstraints UNITY_INCLUDE_TESTS(플레이어 빌드 테스트 픽스처 배제), 테스트 asmdef DRPC.Client/Server·Communication.Shared 참조 보강. 리뷰 r28 CLEAN. 계획 `.pi-subagents/artifacts/commercial-netcode/arena001-plan.md`. Package 런타임 무변경 — 0.19.0 유지.
+
 ### Fixed (LIF-001 — 종료·실패·재시작 경로 대칭 정리, v0.19.0)
 
 - 세 개의 결합된 생명주기 결함 수정: ① `ServerStopAsync`가 동기 `ServerStop`의 `SweepDynamicSpawns()`를 누락 — 정지된 서버의 동적 객체가 캐시 netId를 유지한 채 잔존해 재시작 시 재활용 ID와 충돌(RED job `bff7128f` — 스윕 비활성 시 T1/T2 실패) ② `ServerAsync` listen 실패 시 좀비 서버 잔존(롤백 부재) ③ `NetworkBehaviour` 등록 플래그의 리셋 경로 전무 — 정지→재시작 후 씬 객체가 새 서버에 조용히 미재등록. 수정: ① 스윕 추가(동기와 동일 위치·메인 스레드 계약) ② listen try/catch → 실패 시 `SetServer(null)` 후 재던짐 ③ 등록 추적을 세대 스탬프로 교체(`NetworkServer.Generation`/`NetworkClient.Generation` public static — IVT 제약으로 public, CountFaultedPayload 선례 — + Behaviour별 세대 필드, 현재 세대 일치 스킵/스탬프, IsServer/IsClient 갱신). **사용자 가시 개선**: 재시작 후 씬 객체 자동 재등록(기존 조용한 누락 수정). 세대 값은 와이어 미전송(프로토콜 불변). 검증: RED job `bff7128f`, EditMode 268/268(job `6f37c024`)·PlayMode 47/47 ×3(job `8af1ec74`·`015c7ab0`·`60ea66b5`) — 신규 ServerRestartSweepPlayTests T1~T5. ADR-0052, 계획 `.pi-subagents/artifacts/commercial-netcode/lif001-plan.md`.

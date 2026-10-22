@@ -156,19 +156,12 @@ namespace Arena
 
         // ---------------------------------------------------------------- Shared
 
-        private const string PlayerPrefabPath = "Assets/Scripts/Arena/ArenaPlayerPrefab.prefab";
-
-#if UNITY_EDITOR
-        private static GameObject LoadPlayerPrefab()
-            => UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
-#else
-        private static GameObject LoadPlayerPrefab() => null;   // the Arena demo is an editor sandbox — never built for players
-#endif
+        // ARENA-001 — prefab loading lives in ArenaPrefabs (Resources.Load): one path for the editor AND player builds.
 
         private static ArenaPlayer CreatePlayer(string name, int seed, Vector3 pos)
         {
             // clone-from-template spawn — the private [Replicated] init (InitServerState) rides on the spawn baseline via the configure callback
-            var go = UniNetManager.NetworkInstantiate(LoadPlayerPrefab(), pos, Quaternion.identity,
+            var go = UniNetManager.NetworkInstantiate(ArenaPrefabs.LoadPlayer(), pos, Quaternion.identity,
                 clone => clone.GetComponent<ArenaPlayer>().InitServerState(name, seed));
             return go.GetComponent<ArenaPlayer>();
         }

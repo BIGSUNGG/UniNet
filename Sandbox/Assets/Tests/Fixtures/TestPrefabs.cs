@@ -15,7 +15,7 @@ namespace UniNet.Tests
         public const string MultiTankPrefab = "Assets/Tests/Fixtures/Prefabs/MultiTankPrefab.prefab";
         public const string AltSpawnablePlayerPrefab = "Assets/Tests/Fixtures/Prefabs/AltSpawnablePlayerPrefab.prefab";   // same component as SpawnablePlayerPrefab — proves the 1:1 type-key limit is gone (ADR-0024)
         public const string NetworkTransformPrefab = "Assets/Tests/Fixtures/Prefabs/NetworkTransformPrefab.prefab";
-        public const string ArenaPlayerPrefab = "Assets/Scripts/Arena/ArenaPlayerPrefab.prefab";   // demo prefab lives with the Arena sample, not the test fixtures
+        public const string ArenaPlayerPrefab = "Assets/Resources/Arena/ArenaPlayerPrefab.prefab";   // demo prefab lives in the demo's Resources folder (ARENA-001 — Resources.Load path shared by editor and player builds)
 
         /// <summary>Loads a spawnable test prefab (null + error log if missing — run TestPrefabBaker.Bake first).</summary>
         public static GameObject Load(string assetPath)

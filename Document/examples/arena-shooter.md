@@ -157,3 +157,13 @@ Unity.exe -batchmode -quit -projectPath C:\Projects\DS\tmp-arena-client -execute
 
 - 라이브러리 기능 상세: [[features/monobehaviour-rpc-replicate]]
 - 기능 로드맵: [[roadmap]] · 구현 아키텍처: ADR [[0008-구현-아키텍처]]·[[0009-동적-스폰-조건부-리플리케이션]]
+
+## 실제 빌드 2프로세스 검증 (ARENA-001)
+
+에디터 전용 로드 분기 없이 프리팹이 Resources에서 로드되므로 플레이어 빌드에서도 스폰이 동작한다. 검증 절차:
+
+1. 빌드 — 에디터 메뉴 대신 `UniNet.Arena.Editor.ArenaPlayerBuilder.BuildServer()`/`BuildClient()`(batchmode `-executeMethod` 지원). 서버는 StandaloneWindows64+Server 서브타입(headless), 출력 `Builds/arena-server/ArenaServer.exe`·`Builds/arena-client/ArenaClient.exe`.
+2. 실행 — 서버: `ArenaServer.exe -batchmode -nographics --arena-role=server --arena-smoke -logFile arena-server.log`, 클라: `ArenaClient.exe --arena-role=client --arena-smoke -logFile arena-client.log`.
+3. 판정 — 양측 로그의 `[ARENA-BUILD-2PROC] PASS`(서버: 스폰·발사·사망 처리 관측, 클라: 자기 아바타+InitialOnly 이름·탄약 OwnerOnly 왕복·피해→킬피드(ClientRpc)·FX(MulticastRpc) 왕복). 미지 프리팹 LogError가 없으면 프리팹이 빌드에 포함된 것이다.
+
+2026-10-22 실측: 위 절차로 양측 PASS + 서버 RTT 16-27ms 라이브 트래픽 확인.

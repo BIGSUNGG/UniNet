@@ -226,14 +226,8 @@ namespace Arena
                 DestroySurplus(players, -diff);
         }
 
-        private const string PlayerPrefabPath = "Assets/Scripts/Arena/ArenaPlayerPrefab.prefab";
-
-#if UNITY_EDITOR
-        private static GameObject LoadPlayerPrefab()
-            => UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
-#else
-        private static GameObject LoadPlayerPrefab() => null;   // the Arena demo is an editor sandbox — never built for players
-#endif
+        // ARENA-001 — prefab loading lives in ArenaPrefabs (Resources.Load): one path for the editor AND player
+        // builds, replacing the editor-only AssetDatabase load that returned null in players and broke every spawn.
 
         private void SpawnPlayer()
         {
@@ -244,7 +238,7 @@ namespace Arena
             _spawnCounter++;
 
             // prefab → configure (set non-serialized InitialOnly state) → register and broadcast — one NetworkInstantiate call (ADR-0024)
-            var go = NetworkInstantiate(LoadPlayerPrefab(),
+            var go = NetworkInstantiate(ArenaPrefabs.LoadPlayer(),
                 new Vector3(x, 0.5f, z), Quaternion.identity,
                 clone => clone.GetComponent<ArenaPlayer>().InitServerState(displayName, colorSeed));
             var player = go.GetComponent<ArenaPlayer>();
