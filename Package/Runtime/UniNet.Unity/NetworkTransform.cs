@@ -39,8 +39,20 @@ namespace UniNet.Unity
         /// </summary>
         public float RollbackThresholdSq = 0.01f;
 
-        /// <summary>Teleport detection — a position jump (per axis, per snapshot) beyond this is a discontinuity: the owner re-anchors its prediction, remotes clear the interpolation buffer so the jump never renders as a slide.</summary>
+        /// <summary>Teleport detection — a position jump (per axis, per snapshot) beyond this is a discontinuity: the owner re-anchors its prediction, remotes clear the interpolation buffer so the jump never renders as a slide. Also doubles as the ANGULAR snap floor (degrees) for <see cref="SyncRotation"/>.</summary>
         public float SnapThreshold = 0.5f;
+
+        /// <summary>
+        /// Opt-in (TRS-001) — replicate <see cref="Transform.rotation"/> continuously (turrets, vehicles). Default off:
+        /// the replicated rotation fields ride the spawn state either way (Awake seeds them from the spawn pose so a
+        /// zero quaternion never reaches the wire), but stay constant — enabling this only adds the per-tick rotation
+        /// deltas. The flag gates what the SERVER samples; receivers apply whatever arrives (owner directly — rotation
+        /// is not predicted; remotes interpolated on the same adaptive delay as position).
+        /// </summary>
+        public bool SyncRotation = false;
+
+        /// <summary>Opt-in (TRS-001) — replicate <see cref="Transform.localScale"/>. Same contract as <see cref="SyncRotation"/>; applied immediately on receipt (a scale change is discrete — no interpolation).</summary>
+        public bool SyncScale = false;
 
         /// <summary>Fixed-step catch-up cap per frame — bounds recovery after a stall (the accumulator is clamped when hit).</summary>
         private const int MaxStepsPerFrame = 8;
@@ -61,6 +73,18 @@ namespace UniNet.Unity
         // its sequence number would pass. Adoption from unowned (0 → conn) is a baseline: no bump, no reset.
         // After _ackSeq: its notify is independent of the ack fields (declaration order is wire-apply order within a delta).
         [Replicated(ReplicateCondition.OwnerOnly, Notify = nameof(OnMoveEpochChanged))] private uint _moveEpoch;
+        // TRS-001 — persistent rotation/scale replication, opt-in via SyncRotation/SyncScale. Awake seeds them from the
+        // spawn transform so the full-state spawn/catch-up wire carries the current pose (and a (0,0,0,0) quaternion is
+        // impossible). Declaration order is wire-apply order within one delta (ADR-0037 precedent); the four rotation
+        // notifies of one delta land µs apart, so the quaternion is consumed ONCE per delta via _rotPending — reading it
+        // mid-apply would see half-updated components (an invalid, non-unit quaternion).
+        [Replicated(Notify = nameof(OnNetRotComponentChanged))] private float _rx;
+        [Replicated(Notify = nameof(OnNetRotComponentChanged))] private float _ry;
+        [Replicated(Notify = nameof(OnNetRotComponentChanged))] private float _rz;
+        [Replicated(Notify = nameof(OnNetRotComponentChanged))] private float _rw;
+        [Replicated(Notify = nameof(OnNetScaleComponentChanged))] private float _sx;
+        [Replicated(Notify = nameof(OnNetScaleComponentChanged))] private float _sy;
+        [Replicated(Notify = nameof(OnNetScaleComponentChanged))] private float _sz;
 
         private float _accumulator;      // fixed-step remainder (seconds) since the last executed step
         private float _predX;            // predicted position (owning client)
@@ -80,9 +104,14 @@ namespace UniNet.Unity
         private readonly SnapshotBuffer<float> _bufX = new(32, LerpF);
         private readonly SnapshotBuffer<float> _bufY = new(32, LerpF);
         private readonly SnapshotBuffer<float> _bufZ = new(32, LerpF);
+        private readonly SnapshotBuffer<Quaternion> _bufRot = new(32, SlerpQ);   // TRS-001 — same buffer pattern as position (adaptive delay + arrival pacing reused)
 
         // ---- remote rendering (ADR-0038 review follow-up) ----
         private bool _hasSeen;                 // any remote sample buffered yet
+        private bool _rotPending;              // TRS-001 — a rotation delta arrived; the quaternion is consumed once per delta in Update (per-component notifies land µs apart)
+        private bool _hasSeenRot;              // any remote rotation buffered yet
+        private Quaternion _seenRot;           // last buffered remote rotation — angular discontinuity detection
+        private float _rotDispEma;             // per-delta angular displacement EMA (degrees) — the snap tolerance follows the object's turn rate
         private float _seenX, _seenY, _seenZ;  // last buffered remote sample — per-axis teleport discontinuity detection
         private float _dispEmaX, _dispEmaY, _dispEmaZ;   // per-axis sample-to-sample displacement — the discontinuity tolerance follows the object's motion scale
         private double _lastSampleAt;          // arrival time of the last paced sample (UniNetTime domain)
@@ -100,6 +129,8 @@ namespace UniNet.Unity
 
         private static float LerpF(float a, float b, double t) => a + (b - a) * (float)t;
 
+        private static Quaternion SlerpQ(Quaternion a, Quaternion b, double t) => Quaternion.Slerp(a, b, (float)t);
+
         private void Awake()
         {
             // Position/ack stream rides the unreliable (Sequenced) batch — a lost delta is superseded by the next
@@ -111,6 +142,15 @@ namespace UniNet.Unity
             _py = p.y;
             _pz = p.z;   // seed the initial replicated state from the spawn transform — placement before spawn becomes the spawn state
             _predX = p.x; _predY = p.y; _predZ = p.z;   // prediction starts aligned with the spawn (owner and server instantiate the same transform)
+
+            // TRS-001 — seed the rotation/scale fields from the spawn pose unconditionally: the full-state spawn wire
+            // serializes them either way, and a zero quaternion (default float fields) is not a valid rotation — late
+            // joiners must start at the actual pose. With the opt-in flags off these never change afterward (the server
+            // does not sample), so the per-tick bandwidth cost is zero.
+            var r = transform.rotation;
+            _rx = r.x; _ry = r.y; _rz = r.z; _rw = r.w;
+            var s = transform.localScale;
+            _sx = s.x; _sy = s.y; _sz = s.z;
         }
 
         /// <summary>
@@ -125,6 +165,22 @@ namespace UniNet.Unity
             _pz = position.z;
             transform.position = position;
             Simulation?.OnTeleport();
+        }
+
+        /// <summary>
+        /// Server-only — sets the networked rotation; it replicates to all clients on the next tick (the transform
+        /// updates immediately too). Position-only teleports keep using <see cref="SetNetworkPosition"/> — rotation is
+        /// deliberately not part of it, and no simulation reset happens here: rotation is not a predicted quantity
+        /// (TRS-001), so there is no prediction to re-anchor. Remotes render the jump as a snap (angular-displacement
+        /// discontinuity detection clears the rotation buffer).
+        /// </summary>
+        public void SetNetworkRotation(Quaternion rotation)
+        {
+            _rx = rotation.x;
+            _ry = rotation.y;
+            _rz = rotation.z;
+            _rw = rotation.w;
+            transform.rotation = rotation;
         }
 
         private void Update()
@@ -159,10 +215,25 @@ namespace UniNet.Unity
 
             if (isAuthority)
             {
+                // TRS-001 — the game rotates/scales the transform directly (rotation has no simulation slot); sample
+                // it into the replicated fields so the delta detector ships changes. Flag-off instances never write,
+                // so the fields stay at their Awake seed and cost zero per-tick bandwidth.
+                if (SyncRotation)
+                {
+                    var r = transform.rotation;
+                    _rx = r.x; _ry = r.y; _rz = r.z; _rw = r.w;
+                }
+                if (SyncScale)
+                {
+                    var s = transform.localScale;
+                    _sx = s.x; _sy = s.y; _sz = s.z;
+                }
                 transform.position = new Vector3(_px, _py, _pz);
             }
             else if (isPredictor)
             {
+                ApplyPendingRotationDirect();   // TRS-001 — before the early return below: the owner applies the server-driven rotation directly (not predicted, no buffer)
+
                 if (sim == null || !SimulationEnabled)
                 {
                     transform.position = new Vector3(_px, _py, _pz);   // owner without a simulation / gated (death) — render the authoritative position
@@ -183,6 +254,7 @@ namespace UniNet.Unity
             }
             else if (IsClient)
             {
+                BufferPendingRotation();   // TRS-001 — intake the pending quaternion BEFORE sampling the buffers
                 InterpolateRemote();   // remote — always interpolated, with or without a simulation
             }
             else
@@ -230,6 +302,8 @@ namespace UniNet.Unity
             double renderTime = UniNetTime.Now - EffectiveInterpolationDelay;
             if (_bufX.TrySample(renderTime, out var x) && _bufY.TrySample(renderTime, out var y) && _bufZ.TrySample(renderTime, out var z))
                 transform.position = new Vector3(x, y, z);
+            if (_bufRot.TrySample(renderTime, out var rot))
+                transform.rotation = rot;   // TRS-001 — unreachable with SyncRotation off (no deltas → empty buffer), so the flag needs no re-check here
         }
 
         /// <summary>Networked X received — ignored by the server (authority) and the predicting owner (reconciliation happens on ack), buffered by remotes.</summary>
@@ -254,6 +328,70 @@ namespace UniNet.Unity
             if (IsServer || IsOwner) return;
             TrackArrival(UniNetTime.Now);
             AddRemoteSample(ref _seenZ, ref _dispEmaZ, _pz, _bufZ);
+        }
+
+        // ---- persistent rotation/scale sync (TRS-001, opt-in) ----
+
+        /// <summary>A rotation component (x/y/z/w) was received — one shared handler for all four fields. The server
+        /// ignores (its transform is the sampling source); the owner and remotes mark the quaternion pending and
+        /// consume it once per delta in Update: reading the quaternion here would see half-updated components, because
+        /// a notify fires before the delta's other components are applied (same per-axis caveat as position).
+        /// Owner: applied directly (rotation is not predicted — deliberate difference from the position notify's
+        /// IsOwner guard). Remote: buffered + Slerp-interpolated, feeding the shared adaptive-delay pacing.</summary>
+        private void OnNetRotComponentChanged(float prev)
+        {
+            if (IsServer) return;   // authority — it samples its own transform instead
+            if (IsOwner)
+            {
+                _rotPending = true;
+                return;
+            }
+            TrackArrival(UniNetTime.Now);   // rotation-only deltas must pace the shared adaptive delay too (same-delta duplicates suppressed)
+            _rotPending = true;
+        }
+
+        /// <summary>A scale component (x/y/z) was received — applied immediately (owner and remote alike): a scale
+        /// change is discrete and un-interpolated. The three per-component notifies land µs apart inside one apply
+        /// pass, so the transient mid-pass vectors are never rendered and the final write completes the vector.</summary>
+        private void OnNetScaleComponentChanged(float prev)
+        {
+            if (IsServer) return;   // authority — it samples its own transform instead
+            transform.localScale = new Vector3(_sx, _sy, _sz);
+        }
+
+        /// <summary>Remote — consumes the pending quaternion into the interpolation buffer. A jump beyond
+        /// max(SnapThreshold, 3× the angular-displacement EMA) clears the buffer (the fresh single sample holds
+        /// immediately — a spin-up renders as a snap, not a spin-through). Two deliberate deviations from the position
+        /// analog, both forced by SnapThreshold (units) doubling as an ANGULAR floor (degrees) that sits BELOW every
+        /// ordinary per-sample step: (1) the judgment arms only once the EMA has observed motion — a cold EMA would
+        /// classify the second sample of any steady spin as a teleport; (2) the EMA keeps updating across snaps — a
+        /// frozen-at-zero EMA would make every subsequent step snap forever. The cold-start window needs no snap
+        /// anyway: with ≤ 2 buffered samples the renderer holds/lerps at most one delay window.</summary>
+        private void BufferPendingRotation()
+        {
+            if (!_rotPending) return;
+            _rotPending = false;
+            var q = new Quaternion(_rx, _ry, _rz, _rw);
+            float angle = _hasSeenRot ? Quaternion.Angle(_seenRot, q) : 0f;
+            bool snap = _hasSeenRot && _rotDispEma > 0f
+                        && angle > Mathf.Max(SnapThreshold, _rotDispEma * DisplacementEmaMultiplier);
+            if (snap)
+                _bufRot.Clear();   // the discontinuity itself must not render as a slide; bounded by 180°, so it may still inform the EMA below
+            if (_hasSeenRot)
+                _rotDispEma += (angle - _rotDispEma) * DisplacementEmaAlpha;
+            _bufRot.Add(UniNetTime.Now, q);
+            _seenRot = q;
+            _hasSeenRot = true;
+        }
+
+        /// <summary>Owner — rotation is not a predicted quantity (the server drives it), so the replicated value
+        /// applies directly, one consume per delta. Runs before the gated early-return so a death/cutscene window
+        /// still tracks the server's rotation.</summary>
+        private void ApplyPendingRotationDirect()
+        {
+            if (!_rotPending) return;
+            _rotPending = false;
+            transform.rotation = new Quaternion(_rx, _ry, _rz, _rw);
         }
 
         /// <summary>Smooths the inter-delta arrival gap. Any axis may pace the stream (a falling or in-place-jumping

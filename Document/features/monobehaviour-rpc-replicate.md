@@ -112,7 +112,7 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 - **복제는 직렬화 복사** — `Object.Instantiate`는 public·[SerializeField] 필드만 복사한다. private [Replicated] 초기화(InitialOnly 기준선 등)는 **configure 콜백**으로 세팅한다 — 콜백은 복제 직후·전파 직전에 클론으로 실행된다 (ADR-0017): `NetworkInstantiate(original, clone => clone.GetComponent<Player>().InitServerState("Alpha", 123))`. `MoveSimulation` 주입(`Simulation`)·서버 동작 플래그(NetworkCullDistance 등 비전파 상태)는 스폰 후 클론에 주입해도 무관하다 (기준선에 실리지 않음)
 
 - **클라 생성 = 동일 프리팹 인스턴스화** (ADR-0024): 스폰 메시지의 프리팹 ID를 베이크 테이블(`Assets/Resources/UniNet/UniNetPrefabTable.asset` — 포스트프로세서가 마킹 프리팹에서 자동 생성)로 해석해 클라가 자기 프리팹 사본을 Instantiate한다. **양단 프리팹 에셋 존재 필수**(Fusion과 동일 전제). 클라 프리팹의 컴포넌트 구성이 서버와 다르면 자동 복원 대신 **거부**(슬롯 불일치 에러). 한 타입에 프리팹 N개 허용(구 typeKey 1:1 카탈로그·RegisterPrefab·자동 복원 폐기)
-- **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화
+- **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화. NetworkTransform의 `SyncRotation`/`SyncScale`(기본 off)을 켜면 회전 쿼터니언(Slerp 보간+각변위 스냅)과 localScale(즉시)이 지속 동기화되고 `SetNetworkRotation`으로 서버 권위 텔레포트도 가능 — TRS-001(0.21.0)
 - **후발 접속 캐치업** — 연결 확정 시 기존 동적 오브젝트(스폰+전체 상태)·씬 오브젝트(전체 상태) 일괄 합류. **객체별 소유권 기준선이 상태/스폰보다 먼저** 도착한다(기존 OwnerUpdate 와이어 재사용, 소유자 0도 명시적 기준선 — OWN-001): 후발 클라의 `IsOwner`·소유자 캐시가 캐치업 시점부터 정확하다. 초기 동적 스폰 브로드캐스트도 동일 순서(소유권 → 스폰 상태)로 전송한다
 - **호스트** — 서버 인스턴스를 클라 등록으로 재사용(이중 생성 없음). 일반 `Destroy`로 사라진 등록 오브젝트도 드라이버가 감지해 파괴 전파(고스트 방지)
 - **파괴 시 클라 소유자 캐시 정리** (OWN-003): 파괴 전파 수신 클라는 `Unregister`에서 오브젝트 등록과 **owner 캐시를 동시에** 정리한다 — 파괴된 netId의 `NetworkClient.GetOwner`는 0(미배정)을 반환하고 `IsOwner`가 잔존값으로 true를 유지하지 않는다(스테일 소유자 참조·세션 내 캐시 누적 방지). `OwnershipChanged`는 파괴 시 발화하지 않는다 — 이벤트는 살아있는 객체의 재배정 통보 전용이며, 파괴 후 늦게 도착하는 OwnerUpdate는 first baseline으로 조용히 적용된다

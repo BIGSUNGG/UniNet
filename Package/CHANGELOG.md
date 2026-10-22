@@ -1,3 +1,15 @@
+## 0.21.0
+
+**Persistent rotation/scale sync on NetworkTransform, opt-in (TRS-001, ADR-0054 — generator unchanged; new [Replicated] fields ride the existing generic codec).** NetworkTransform only ever replicated position — rotation was spawn-time-only (frozen after join) and scale was not on the wire at all.
+
+### Added
+
+- `SyncRotation` (default off): `[Replicated(Notify)]` quaternion components sampled by the server, Slerp-interpolated on remotes (same adaptive delay and arrival pacing as position), with angular-displacement snap (turn-rate EMA gated — warmup-safe). Owner and remote apply; the server ignores (rotation is server-driven, not predicted).
+- `SyncScale` (default off): replicated localScale applied immediately on receipt (discrete — un-interpolated).
+- `SetNetworkRotation(Quaternion)` — server-only rotation teleport, independent of `SetNetworkPosition` (position untouched).
+- Late joiners get the current pose in the full-state spawn/catch-up automatically. Awake seeds all replicated fields from the spawn pose unconditionally ((0,0,0,0) quaternions impossible; zero bandwidth with flags off).
+- Tests T1-T9 (EditMode): Slerp follow, angular snap, immediate scale, spawn-pose seeding, opt-out invariance, owner-apply/server-ignore, late-join convergence, SetNetworkRotation contract (incl. position-untouched), server scale sampling.
+
 ## 0.20.0
 
 **Server-time synchronization contract documented + measurement tests (TIM-001 — zero logic change).** The time-sync behavior (offset EMA, monotonic clamp, no half-RTT compensation) was undocumented; the audit could not tell a real defect from a bounded nuisance.

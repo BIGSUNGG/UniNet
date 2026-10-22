@@ -167,7 +167,9 @@ var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
 
 - **Dispatch registration-collision guard (0.17.0)** — user-range method IDs (>= 64) reject a DIFFERENT handler registered over a taken ID (cross-assembly FNV clash): first-wins, surfaced through `LogFault` with both method names. Re-registering the same method is idempotent (safe across domain-reload-free play sessions). Reserved wire IDs (< 64) keep the multi-assembly silent-overwrite wiring.
 
-- **Server-time contract (0.20.0)** — `UniNetTime.Now` guarantees forward progress (an offset decrease stalls rendering time for at most 0.25·|Δoffset|, then catches up), monotonicity, and a documented constant bias of at most the s2c one-way delay (no RTT/2 compensation — same as UE-style pushes). Not thread-safe: apply on the main thread (QueueOnMain does this for you).
+- **Persistent rotation/scale sync (0.21.0)** — `NetworkTransform` gains `SyncRotation` (Slerp-interpolated quaternion with angular-snap) and `SyncScale` (immediate) opt-in flags, plus `SetNetworkRotation(Quaternion)` for server-authoritative rotation teleports. Default off — existing games unchanged.
+
+- **Server-time contract (0.20.0)**- **Server-time contract (0.20.0)** — `UniNetTime.Now` guarantees forward progress (an offset decrease stalls rendering time for at most 0.25·|Δoffset|, then catches up), monotonicity, and a documented constant bias of at most the s2c one-way delay (no RTT/2 compensation — same as UE-style pushes). Not thread-safe: apply on the main thread (QueueOnMain does this for you).
 
 - **Symmetric stop/fail/restart lifecycle (0.19.0)**- **Symmetric stop/fail/restart lifecycle (0.19.0)** — `ServerStopAsync` now sweeps dynamically spawned objects like the synchronous stop; a failed `ServerAsync` listen rolls the environment back (`Server == null`) before rethrowing; and scene objects re-register automatically to a new server/client instance after any stop/restart cycle (generation-stamped registration — previously silently dropped). Await `ServerStopAsync` on the main thread (it destroys Unity objects).
 

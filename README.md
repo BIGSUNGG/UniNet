@@ -30,6 +30,7 @@ Sister projects (bundled): [DS_Communication](https://github.com/BIGSUNGG/DS_Com
 - **Enum parameters and replicated fields** — enums ride their declared underlying integer's codec (byte..ulong) with identical wire bytes; out-of-range values pass through unvalidated (range-check in your Validate hook).
 - **Registration-collision guard** — a cross-assembly method-ID clash on the dispatch table is rejected first-wins and surfaced through `LogFault`; re-registering the same handler is idempotent.
 - **Documented server-time contract** — `UniNetTime.Now` always progresses (offset decreases stall interpolation for at most one EMA step), is monotonic, and carries at most a one-way-delay bias (documented; no hidden compensation).
+- **Persistent rotation/scale sync (opt-in)** — `NetworkTransform.SyncRotation` adds Slerp-interpolated quaternion replication with angular-displacement snap; `SyncScale` replicates localScale immediately; `SetNetworkRotation` teleports rotation server-authoritatively.
 - **Symmetric lifecycle cleanup** — `ServerStopAsync` sweeps dynamic spawns like the sync stop, a failed listen rolls the environment back, and scene objects re-register automatically to a new server instance after restarts (generation-stamped registration).
 - **Opt-in validation hooks** — `[ServerRpc(Validate = true)]` awaits a `{Name}_Validate` (`Task<bool>`) before the implementation; returning `false` skips execution.
 - `[Message]` message parameters and fields with official polymorphism support — declare a base type, send a subclass, cast on the server.

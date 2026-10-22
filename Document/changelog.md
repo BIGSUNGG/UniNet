@@ -5,6 +5,10 @@
 
 ## [2026-10-22]
 
+### Added (TRS-001 — NetworkTransform 지속 회전·스케일 동기화, v0.21.0)
+
+- NetworkTransform의 지속 복제 필드가 위치 XYZ뿐 — 회전은 스폰 1회 후 동결(포탑·차량 미지원), 스케일은 와이어 부재, 후발 합류도 동결(decisions/0013이 예고한 확장 트리거 충족). 추가: `SyncRotation`/`SyncScale` 옵트인 플래그(기본 false — 기존 게임 무변경), [Replicated(Notify)] 필드 7개(쿼터니언 4 비압축+스케일 3 즉시), 서버 샘플링, 리모트 SnapshotBuffer+SlerpQ 보간(각변위 스냅 — EMA 웜업 게이트, 계획식의 각도 바닥 재사용 오판 방지), `SetNetworkRotation` 신설(위치 무접촉). 오너·리모트 적용+서버 무시(회전은 예측 대상 아님). 후발 합류는 스폰 상태가 현시점 회전을 전파해 자동 연결. Awake 무조건 스폰 변환 시드. 생성기 무변경([Replicated] 범용 순회). 검증: EditMode 282/282(job `f7a8a607`)·PlayMode 47/47(job `5911c0bc`) — 신규 NetworkTransformRotationScaleTests T1~T9. ADR-0054. 리뷰 r33 ISSUES(테스트 보강 4건)→r34 잔존 1건 해소. 계획 `.pi-subagents/artifacts/commercial-netcode/trs001-plan.md`.
+
 ### Added (TIM-001 — 서버 시간 동기화 계약 정립, v0.20.0)
 
 - 감사 TIM-001의 "편도 보정 부재+클램프로 시간 진행 정지" 추정을 분석: **영구 정지는 기각**(오프셋은 읽기 사이 조각상수 — 진행률 항상 1, 클램프 개입은 감소폭>경과시간 순간 한정으로 정지 ≤ EMA 스텝), **상시 편도 바이어스는 확정**(RTT/2 보정 없음 — 클라 Now 오차 ≤ s2c). 계약을 `UniNetTime` XML에 명시하고 결정론적 계약/측정 테스트 T1~T5 추가(가짜 클럭 주입 — 감소 단조·Σ 유계·EMA 수렴·서버 무시·히트 바이어스 측정 `[TIM-001] bias=50ms→오차 50ms`). **코드 로직 무변경** — Phase B(RTT/2 보정)는 T5 측정으로 게이트하는 별도 항목. ADR-0053. 리뷰 r32 CLEAN. 계획 `.pi-subagents/artifacts/commercial-netcode/tim001-plan.md`.
