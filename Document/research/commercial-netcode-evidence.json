@@ -1898,6 +1898,61 @@
         "Phase B(RTT/2 보정)는 T5 측정으로 게이트된 별도 항목",
         "클럭 스큐 ppm 항 ADR 각주 권장(r32)"
       ]
+    },
+    {
+      "id": "TRS-001",
+      "title": "NetworkTransform 지속 회전·스케일 동기화 옵트인 확장 (SyncRotation/SyncScale/SetNetworkRotation)",
+      "version": "0.21.0",
+      "commit": "3c70fbc",
+      "tag": "v0.21.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.21.0",
+      "ciRunIds": [
+        39792013134
+      ],
+      "adr": "Document/decisions/0054-NetworkTransform-지속-회전-스케일-옵트인-확장.md",
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/trs001-plan.md",
+      "plannerAgent": "agent_mvjix95h_5ad4014c_1k",
+      "workerAgent": "agent_mvjj77hn_c897f8e7_1l",
+      "reviews": [
+        {
+          "round": "r33",
+          "agent": "agent_mvjkkgwq_338d27d9_1m",
+          "verdict": "ISSUES",
+          "issues": [
+            "ISSUE-1 minor: SetNetworkRotation 무테스트 -> T8",
+            "ISSUE-2 minor: SyncScale 서버 샘플링 무검증 -> T9",
+            "ISSUE-3 minor: T2/T7 루프 per-tick 정렬 -> 수정",
+            "ISSUE-4 확인: CodeGenerator 무변경 리더 실증(git diff 빈 출력)"
+          ]
+        },
+        {
+          "round": "r34",
+          "agent": "agent_mvjlfbxr_4f838fe4_1n",
+          "verdict": "ISSUES(잔존 1 minor 해소)",
+          "issues": [
+            "FINDING-1 minor: T8 위치 불변+_rz 단언 부재 -> 2단언 추가 후 282/282 GREEN"
+          ]
+        }
+      ],
+      "tests": {
+        "editmodeJobs": [
+          "25467f6a3a214e20958a6f604999a669",
+          "0a8f15ab48e94503ada912993ee367ac",
+          "f7a8a607051744098f55f5e4e280f526"
+        ],
+        "playmodeJobs": [
+          "614bb2bcbbbc4f2f95612c2f8bb4563b",
+          "5911c0bce13446c2bea11e1ab78d3ef8"
+        ],
+        "summary": "EditMode 282/282 ×3(T1~T9 포함), PlayMode 47/47 ×2; 신규 NetworkTransformRotationScaleTests T1~T9"
+      },
+      "verifyInstall": {
+        "result": "PASS — 공개 태그 v0.21.0 설치·컴파일(verify-install-public.sh)",
+        "log": ".pi-subagents/artifacts/commercial-netcode/trs001-public-install-unity.log"
+      },
+      "residuals": [
+        "최소3성분 쿼터니언 압축은 별도 항목(표현 불일치 기각)"
+      ]
     }
   ],
   "finalValidation": {
