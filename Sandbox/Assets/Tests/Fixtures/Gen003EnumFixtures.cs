@@ -4,8 +4,8 @@ using UniNet.Unity;
 
 namespace UniNet.Tests
 {
-    // ── GEN-003 fixtures — TOP-LEVEL partials in the Fixtures assembly (the source generator only extends
-    //    namespace-level partial classes; a nested class would get an unmergeable emitted partial). Living here
+    // ── GEN-003 fixtures — partials in the Fixtures assembly (nested NB is supported since GEN-002 — the generator
+    //    wraps the emitted partial in the containing class chain — these stay top-level by choice). Living here
     //    (not in the EditMode assembly) keeps the EditMode assembly free of NetworkBehaviour types, so the
     //    CS0436-ambiguous `UniNet.Generated.__UniNetRegistration.Register()` calls in EditMode tests bind to the
     //    Fixtures assembly's registration and every fixture type gets registered. ──

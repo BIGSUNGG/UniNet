@@ -79,6 +79,213 @@ namespace UniNet.CodeGenerator
         public static string ReadValue(ITypeSymbol type, string receiver)
             => EnumUnderlying(type) != null ? $"({KeywordOrGlobal(type)})({receiver}.{ReadCall(type)}())" : $"{receiver}.{ReadCall(type)}()";
 
+        // ── RPC argument codecs (GEN-004 — Vector/Quaternion/1-D collections) ───────────
+
+        /// <summary>RPC-argument classification (GEN-004) — shared by the Parser's acceptance gate (IsRpcArgSupported)
+        /// and the emit helpers below, so the two can never diverge (single source of truth).</summary>
+        internal enum ArgKind { Unsupported, Scalar, Vector2, Vector3, Vector4, Quaternion, Array, List }
+
+        /// <summary>GEN-004 — single acceptance gate for RPC arguments: exactly the types EmitArgWrite/EmitArgRead can
+        /// serialize, plus [Message] (which the emit call sites serialize via MessageSerializer before these helpers run).
+        /// Collections are one-dimensional only, with a supported element (primitive/string/enum/[Message]/Vector·Quaternion);
+        /// nested collections stay Unsupported (the Parser reports UNINET002).</summary>
+        internal static bool IsRpcArgSupported(ITypeSymbol type)
+            => ClassifyArg(type) != ArgKind.Unsupported || Parser.IsMessageType(type);
+
+        static ArgKind ClassifyArg(ITypeSymbol type)
+        {
+            if (WriteCall(type) != null) return ArgKind.Scalar;   // primitives, string, enums (underlying-codec, GEN-003)
+            if (type is INamedTypeSymbol named)
+            {
+                switch (named.ToDisplayString())   // Unity value types — plain name comparison (no SpecialType exists for them)
+                {
+                    case "UnityEngine.Vector2": return ArgKind.Vector2;
+                    case "UnityEngine.Vector3": return ArgKind.Vector3;
+                    case "UnityEngine.Vector4": return ArgKind.Vector4;
+                    case "UnityEngine.Quaternion": return ArgKind.Quaternion;
+                }
+                if (named.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>"
+                    && named.TypeArguments.Length == 1)
+                    return ArgElementSupported(named.TypeArguments[0]) ? ArgKind.List : ArgKind.Unsupported;
+            }
+            if (type is IArrayTypeSymbol array && array.Rank == 1)   // multidimensional arrays stay unsupported
+                return ArgElementSupported(array.ElementType) ? ArgKind.Array : ArgKind.Unsupported;
+            return ArgKind.Unsupported;
+        }
+
+        /// <summary>GEN-004 — collection element rule: primitive/string/enum (underlying codec), [Message], or a Unity vector/quaternion. Nested collections are rejected.</summary>
+        static bool ArgElementSupported(ITypeSymbol element)
+            => WriteCall(element) != null
+                || Parser.IsMessageType(element)
+                || ClassifyArg(element) is ArgKind.Vector2 or ArgKind.Vector3 or ArgKind.Vector4 or ArgKind.Quaternion;
+
+        /// <summary>
+        /// GEN-004 — the statements that serialize ONE RPC argument onto the writer variable `w`. Returns null for
+        /// unsupported types — the Parser's IsRpcArgSupported gate shares this classification, so null here signals a
+        /// generator bug, never user code. Wire: Vector2/3/4·Quaternion = uncompressed float decomposition (WriteSingle
+        /// per component, same codec as the system wires); T[]·List&lt;T&gt; = null flag (Boolean), then length prefix
+        /// (UInt16), then elements in order — reference-type elements carry their own null flag.
+        /// </summary>
+        internal static List<string>? EmitArgWrite(ITypeSymbol type, string name)
+        {
+            var s = new List<string>();
+            switch (ClassifyArg(type))
+            {
+                case ArgKind.Scalar:
+                    s.Add($"w.{WriteCall(type)}({WriteValue(type, name)});");
+                    return s;
+                case ArgKind.Vector2:
+                    s.Add($"w.WriteSingle({name}.x);");
+                    s.Add($"w.WriteSingle({name}.y);");
+                    return s;
+                case ArgKind.Vector3:
+                    s.Add($"w.WriteSingle({name}.x);");
+                    s.Add($"w.WriteSingle({name}.y);");
+                    s.Add($"w.WriteSingle({name}.z);");
+                    return s;
+                case ArgKind.Vector4:
+                case ArgKind.Quaternion:   // uncompressed 16 B — quantization is a follow-up concern (plan risk note)
+                    s.Add($"w.WriteSingle({name}.x);");
+                    s.Add($"w.WriteSingle({name}.y);");
+                    s.Add($"w.WriteSingle({name}.z);");
+                    s.Add($"w.WriteSingle({name}.w);");
+                    return s;
+                case ArgKind.Array:
+                case ArgKind.List:
+                {
+                    var array = type as IArrayTypeSymbol;
+                    var element = array != null ? array.ElementType : ((INamedTypeSymbol)type).TypeArguments[0];
+                    string count = array != null ? $"{name}.Length" : $"{name}.Count";
+                    s.Add($"w.WriteBoolean({name} == null);");
+                    s.Add($"if ({name} != null)");
+                    s.Add("{");
+                    s.Add($"    w.WriteUInt16((ushort){count});");
+                    s.Add($"    for (int __i = 0; __i < {count}; __i++)");
+                    s.Add("    {");
+                    ArgElementWrite(s, element, $"{name}[__i]");
+                    s.Add("    }");
+                    s.Add("}");
+                    return s;
+                }
+                default:
+                    return null;   // Unsupported ([Message] never reaches here — emit call sites branch on IsMessage first)
+            }
+        }
+
+        /// <summary>GEN-004 — element write statements: reference-type elements carry a null flag; [Message] rides MessageSerializer, vectors ride the float decomposition, everything else the scalar codec.</summary>
+        static void ArgElementWrite(List<string> s, ITypeSymbol element, string e)
+        {
+            if (element.IsReferenceType)
+            {
+                s.Add($"w.WriteBoolean({e} == null);");
+                s.Add($"if ({e} != null)");
+                s.Add("{");
+                ArgElementWriteCore(s, element, e, "    ");
+                s.Add("}");
+            }
+            else
+                ArgElementWriteCore(s, element, e, "");
+        }
+
+        static void ArgElementWriteCore(List<string> s, ITypeSymbol element, string e, string pad)
+        {
+            if (Parser.IsMessageType(element))
+                s.Add($"{pad}global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter({e}, ref w);");
+            else
+            {
+                switch (ClassifyArg(element))
+                {
+                    case ArgKind.Scalar:
+                        s.Add($"{pad}w.{WriteCall(element)}({WriteValue(element, e)});");
+                        break;
+                    case ArgKind.Vector2:
+                        s.Add($"{pad}w.WriteSingle({e}.x);");
+                        s.Add($"{pad}w.WriteSingle({e}.y);");
+                        break;
+                    case ArgKind.Vector3:
+                        s.Add($"{pad}w.WriteSingle({e}.x);");
+                        s.Add($"{pad}w.WriteSingle({e}.y);");
+                        s.Add($"{pad}w.WriteSingle({e}.z);");
+                        break;
+                    case ArgKind.Vector4:
+                    case ArgKind.Quaternion:
+                        s.Add($"{pad}w.WriteSingle({e}.x);");
+                        s.Add($"{pad}w.WriteSingle({e}.y);");
+                        s.Add($"{pad}w.WriteSingle({e}.z);");
+                        s.Add($"{pad}w.WriteSingle({e}.w);");
+                        break;
+                    default:
+                        throw new System.InvalidOperationException("generator bug: unsupported RPC element type reached emit — ArgElementSupported gate missed");
+                }
+            }
+        }
+
+        /// <summary>GEN-004 — the statements that read ONE RPC argument from the reader variable `r` into `var {name}` (mirror of EmitArgWrite — same wire, same unsupported-type contract).</summary>
+        internal static List<string>? EmitArgRead(ITypeSymbol type, string name)
+        {
+            var s = new List<string>();
+            switch (ClassifyArg(type))
+            {
+                case ArgKind.Scalar:
+                    s.Add("var " + name + " = " + ReadValue(type, "r") + ";");
+                    return s;
+                case ArgKind.Vector2:
+                    s.Add($"var {name} = new global::UnityEngine.Vector2(r.ReadSingle(), r.ReadSingle());");
+                    return s;
+                case ArgKind.Vector3:
+                    s.Add($"var {name} = new global::UnityEngine.Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());");
+                    return s;
+                case ArgKind.Vector4:
+                    s.Add($"var {name} = new global::UnityEngine.Vector4(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());");
+                    return s;
+                case ArgKind.Quaternion:
+                    s.Add($"var {name} = new global::UnityEngine.Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());");
+                    return s;
+                case ArgKind.Array:
+                {
+                    var element = ((IArrayTypeSymbol)type).ElementType;
+                    s.Add($"var {name} = r.ReadBoolean() ? null : new {KeywordOrGlobal(element)}[r.ReadUInt16()];");
+                    s.Add($"if ({name} != null)");
+                    s.Add("{");
+                    s.Add($"    for (int __i = 0; __i < {name}.Length; __i++)");
+                    s.Add($"        {name}[__i] = {ArgElementRead(element)};");
+                    s.Add("}");
+                    return s;
+                }
+                case ArgKind.List:
+                {
+                    var element = ((INamedTypeSymbol)type).TypeArguments[0];
+                    s.Add($"var {name} = r.ReadBoolean() ? null : new global::System.Collections.Generic.List<{KeywordOrGlobal(element)}>(r.ReadUInt16());");
+                    s.Add($"if ({name} != null)");
+                    s.Add("{");
+                    s.Add($"    for (int __i = 0; __i < {name}.Count; __i++)");
+                    s.Add($"        {name}[__i] = {ArgElementRead(element)};");
+                    s.Add("}");
+                    return s;
+                }
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>GEN-004 — read EXPRESSION for one collection element (mirror of ArgElementWrite; null flag for reference-type elements).</summary>
+        static string ArgElementRead(ITypeSymbol element)
+        {
+            string t = KeywordOrGlobal(element);
+            string core = Parser.IsMessageType(element)
+                ? $"({t})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref r)"
+                : ClassifyArg(element) switch
+                {
+                    ArgKind.Scalar => ReadValue(element, "r"),
+                    ArgKind.Vector2 => "new global::UnityEngine.Vector2(r.ReadSingle(), r.ReadSingle())",
+                    ArgKind.Vector3 => "new global::UnityEngine.Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle())",
+                    ArgKind.Vector4 => "new global::UnityEngine.Vector4(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle())",
+                    ArgKind.Quaternion => "new global::UnityEngine.Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle())",
+                    _ => throw new System.InvalidOperationException("generator bug: unsupported RPC element type reached emit — ArgElementSupported gate missed"),
+                };
+            return element.IsReferenceType ? $"r.ReadBoolean() ? ({t})null : {core}" : core;
+        }
+
         public static string Emit(List<TypeModel> models, string assemblyName)
         {
             // Generated code for library assemblies (UniNet.*) is isolated in a separate namespace —
@@ -791,7 +998,13 @@ namespace UniNet.CodeGenerator
                 if (p.IsMessage)
                     sb.AppendLine($"                var {p.Name} = ({KeywordOrGlobal(p.Type)})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref r);");
                 else
-                    sb.AppendLine($"                var {p.Name} = " + ReadValue(p.Type, "r") + ";");
+                {
+                    // GEN-004 — Vector/Quaternion/1-D collection args read back through the mirrored codec (EmitArgRead)
+                    var reads = EmitArgRead(p.Type, p.Name)
+                        ?? throw new System.InvalidOperationException($"generator bug: unsupported RPC argument '{p.Type.ToDisplayString()}' reached emit — the Parser's IsRpcArgSupported gate missed it");
+                    foreach (var stmt in reads)
+                        sb.AppendLine("                " + stmt);
+                }
             }
             sb.AppendLine($"                var o = {envSlot}?.Get(netId, subId) as {TypeDisplay2(m)};");
             sb.AppendLine("                if (o != null)");
@@ -919,6 +1132,16 @@ namespace UniNet.CodeGenerator
                     sb.AppendLine("{");
                 }
 
+                // GEN-002 — nested NetworkBehaviour: wrap the body in the containing class chain (outermost first) so the
+                // emitted partial merges with the user's nested declaration. Emitting it top-level instead spawned a
+                // phantom type whose members never merged with the real one (CS1061 at call sites, CS0101 on name clash).
+                // Containers must be partial too — a non-partial container would collide with this emit (CS0260).
+                foreach (var outer in m.ContainingTypes)
+                {
+                    sb.AppendLine($"    partial class {outer}");
+                    sb.AppendLine("    {");
+                }
+
                 sb.AppendLine($"    partial class {m.Name}");
                 sb.AppendLine("    {");
                 sb.AppendLine("        internal object[] __uninetSeen;");
@@ -940,7 +1163,13 @@ namespace UniNet.CodeGenerator
                         if (p.IsMessage)
                             sb.AppendLine($"            global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter({p.Name}, ref w);   // [Message] — includes the MessageId header (polymorphism)");
                         else
-                            sb.AppendLine($"            w.{WriteCall(p.Type)}({WriteValue(p.Type, p.Name)});");
+                        {
+                            // GEN-004 — Vector/Quaternion/1-D collection args emit multi-statement codecs (EmitArgWrite)
+                            var writes = EmitArgWrite(p.Type, p.Name)
+                                ?? throw new System.InvalidOperationException($"generator bug: unsupported RPC argument '{p.Type.ToDisplayString()}' reached emit — the Parser's IsRpcArgSupported gate missed it");
+                            foreach (var stmt in writes)
+                                sb.AppendLine("            " + stmt);
+                        }
                     }
                     sb.AppendLine("            return w.ToArray();");
                     sb.AppendLine("        }");
@@ -1209,6 +1438,8 @@ sb.AppendLine("        }");
                 }
 
                 sb.AppendLine("    }");
+                for (var i = m.ContainingTypes.Count - 1; i >= 0; i--)   // close the containing chain innermost-first (GEN-002)
+                    sb.AppendLine("    }");
                 if (m.Namespace != null) sb.AppendLine("}");
                 sb.AppendLine();
             }
@@ -1472,6 +1703,12 @@ sb.AppendLine("        }");
 
         static string KeywordOrGlobal(ITypeSymbol type)
         {
+            // GEN-004 — arrays and constructed generics: `global::int[]` is invalid C# (keyword after alias
+            // qualifier), so these need dedicated rendering before the SpecialType switch.
+            if (type is IArrayTypeSymbol arr)
+                return KeywordOrGlobal(arr.ElementType) + "[]";
+            if (type is INamedTypeSymbol { Arity: > 0 })
+                return type.ToDisplayString(Microsoft.CodeAnalysis.SymbolDisplayFormat.FullyQualifiedFormat);
             switch (type.SpecialType)
             {
                 case SpecialType.System_Boolean: return "bool";

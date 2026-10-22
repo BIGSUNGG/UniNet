@@ -51,6 +51,7 @@ namespace UniNet.CodeGenerator
                 }
 
                 spc.AddSource("UniNet.Generated.g.cs", Emitter.Emit(models, compilation.Assembly.Name));
+" + Emitter.Emit(models, compilation.Assembly.Name)); } catch { }
             });
         }
     }
@@ -76,6 +77,12 @@ namespace UniNet.CodeGenerator
                 CancellationToken.ThrowIfCancellationRequested();
                 if (!IsNetworkBehaviour(type)) continue;
 
+                if (type.Arity > 0)   // GEN-002 — a generic NetworkBehaviour can never be attached as a Unity component (same constraint as NGO/FishNet); a closed non-generic derived type flows the normal path
+                {
+                    Report(Diagnostics.GenericNetworkBehaviour, type.Locations[0], type.Name);
+                    continue;
+                }
+
                 var model = new TypeModel
                 {
                     Name = type.Name,
@@ -83,6 +90,11 @@ namespace UniNet.CodeGenerator
                     Namespace = type.ContainingNamespace.IsGlobalNamespace ? null : type.ContainingNamespace.ToDisplayString(),
                     IsPartial = type.DeclaringSyntaxReferences.Any(r => r.GetSyntax() is ClassDeclarationSyntax c && c.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword))),
                 };
+
+                // GEN-002 — containing class chain (outermost first) so the emitted partial merges into a nested
+                // declaration instead of a phantom top-level type (see EmitTypePartials).
+                for (var ct = type.ContainingType; ct != null; ct = ct.ContainingType)
+                    model.ContainingTypes.Insert(0, ct.Name);
 
                 if (!model.IsPartial)
                 {
@@ -139,11 +151,13 @@ namespace UniNet.CodeGenerator
                 rpc.HasValidate = GetValidate(serverRpc);                // default false — opt in via [ServerRpc(Validate = true)] (see ADR-0018)
             }
 
-            // parameter type check — primitives, string, or [Message] types
+            // parameter type check — primitives, string, enum, [Message], Vector2/3/4·Quaternion, 1-D T[]/List<T> (GEN-004);
+            // the acceptance check routes through the Emitter's classification (IsRpcArgSupported) so the parse gate and the
+            // emit path share one source of truth and can never diverge.
             foreach (var p in rpc.Parameters)
             {
                 p.IsMessage = IsMessageType(p.Type);
-                if (!p.IsMessage && Emitter.WriteCall(p.Type) == null)
+                if (!Emitter.IsRpcArgSupported(p.Type))
                     Report(Diagnostics.UnsupportedType, method.Locations[0], p.Type.ToDisplayString(), method.Name);
             }
 
@@ -455,6 +469,10 @@ namespace UniNet.CodeGenerator
         public string FullName = "";
         public string? Namespace;
         public bool IsPartial;
+
+        /// <summary>Containing class names, outermost first (GEN-002 nested NB) — empty for namespace-level types. The emitted partial wraps its body in these so the generated members merge into the user's nested declaration; the containers must themselves be partial.</summary>
+        public List<string> ContainingTypes { get; } = new();
+
         public List<RpcModel> Rpcs { get; } = new();
         public List<FieldModel> ReplicatedFields { get; } = new();
         public bool HasReplicatedFields;
@@ -582,7 +600,7 @@ namespace UniNet.CodeGenerator
             Make(3, "RPC 메서드는 partial 선언이어야 함", "RPC 메서드 '{0}' ({1}) 은(는) 본문 없이 partial 로 선언하고 구현은 {0}_Implementation 에 작성해야 합니다", DiagnosticSeverity.Error);
 
         public static readonly DiagnosticDescriptor UnsupportedType =
-            Make(2, "지원하지 않는 타입", "타입 '{0}' 은(는) RPC/리플리케이션 매개변수로 지원되지 않습니다 ('{1}') — 기본형·string 또는 [Message] 마킹 타입(NonId 제외)만 지원 (enum은 underlying 정수형으로 지원)", DiagnosticSeverity.Error);
+            Make(2, "지원하지 않는 타입", "타입 '{0}' 은(는) RPC/리플리케이션 매개변수로 지원되지 않습니다 ('{1}') — 기본형·string·enum(underlying 정수형)·[Message] 마킹 타입(NonId 제외)을 지원하고, RPC 인자는 여기에 Vector2/3/4·Quaternion·1차원 T[]/List<T>(요소는 기본형·string·enum·[Message]·Vector, 중첩 컬렉션 제외)가 추가됩니다", DiagnosticSeverity.Error);
 
         public static readonly DiagnosticDescriptor ImplementationMissing =
             Make(4, "_Implementation 누락/불일치", "RPC '{0}' 에 대응하는 '{0}_Implementation' 메서드가 없거나 시그니처가 일치하지 않습니다", DiagnosticSeverity.Error);
@@ -619,5 +637,8 @@ namespace UniNet.CodeGenerator
 
         public static readonly DiagnosticDescriptor NestedCollection =
             Make(15, "중첩 컬렉션 미지원", "필드 '{0}' 의 요소 타입 '{1}' 은(는) 컬렉션입니다 — 중첩 컬렉션(T[][]·List<List<T>> 등)은 지원되지 않습니다. 요소를 [Message] 타입으로 감싸거나 평면화하세요", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor GenericNetworkBehaviour =
+            Make(16, "제네릭 NetworkBehaviour 미지원", "제네릭 NetworkBehaviour는 Unity 컴포넌트로 사용 불가 — 비제네릭 파생 타입(예: class A : Foo<int>)을 선언하세요", DiagnosticSeverity.Error);
     }
 }
