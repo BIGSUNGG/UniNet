@@ -5,6 +5,10 @@
 
 ## [2026-10-22]
 
+### Added (TIM-001 — 서버 시간 동기화 계약 정립, v0.20.0)
+
+- 감사 TIM-001의 "편도 보정 부재+클램프로 시간 진행 정지" 추정을 분석: **영구 정지는 기각**(오프셋은 읽기 사이 조각상수 — 진행률 항상 1, 클램프 개입은 감소폭>경과시간 순간 한정으로 정지 ≤ EMA 스텝), **상시 편도 바이어스는 확정**(RTT/2 보정 없음 — 클라 Now 오차 ≤ s2c). 계약을 `UniNetTime` XML에 명시하고 결정론적 계약/측정 테스트 T1~T5 추가(가짜 클럭 주입 — 감소 단조·Σ 유계·EMA 수렴·서버 무시·히트 바이어스 측정 `[TIM-001] bias=50ms→오차 50ms`). **코드 로직 무변경** — Phase B(RTT/2 보정)는 T5 측정으로 게이트하는 별도 항목. ADR-0053. 리뷰 r32 CLEAN. 계획 `.pi-subagents/artifacts/commercial-netcode/tim001-plan.md`.
+
 ### Added (INSTALL-001 — 공개 UPM 태그 설치·컴파일 게이트, 도구 전용)
 
 - `Package/tools/verify-install-public.sh` 신설 — 푸시된 공개 태그를 신규 Unity 프로젝트에 소비자 URL(`github.com/BIGSUNGG/UniNet.git?path=/Package#TAG`)로 설치·임포트·샘플 컴파일까지 검증하는 반복 가능한 게이트(기존 verify-install.sh는 로컬 clone/file URL만 검증). 판정 강화: packages-lock.json에 git 소스 기록 단언(file:// 폴백 오판 차단), 실행 전 `git ls-remote` 원격 태그 확인, PackageCache에서 샘플 추출(태그가 배포한 내용 그대로 검증). 태그 기본값은 package.json 버전에 `v` 접두 자동 부여. 실측: v0.19.0 양성 PASS(설치·샘플·lock 단언), v0.0.0 음성 FAIL. CI 연계는 Unity 라이선스 부재로 보류(문서화). deployment.md에 태그 푸시→Release 후 실행 절차 추가.

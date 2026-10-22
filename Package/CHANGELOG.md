@@ -1,3 +1,12 @@
+## 0.20.0
+
+**Server-time synchronization contract documented + measurement tests (TIM-001 — zero logic change).** The time-sync behavior (offset EMA, monotonic clamp, no half-RTT compensation) was undocumented; the audit could not tell a real defect from a bounded nuisance.
+
+### Added
+
+- `UniNetTime` XML now states the contract: forward progress is always 1 (the offset is frozen between syncs); an offset decrease stalls progress for at most 0.25·|Δoffset| (one EMA step, bounded); client `Now` carries a constant bias of at most the s2c one-way delay (no RTT/2 compensation — UE-style push, deliberate); monotonic via the `_lastNow` clamp; not thread-safe (QueueOnMain precondition). Execution code is byte-identical.
+- Tests T1-T5 (deterministic fake clocks): decrease monotonicity + stall bound, repeated-decrease Σ bound, EMA convergence, server-ignore, and a hit-bias measurement (`bias=50ms -> rewind error 50ms`) that gates any future half-RTT compensation work.
+
 ## 0.19.0
 
 **Symmetric stop/fail/restart lifecycle cleanup (LIF-001, ADR-0052 — no wire/protocol change).** Three coupled lifecycle defects: `ServerStopAsync` skipped the dynamic-spawn sweep that the synchronous `ServerStop` performed (ghost netIds aliasing onto the next session after a restart); a failed `ServerAsync` listen left a zombie server attached to the scene (no rollback); and `NetworkBehaviour`'s registration flags had no reset path, so after a stop/restart cycle scene objects were silently never re-registered to the new server instance.

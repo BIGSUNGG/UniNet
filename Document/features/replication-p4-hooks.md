@@ -51,6 +51,8 @@ server.SetViewerPosition(connId, x, y, z);
 - **PlayMode 2종 신규** — `P4HookPlayTests`(TimeSync 동기화·리와인드 질의)
 - **아레나 전환** — 예측 이동·히트스캔 래그컴펜세이션 실동작: [[examples/arena-shooter]]
 
+- **서버 시간 동기화 계약 (TIM-001/0.20.0)** — `UniNetTime.Now`는 진행률 1 보장(오프셋 감소 시 최대 0.25·|Δoffset| 정지 후 복귀), 단조(클램프), 클라 Now는 s2c 편도지연만큼 바이어스(측정: 50ms 주입→오차 50ms). 스레드 비안전 — QueueOnMain 전제. 편도 보정(RTT/2)은 게이트된 미래 항목(ADR-0053).
+
 ## 변경 이력
 
 - 2026-09-20 — 최초 작성 (P4 훅 — ADR-0012)
