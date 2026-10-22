@@ -165,7 +165,9 @@ var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
         });
     ```
 
-- **Malformed-payload guards (0.16.0)** — the generated OwnerUpdate and single-Replicate receivers contain their parse failures at the handler boundary: a truncated or forged payload is dropped (counted in `NetworkClient.FaultedPayloadCount` and surfaced through `LogFault`) and the next well-formed message applies normally. `FaultedPayloadCount` is the log-independent way to observe silent drops.
+- **Dispatch registration-collision guard (0.17.0)** — user-range method IDs (>= 64) reject a DIFFERENT handler registered over a taken ID (cross-assembly FNV clash): first-wins, surfaced through `LogFault` with both method names. Re-registering the same method is idempotent (safe across domain-reload-free play sessions). Reserved wire IDs (< 64) keep the multi-assembly silent-overwrite wiring.
+
+- **Malformed-payload guards (0.16.0)**- **Malformed-payload guards (0.16.0)** — the generated OwnerUpdate and single-Replicate receivers contain their parse failures at the handler boundary: a truncated or forged payload is dropped (counted in `NetworkClient.FaultedPayloadCount` and surfaced through `LogFault`) and the next well-formed message applies normally. `FaultedPayloadCount` is the log-independent way to observe silent drops.
 
 - **Targeted ClientRpc companions (0.15.0, ADR-0051)**- **Targeted ClientRpc companions (0.15.0, ADR-0051)** — every `[ClientRpc]` gains `{Name}To(long connId, args)` (one connection) and `{Name}ToOwner(args)` (the object's owner) alongside the unchanged broadcast call. Same methodId/payload/delivery as the broadcast — wire-compatible; filtering is server-side only (client calls stay no-ops). `To` with an unknown connId is a silent no-op; `ToOwner` with owner==0 logs one warning and skips. Requires generator 0.2.14.
 

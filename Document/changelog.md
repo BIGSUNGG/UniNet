@@ -3,7 +3,11 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
-## [2026-10-21]
+## [2026-10-22]
+
+### Fixed (GEN-001 — Dispatch 등록 충돌 구분, v0.17.0)
+
+- `UniNetDispatch.Add`가 충돌 시 기존 핸들러를 Debug.WriteLine 뒤 무음 덮어써, 크로스 어셈블리 FNV-1a method-ID 충돌이 디스패치를 조용히 탈취할 수 있었다(생성기의 충돌 검사는 어셈블리 내부 한정). 수정: 사용자 구간(ID ≥ 64)은 델리게이트 **메서드 동일성**으로 멱등 재등록(메서드 그룹의 새 델리게이트 인스턴스 오탐 방지)과 실충돌을 구분 — 실충돌은 `LogFault(InvalidOperationException: 테이블·ID·기존/신규 메서드)`로 관측 후 **거부**(first-wins), same-handler+다른 delivery mode도 엄격 충돌 처리. 예약 구간(ID < 64 — 와이어 13/14 다중 어셈블리 "idempotent across assemblies")은 무음 덮어쓰기 유지. `Debug.WriteLine` 제거. 검증: EditMode 262/262 ×2(job `4217fc99`·`c2e9dc7d`)·PlayMode 42/42(job `4ec14995`)+킥 테스트 단독 통과 — 신규 `UniNetDispatchRegistrationTests` T1~T4. 리뷰 r23 CLEAN. 계획 `.pi-subagents/artifacts/commercial-netcode/gen001-plan.md`.
 
 ### Fixed (RPC-002 — 수신 파싱 방어, v0.16.0)
 

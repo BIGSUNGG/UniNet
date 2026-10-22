@@ -1,3 +1,13 @@
+## 0.17.0
+
+**Dispatch registration-collision guard (GEN-001 — no wire/generator change).** The dispatch table silently overwrote an existing handler on any re-registration (a lone `Debug.WriteLine` was the only trace) — a cross-assembly FNV-1a method-ID clash would hijack the dispatch invisibly.
+
+### Changed
+
+- User-range method IDs (>= 64): re-registration is idempotent when the handler is the SAME method (delegate method identity, not instance identity — method-group arguments produce fresh delegates per registration pass); a DIFFERENT handler on a taken ID (cross-assembly clash, which compile-time UNINET007 cannot see) is rejected first-wins and surfaced through `LogFault` with both method names. Same handler with a different delivery mode is also a conflict (strict).
+- Reserved wire IDs (< 64, wires 13/14) keep the silent overwrite — every assembly registers its own internal handler under the same ID by design ("idempotent across assemblies").
+- Tests: EditMode `UniNetDispatchRegistrationTests` — idempotent re-registration, cross-handler rejection (first-wins pinned), reserved-range overwrite, delivery-mode mismatch.
+
 ## 0.16.0
 
 **Receive-path payload guards (RPC-002 — no wire/protocol change; generator 0.2.15).** The generated OwnerUpdate receiver (wire 2) had no try/catch — unlike its seven sibling system handlers — and the single-Replicate receiver parsed before its queue registration unguarded: a truncated or forged payload threw out of the handler into DRPC dispatch.
