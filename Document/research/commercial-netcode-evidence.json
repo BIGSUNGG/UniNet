@@ -1585,6 +1585,46 @@
       "residuals": [
         "T8(Arena ToOwner 변형) 미구현 — 계획상 리더 판단 사항, 타깃 송신 커버리지는 T2/T3/T7로 고정"
       ]
+    },
+    {
+      "id": "RPC-002",
+      "title": "OwnerUpdate·단일 Replicate 수신 파싱 방어 + FaultedPayloadCount (생성기 0.2.15)",
+      "version": "0.16.0",
+      "commit": "efc8628",
+      "tag": "v0.16.0",
+      "releaseUrl": "https://github.com/BIGSUNGG/UniNet/releases/tag/v0.16.0",
+      "ciRunIds": [
+        39727024568
+      ],
+      "plannerArtifact": ".pi-subagents/artifacts/commercial-netcode/rpc002-plan.md",
+      "plannerAgent": "agent_mviykysk_42963c1f_v",
+      "workerAgent": "agent_mviyu2p4_51489141_w",
+      "reviews": [
+        {
+          "round": "r22",
+          "agent": "agent_mvj2qc78_660b60ed_x",
+          "verdict": "CLEAN",
+          "notes": "emission 정확성(중괄호 리더 수정 포함)·FaultedPayloadCount public 결정(InternalsVisibleTo 실증)·계약·테스트 전부 확인; T3 꼬리 단정 강화 반영"
+        }
+      ],
+      "leaderFix": "워커 Replicate 재작성의 중복 람다 닫기 중괄호 → 생성 파일 전체 불균형(CS1520/CS0501/CS0535) → 제거 후 로컬 생성 프로브로 균형 검증(delta -1→0)",
+      "tests": {
+        "editmodeJobs": [
+          "a56fbc90ee654cb991a5bad944c5f296",
+          "9b54eb417241472d95b6f9e6b6c7863e",
+          "f6bfe165607a469aaae1c62103cbcacf"
+        ],
+        "playmodeJobs": [
+          "4c6983d2636d4d089864dea0ae245e2f",
+          "3a18e70300264f43b085d3b93c94fa9b"
+        ],
+        "summary": "EditMode 258/258 ×3, PlayMode 42/42 ×2; 신규 OwnerUpdateWireTests T1~T4"
+      },
+      "verifyInstall": {
+        "result": "PASS",
+        "log": ".pi-subagents/artifacts/commercial-netcode/rpc002-fresh-install-unity.log"
+      },
+      "residuals": []
     }
   ],
   "finalValidation": {
