@@ -496,3 +496,11 @@ Sandbox-*.log
 !Package/Samples~/**
 !Package/Documentation~/
 !Package/Documentation~/**
+
+/.pi/teams/state/
+/.pi/teams/cache/
+/.pi/teams/worktrees/
+/.pi/teams/imports/
+/.pi/teams/audit/
+!/.pi/teams/artifacts/
+!/.pi/teams/graphs/
