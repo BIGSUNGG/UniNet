@@ -1,5 +1,7 @@
 # research/network-framework-comparison — 네트워크 프레임워크 비교
 
+> **역사 자료 — 현재 기능 판정에 그대로 사용 금지.** 최신 후속 검토는 [[unity-server-functional-review]](2026-10-23, v0.22.0 코드/격리 실행 + Mirror·FishNet·NGO·Fusion 공식 본문 비교)다. 아래 2026-09 표의 ‘커스텀 직렬화·배열 델타·예측·씬 전환·재접속 미지원’, ‘DTLS 기본 암호화’ 등은 현재와 다르다. 과거 서술은 조사 이력으로 보존하며 상용 보증으로 쓰지 않는다.
+>
 > UniNet과 주요 게임 네트워킹 프레임워크의 기능·특징 비교. 조사 기준: 2026-09 (공식 문서 기준).
 > UniNet 기준점: [[overview]] · 구현 범위: [[roadmap]] (P1~P4 완료)
 >

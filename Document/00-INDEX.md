@@ -36,8 +36,9 @@
 
 ### research/ — 비교·조사 문서
 
-- [[research/commercial-netcode-audit|commercial-netcode-audit]] — 상용 셀프호스팅 넷코드 내부 전수 점검·런타임 44개 파일 대응표·기능 문제 대장 (진행 중, 최초 내부 완료 후 타사 비교 착수). 기능별 원시 증거·검증·배포 연결은 `research/commercial-netcode-evidence.json`
-- [[research/network-framework-comparison|network-framework-comparison]] — UniNet vs UE NF·Photon Fusion 2·NGO·N4E·FishNet·Mirror 기능 비교 + 유무·장단점 정리 (2026-09 조사)
+- [[research/unity-server-functional-review|unity-server-functional-review]] — v0.22.0 최신 기능 검토: 승인 경계·유실 복구·컬렉션 RPC 등의 격리 반례, Mirror/FishNet/NGO/Fusion 공식 본문 비교와 장르별 우선순위 (2026-10-23, 검토 결과이며 미수정)
+- [[research/commercial-netcode-audit|commercial-netcode-audit]] — 기존 상용 넷코드 내부 감사·런타임 44개 파일 대응표·기능 문제 대장 (2026-10-22 기존 항목 CLOSED 기준점). 후속 발견 사항은 위 기능 검토 참조. 기능별 원시 증거·검증·배포 연결은 `research/commercial-netcode-evidence.json`
+- [[research/network-framework-comparison|network-framework-comparison]] — UE NF·Photon Fusion 2·NGO·N4E·FishNet·Mirror 비교 역사 자료 (2026-09 조사, 현재 기능 판정에는 위 2026-10-23 검토 우선)
 
 ### upstream-blockers — 상류 의존 과제
 
@@ -104,6 +105,8 @@
 - `_templates/adr.md` — ADR 템플릿
 
 ## 최근 변경 (자세한 것은 [[changelog]])
+
+- 2026-10-23 — **상용 Unity 서버용 기능 재검토**: v0.22.0 코드·동봉 생성기·격리 실행에서 승인 전 게임 RPC 송신·유실 필드 미복구·RPC List/길이 경계·예산 적체를 확인하고, 정적 재진입/상태 리컨사일 경로·생성기 소스 빌드 오류를 구분해 기록. 4개 프레임워크 공식 본문 17개로 추가 비교. [[research/unity-server-functional-review]] — 구현 변경·결함 해결·신규 배포 아님.
 - 2026-10-21 — **OWN-002 v0.11.0 해결 — 소유권 이전 시 조건 필드 baseline 재전송** (ADR-0048·재현 확정: 이전 3경로가 OwnerUpdate만 전파해 신규 owner는 비변경 OwnerOnly/InitialOnly를 영구 기본값으로 보고 이전 owner도 SkipOwner 기본값 고착 — 감사 항목이 가정하지 않은 추가 피해. `SendOwnershipBaseline` 상태 전용 baseline(스폰 재전송 없음·지연 델타 무효화 선행·관련성 게이트·즉시 캐치업 연결 억제)을 3경로에 적용. 와이어·생성기 무변경. **검증·배포 완료**: EditMode 230/230(신규 9종 — Notify·SkipOwner·InitialOnly·예산 연기 무효화·ResumeSession·입양 경계·동적 스폰 미재전송 등)·PlayMode 36/36(실루프백 재입양 baseline) 2회 연속·음성 대조·리뷰 r13 CLEAN(zai/glm-5.3-flash)·커밋 `fcd62aa` → [v0.11.0 Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.11.0)·CI 성공·신규 설치 PASS — OWN-002 CLOSED, 지연 큐 프라이버시 오탐 메모 확인 처리. 리뷰 r13(대장 선점 기재 등 5건 지적)→r14 CLEAN)
 - 2026-10-21 — **CON-002 v0.10.0 구현 — 게임 접속 승인 콜백 확장점** (ADR-0047·[[features/connection-lifecycle]] 갱신. 클라 옵션 `ConnectionCredential`이 와이어 7 선언에 자격 증명 동봉(페이로드 `[version][credential]` 확장 — 구 클라 잔여 0 호환·상한 4096바이트 파싱 전 폐기), 서버 옵션 `ConnectionApprover`(`Task<bool>` 콜백, 메인 시작·비동기 검증)이 승인/거부를 게임에 위임. 거부는 기존 킥 경로+`ApprovalRejected = 6`(열거값 명시·재번호 없음 — 비파괴). 콜백 대기 중 CON-001 유예 상태 재사용(게임 데이터 전면 유보·RPC 게이트), `VersionDeclareTimeoutMs` 총예산 스윕이 hang 콜백 마감. 재접속 재선언도 콜백 1회 통과. 생성기 0.2.13. **검증·배포 완료**: EditMode 221/221(신규 11종)·PlayMode 35/35(신규 3종)·실RUDP 승인/거부/초과페이로드 PASS·리뷰 r11(ISSUES — Core 디버그 트레이스 잔존 등)→r12 CLEAN(zai/glm-5.3-flash)·커밋 `ab82e10` → [v0.10.0 Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.10.0)·CI 성공(첫 태그는 Package/CHANGELOG 0.10.0 누락으로 실패 — 섹션 추가 후 재태그 `2c3095c`)·신규 설치 PASS — CON-002 CLOSED)
 - 2026-10-21 — **REC-002 v0.9.0 구현 — 자발 퇴장 통보와 유예 즉시 폐기** (ADR-0046·[[features/connection-lifecycle]] 갱신. 자발적 `ClientStop`은 재개 토큰을 소각하므로 유예 저장은 고아 세션만 남겼다 — ClientStop이 close 직전 시스템 **와이어 15 `IntentionalLeave`(C→S)**를 발사하고 서버는 유예 저장 생략+토큰 툼스톤(`UnknownToken`)+소유권 즉시 재배정으로 후발 클라의 즉시 입양을 허용. 전달 신뢰성: 전송 Task 250ms 유계 대기+150ms 드레인 창(사용자 승인 계약 — 미적용 시 실루프백 간헐 유실 관측). 구 클라 호환(미통보=기존 유예). 생성기 0.2.12. **검증·배포 완료**: EditMode 210/210·PlayMode 32/32·실루프백 3/3 연속·Arena 진단 PASS·음성 대조 RED 확인·리뷰 r9→r10 CLEAN(zai/glm-5.3-flash)·커밋 `87a3467` → [v0.9.0 Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.9.0)·CI 성공·신규 설치 PASS — REC-002 CLOSED)
