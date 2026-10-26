@@ -22,6 +22,18 @@
 | 문서 감시 훅 | `.pi/extensions/doc-guard.ts` | agent_settled 시 git 상태 검사. 코드 변경 있는데 `Document/` 미갱신이면 경고 표시 + follow-up 재촉(최대 2회). 대화형(tui) 세션에서만 작동 |
 | 리뷰어 에이전트 | `.pi/agents/reviewer.md` | 읽기 전용 검토. 첫 줄 `CLEAN` 또는 `ISSUES` 판정. 빌트인 reviewer를 프로젝트 스코프로 재정의 |
 
+## Unity 작업 수단 (Unity CLI)
+
+Unity 관련 작업(테스트 실행, 솔루션 재생성, 씬·빌드 자동화)은 **Unity CLI(배치 모드)**로 수행한다. 별도의 에디터 연동 도구를 설치·사용하지 않는다. 종료코드·`-logFile`·NUnit XML 결과를 증거로 남긴다.
+
+| 용도 | 명령 관례 |
+| --- | --- |
+| EditMode/PlayMode 전수 테스트 | `Unity.exe -batchmode -nographics -projectPath <Sandbox> -runTests -testPlatform EditMode\|PlayMode -testResults <xml> -logFile <log>` |
+| 2-프로세스 왕복 검증 | `Builds/run2proc.sh` — 서버·클라 병렬 실행 (`-executeMethod UniNet.Tests.TwoProcessRunner.Run --uninet-role=server\|client`) |
+| sln/csproj 재생성 | `Unity.exe -batchmode -quit -projectPath <Sandbox> -executeMethod UniNet.Editor.UniNetSolutionGenerator.Generate` |
+
+배치 실행 로그·결과 XML은 `Builds/` 아래에 남긴다(실행 이력 증거).
+
 ## 동작 방식
 
 ### 문서 동기화

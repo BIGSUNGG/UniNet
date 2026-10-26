@@ -45,5 +45,6 @@
 - 기반 스택: MessageProtocol + DRPC(Communication 간접) **적극 재사용**. 최소 Unity 6, 서버는 Unity 서버 빌드(서버 권위).
 - 구현 상태: 기능 코드 미착수 — 어셈블리 구조·참조 방식은 미정이므로 추측 금지. 정의 상세: `Document/overview.md`.
 - 기술: C#/Unity (netstandard2.1 호환). 코딩 규약: `Document/conventions.md`.
+- Unity 관련 작업(테스트·빌드·자동화)은 에디터 연동 도구 없이 **Unity CLI(배치 모드)**로 수행한다 (`Document/harness.md` 참조).
 - 문서·보고·질문 언어: **한국어**.
 - 변경 기록: 모든 의미 있는 변경을 `Document/changelog.md`에 남긴다.
