@@ -248,7 +248,10 @@ namespace UniNet.CodeGenerator
                 case ArgKind.Array:
                 {
                     var element = ((IArrayTypeSymbol)type).ElementType;
-                    s.Add($"var {name} = r.ReadBoolean() ? null : new {KeywordOrGlobal(element)}[r.ReadUInt16()];");
+                    // Reject impossible lengths before allocation; never clamp a malformed terminal array into success.
+                    // Supported elements consume at least one byte (ID-message header, scalar, vector, or null flag).
+                    // Keep the count local inside the generated helper, outside user-argument scopes.
+                    s.Add($"var {name} = r.ReadBoolean() ? null : new {KeywordOrGlobal(element)}[__UniNetReadArrayCount(ref r)];");
                     s.Add($"if ({name} != null)");
                     s.Add("{");
                     s.Add($"    for (int __i = 0; __i < {name}.Length; __i++)");
@@ -597,6 +600,7 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            }");
             sb.AppendLine("        }");
             sb.AppendLine();
+            EmitArrayCountReader(sb);
             EmitFireAndForget(sb);
             sb.AppendLine("    }");
             sb.AppendLine();
@@ -946,6 +950,7 @@ namespace UniNet.CodeGenerator
             sb.AppendLine($"        private static {TaskOfBytes} EmptyResponse()");
             sb.AppendLine($"            => global::System.Threading.Tasks.Task.FromResult({Empty});");
             sb.AppendLine();
+            EmitArrayCountReader(sb);
             EmitFireAndForget(sb);
             sb.AppendLine("    }");
             sb.AppendLine();
@@ -995,7 +1000,7 @@ namespace UniNet.CodeGenerator
         static void EmitRequestedHandler(StringBuilder sb, TypeModel m, RpcModel rpc, string side)
         {
             string dispatchPrefix = rpc.Kind == RpcKind.Multicast ? "__UniNetClientDispatch_Multicast_" : "__UniNetClientDispatch_";
-            string callArgs = rpc.Parameters.Count > 0 ? ", " + ArgList(rpc) : "";
+            string callArgs = rpc.Parameters.Count > 0 ? ", " + PrivateArgList(rpc) : "";   // F13 — restore locals are ordinal aliases, the dispatch call names them the same way
             string envSlot = side == "Server" ? $"{Env}.Server" : $"{Env}.Client";
 
             string reqName = $"__Req_{SafeNameOf(m)}_{rpc.Name}";
@@ -1006,14 +1011,16 @@ namespace UniNet.CodeGenerator
             sb.AppendLine($"                var r = new {Reader}(data);");
             sb.AppendLine("                ulong netId = r.ReadUInt64();");
             sb.AppendLine("                byte subId = r.ReadByte();");
+            var argIndex = 0;
             foreach (var p in rpc.Parameters)
             {
+                string alias = ArgAlias(argIndex++);   // F13 — restored arguments never reuse the user's parameter names
                 if (p.IsMessage)
-                    sb.AppendLine($"                var {p.Name} = ({KeywordOrGlobal(p.Type)})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref r);");
+                    sb.AppendLine($"                var {alias} = ({KeywordOrGlobal(p.Type)})global::MessageProtocol.Serialize.MessageSerializer.DeserializeFromReader(ref r);");
                 else
                 {
                     // GEN-004 — Vector/Quaternion/1-D collection args read back through the mirrored codec (EmitArgRead)
-                    var reads = EmitArgRead(p.Type, p.Name)
+                    var reads = EmitArgRead(p.Type, alias)
                         ?? throw new System.InvalidOperationException($"generator bug: unsupported RPC argument '{p.Type.ToDisplayString()}' reached emit — the Parser's IsRpcArgSupported gate missed it");
                     foreach (var stmt in reads)
                         sb.AppendLine("                " + stmt);
@@ -1046,6 +1053,18 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("                UnityEngine.Debug.LogException(ex);");
             sb.AppendLine($"                return global::System.Threading.Tasks.Task.FromResult({Empty});");
             sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+
+        static void EmitArrayCountReader(StringBuilder sb)
+        {
+            sb.AppendLine($"        private static int __UniNetReadArrayCount(ref {Reader} r)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            int count = r.ReadUInt16();");
+            sb.AppendLine("            if (count > r.Remaining)");
+            sb.AppendLine("                throw new global::System.IO.InvalidDataException(\"[UniNet] RPC 배열 개수가 남은 페이로드를 초과합니다\");");
+            sb.AppendLine("            return count;");
             sb.AppendLine("        }");
             sb.AppendLine();
         }
@@ -1173,20 +1192,30 @@ namespace UniNet.CodeGenerator
                     int id = Fnv.MethodId(rpc.IdKey);
                     string callArgs = rpc.Parameters.Count > 0 ? ", " + ArgList(rpc) : "";
 
+                    // F13 — public bodies keep the user's parameter names; generated locals there take a safe name only
+                    // on an actual collision with this RPC's parameters (private surfaces use ordinal aliases instead).
+                    var taken = new HashSet<string>();
+                    foreach (var p in rpc.Parameters) taken.Add(p.Name);
+                    string serverL = SafeLocal("server", taken), senderL = SafeLocal("sender", taken);
+                    string connL = SafeLocal("conn", taken), chL = SafeLocal("ch", taken);
+                    string ownerL = SafeLocal("owner", taken), connIdL = SafeLocal("connId", taken);
+
                     // argument encoder (shared by all RPC kinds)
-                    sb.AppendLine($"        internal static byte[] __UniNetEncode_{rpc.Name}(ulong netId, byte subId{ParamsSignature(rpc)})");
+                    sb.AppendLine($"        internal static byte[] __UniNetEncode_{rpc.Name}(ulong netId, byte subId{PrivateParamsSignature(rpc)})");
                     sb.AppendLine("        {");
                     sb.AppendLine($"            var w = {Writer}.Create();");
                     sb.AppendLine("            w.WriteUInt64(netId);");
                     sb.AppendLine("            w.WriteByte(subId);");
+                    var argIndex = 0;
                     foreach (var p in rpc.Parameters)
                     {
+                        string alias = ArgAlias(argIndex++);   // F13 — private surface parameter, never the user's name
                         if (p.IsMessage)
-                            sb.AppendLine($"            global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter({p.Name}, ref w);   // [Message] — includes the MessageId header (polymorphism)");
+                            sb.AppendLine($"            global::MessageProtocol.Serialize.MessageSerializer.SerializeToWriter({alias}, ref w);   // [Message] — includes the MessageId header (polymorphism)");
                         else
                         {
                             // GEN-004 — Vector/Quaternion/1-D collection args emit multi-statement codecs (EmitArgWrite)
-                            var writes = EmitArgWrite(p.Type, p.Name)
+                            var writes = EmitArgWrite(p.Type, alias)
                                 ?? throw new System.InvalidOperationException($"generator bug: unsupported RPC argument '{p.Type.ToDisplayString()}' reached emit — the Parser's IsRpcArgSupported gate missed it");
                             foreach (var stmt in writes)
                                 sb.AppendLine("            " + stmt);
@@ -1200,8 +1229,8 @@ namespace UniNet.CodeGenerator
                     {
                         sb.AppendLine($"        {rpc.Accessibility} partial void {rpc.Name}({ParamsDeclaration(rpc)})");
                         sb.AppendLine("        {");
-                        sb.AppendLine($"            var server = {Env}.Server;");
-                        sb.AppendLine("            if (server != null && IsServer)");
+                        sb.AppendLine($"            var {serverL} = {Env}.Server;");
+                        sb.AppendLine($"            if ({serverL} != null && this.IsServer)");
                         sb.AppendLine("            {");
                         if (rpc.HasValidate)
                             sb.AppendLine($"                {Env}.QueueOnMain(async () => await __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs}));");
@@ -1209,10 +1238,10 @@ namespace UniNet.CodeGenerator
                             sb.AppendLine($"                {Env}.QueueOnMain(() => __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs}));");
                         sb.AppendLine("                return;");
                         sb.AppendLine("            }");
-                        sb.AppendLine($"            var sender = {Env}.ClientSender;");
-                        sb.AppendLine("            if (sender != null)");
+                        sb.AppendLine($"            var {senderL} = {Env}.ClientSender;");
+                        sb.AppendLine($"            if ({senderL} != null)");
                         sb.AppendLine("            {");
-                        sb.AppendLine($"                sender.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine($"                {senderL}.UniNetSend({id}, __UniNetEncode_{rpc.Name}(this.NetId, this.SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("                return;");
                         sb.AppendLine("            }");
                         sb.AppendLine("            // offline — run the implementation locally");
@@ -1222,7 +1251,7 @@ namespace UniNet.CodeGenerator
                             sb.AppendLine($"            __UniNetServerDispatch_{rpc.Name}(this, 0{callArgs});");
                         sb.AppendLine("        }");
                         sb.AppendLine();
-                        sb.AppendLine($"        internal static {(rpc.HasValidate ? "async global::System.Threading.Tasks.Task" : "void")} __UniNetServerDispatch_{rpc.Name}({m.Name} o, long senderConnId{ParamsSignature(rpc)})");
+                        sb.AppendLine($"        internal static {(rpc.HasValidate ? "async global::System.Threading.Tasks.Task" : "void")} __UniNetServerDispatch_{rpc.Name}({m.Name} o, long senderConnId{PrivateParamsSignature(rpc)})");
                         sb.AppendLine("        {");
                         sb.AppendLine("            try");
                         sb.AppendLine("            {");
@@ -1242,8 +1271,8 @@ namespace UniNet.CodeGenerator
                             sb.AppendLine("                }");
                         }
                         if (rpc.HasValidate)
-                            sb.AppendLine($"                if (!await o.{rpc.Name}_Validate({ArgList(rpc)})) return;");
-                        sb.AppendLine($"                o.{rpc.Name}_Implementation({ArgList(rpc)});");
+                            sb.AppendLine($"                if (!await o.{rpc.Name}_Validate({PrivateArgList(rpc)})) return;");
+                        sb.AppendLine($"                o.{rpc.Name}_Implementation({PrivateArgList(rpc)});");
                         sb.AppendLine("            }");
                         sb.AppendLine("            catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }");
                         sb.AppendLine("        }");
@@ -1253,28 +1282,29 @@ namespace UniNet.CodeGenerator
                     {
                         sb.AppendLine($"        {rpc.Accessibility} partial void {rpc.Name}({ParamsDeclaration(rpc)})");
                         sb.AppendLine("        {");
-                        sb.AppendLine($"            var server = {Env}.Server;");
-                        sb.AppendLine("            if (server != null && IsServer)");
+                        sb.AppendLine($"            var {serverL} = {Env}.Server;");
+                        sb.AppendLine($"            if ({serverL} != null && this.IsServer)");
                         sb.AppendLine("            {");
-                        sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
-                        sb.AppendLine("                    if (conn.CanReceiveGameData && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)   // FR-01 — approved, not disconnected, not scene-held (system handshake unaffected)");
-                        sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine($"                foreach (var {connL} in {serverL}.SnapshotConnections())");
+                        sb.AppendLine($"                    if ({connL}.CanReceiveGameData && {connL}.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel {chL})   // FR-01 — approved, not disconnected, not scene-held (system handshake unaffected)");
+                        sb.AppendLine($"                        {chL}.UniNetSend({id}, __UniNetEncode_{rpc.Name}(this.NetId, this.SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("            }");
                         sb.AppendLine("            // called on a client: server-authoritative — nothing to send");
                         sb.AppendLine("        }");
                         sb.AppendLine();
                         // RPC-001 — targeted companion {Name}To(connId, args): single-connection send (FishNet TargetRpc parity).
                         // Same methodId/payload/delivery as the broadcast (encode reuse) — wire unchanged, receiver side untouched.
-                        sb.AppendLine($"        {rpc.Accessibility} void {rpc.Name}To(long connId{ParamsSignature(rpc)})");   // regular method — no user declaration pairs with it (CS0759); collision = CS0111 (accepted, R2)
+                        // F13 — the recipient parameter keeps the name connId unless a user argument already owns it.
+                        sb.AppendLine($"        {rpc.Accessibility} void {rpc.Name}To(long {connIdL}{ParamsSignature(rpc)})");   // regular method — no user declaration pairs with it (CS0759); collision = CS0111 (accepted, R2)
                         sb.AppendLine("        {");
-                        sb.AppendLine($"            var server = {Env}.Server;");
-                        sb.AppendLine("            if (server != null && IsServer)");
+                        sb.AppendLine($"            var {serverL} = {Env}.Server;");
+                        sb.AppendLine($"            if ({serverL} != null && this.IsServer)");
                         sb.AppendLine("            {");
-                        sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
+                        sb.AppendLine($"                foreach (var {connL} in {serverL}.SnapshotConnections())");
                         sb.AppendLine("                {");
-                        sb.AppendLine("                    if (conn.ConnId != connId) continue;");
-                        sb.AppendLine("                    if (!conn.CanReceiveGameData || !(conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)) return;   // FR-01 — known but unapproved/scene-held/unsendable: no exception, no send, no queue/replay");
-                        sb.AppendLine($"                    ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine($"                    if ({connL}.ConnId != {connIdL}) continue;");
+                        sb.AppendLine($"                    if (!{connL}.CanReceiveGameData || !({connL}.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel {chL})) return;   // FR-01 — known but unapproved/scene-held/unsendable: no exception, no send, no queue/replay");
+                        sb.AppendLine($"                    {chL}.UniNetSend({id}, __UniNetEncode_{rpc.Name}(this.NetId, this.SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("                    return;   // targeted — exactly one send");
                         sb.AppendLine("                }");
                         sb.AppendLine("                return;   // unknown connId — no exception, no send");
@@ -1285,26 +1315,26 @@ namespace UniNet.CodeGenerator
                         // RPC-001 — targeted companion {Name}ToOwner(args): owner-only send (UE owner ClientRpc parity). Reuses the To path.
                         sb.AppendLine($"        {rpc.Accessibility} void {rpc.Name}ToOwner({ParamsDeclaration(rpc)})");   // regular method — same reasoning as To
                         sb.AppendLine("        {");
-                        sb.AppendLine($"            var server = {Env}.Server;");
-                        sb.AppendLine("            if (server != null && IsServer)");
+                        sb.AppendLine($"            var {serverL} = {Env}.Server;");
+                        sb.AppendLine($"            if ({serverL} != null && this.IsServer)");
                         sb.AppendLine("            {");
-                        sb.AppendLine("                var owner = server.GetOwner(NetId);");
-                        sb.AppendLine("                if (owner == 0)");
+                        sb.AppendLine($"                var {ownerL} = {serverL}.GetOwner(this.NetId);");
+                        sb.AppendLine($"                if ({ownerL} == 0)");
                         sb.AppendLine("                {");
-                        sb.AppendLine($"                    UnityEngine.Debug.LogWarning($\"[UniNet] {m.Name}.{rpc.Name}ToOwner — 소유자 미배정(netId={{NetId}}): 송신 생략\");   // low-frequency programming error signal — no rate limit");
+                        sb.AppendLine($"                    UnityEngine.Debug.LogWarning($\"[UniNet] {m.Name}.{rpc.Name}ToOwner — 소유자 미배정(netId={{this.NetId}}): 송신 생략\");   // low-frequency programming error signal — no rate limit");
                         sb.AppendLine("                    return;");
                         sb.AppendLine("                }");
-                        sb.AppendLine($"                {rpc.Name}To(owner{callArgs});");
+                        sb.AppendLine($"                {rpc.Name}To({ownerL}{callArgs});");
                         sb.AppendLine("                return;");
                         sb.AppendLine("            }");
                         sb.AppendLine("            // called on a client: server-authoritative — nothing to send");
                         sb.AppendLine("        }");
                         sb.AppendLine();
-sb.AppendLine($"        internal static void __UniNetClientDispatch_{rpc.Name}({m.Name} o{ParamsSignature(rpc)})");
+sb.AppendLine($"        internal static void __UniNetClientDispatch_{rpc.Name}({m.Name} o{PrivateParamsSignature(rpc)})");
 sb.AppendLine("        {");
 sb.AppendLine("            try");
 sb.AppendLine("            {");
-sb.AppendLine($"            o.{rpc.Name}_Implementation({ArgList(rpc)});");
+sb.AppendLine($"            o.{rpc.Name}_Implementation({PrivateArgList(rpc)});");
 sb.AppendLine("            }");
 sb.AppendLine("            catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }   // protects the main-thread pump — mirrors the server dispatch");
 sb.AppendLine("        }");
@@ -1315,21 +1345,21 @@ sb.AppendLine("        }");
                         sb.AppendLine($"        {rpc.Accessibility} partial void {rpc.Name}({ParamsDeclaration(rpc)})");
                         sb.AppendLine("        {");
                         sb.AppendLine($"            {rpc.Name}_Implementation({ArgList(rpc)});   // always runs locally (server included)");
-                        sb.AppendLine($"            var server = {Env}.Server;");
-                        sb.AppendLine("            if (server != null && IsServer)");
+                        sb.AppendLine($"            var {serverL} = {Env}.Server;");
+                        sb.AppendLine($"            if ({serverL} != null && this.IsServer)");
                         sb.AppendLine("            {");
-                        sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
-                        sb.AppendLine("                    if (conn.CanReceiveGameData && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)   // FR-01 — local execution above is unaffected; network send only to eligible connections");
-                        sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
+                        sb.AppendLine($"                foreach (var {connL} in {serverL}.SnapshotConnections())");
+                        sb.AppendLine($"                    if ({connL}.CanReceiveGameData && {connL}.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel {chL})   // FR-01 — local execution above is unaffected; network send only to eligible connections");
+                        sb.AppendLine($"                        {chL}.UniNetSend({id}, __UniNetEncode_{rpc.Name}(this.NetId, this.SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("            }");
                         sb.AppendLine("        }");
                         sb.AppendLine();
-                        sb.AppendLine($"        internal static void __UniNetClientDispatch_Multicast_{rpc.Name}({m.Name} o{ParamsSignature(rpc)})");
+                        sb.AppendLine($"        internal static void __UniNetClientDispatch_Multicast_{rpc.Name}({m.Name} o{PrivateParamsSignature(rpc)})");
                         sb.AppendLine("        {");
                         sb.AppendLine("            if (o.IsServer) return;   // host: already ran locally on the server — prevents double execution");
                         sb.AppendLine("            try");
                         sb.AppendLine("            {");
-                        sb.AppendLine($"                o.{rpc.Name}_Implementation({ArgList(rpc)});");
+                        sb.AppendLine($"                o.{rpc.Name}_Implementation({PrivateArgList(rpc)});");
                         sb.AppendLine("            }");
                         sb.AppendLine("            catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }   // protects the main-thread pump — mirrors the server dispatch");
                         sb.AppendLine("        }");
@@ -1697,7 +1727,7 @@ sb.AppendLine("        }");
             if (rpc.Parameters.Count == 0) return "";
             var parts = new List<string>();
             foreach (var p in rpc.Parameters)
-                parts.Add(", " + TypeDisplay2(p) + " " + p.Name);
+                parts.Add(", " + TypeDisplay2(p) + " " + Escaped(p.Name));
             return string.Concat(parts);
         }
 
@@ -1705,7 +1735,7 @@ sb.AppendLine("        }");
         {
             var parts = new List<string>();
             foreach (var p in rpc.Parameters)
-                parts.Add(TypeDisplay2(p) + " " + p.Name);
+                parts.Add(TypeDisplay2(p) + " " + Escaped(p.Name));
             return string.Join(", ", parts);
         }
 
@@ -1713,7 +1743,51 @@ sb.AppendLine("        }");
         {
             var parts = new List<string>();
             foreach (var p in rpc.Parameters)
-                parts.Add(p.Name);
+                parts.Add(Escaped(p.Name));
+            return string.Join(", ", parts);
+        }
+
+        // ── F13 identifier isolation (AUDIT-20261027) ─────────────
+        // Legal user parameter names (netId/subId/o/senderConnId frame fields, w/r codec locals, server/sender/
+        // conn/ch/owner body locals, __n/__i loop locals, keyword @event) must never collide with the generated
+        // plumbing, and must never be rejected as unsupported types either. Two layers keep them apart:
+        //   * PRIVATE surfaces (encoder/dispatch/receiver) use deterministic ordinal aliases (__arg0, __arg1, ...) —
+        //     user names never enter private scope, so no protocol parameter/local can collide and the __n/__i
+        //     collection loop locals can no longer be shadowed either.
+        //   * PUBLIC surfaces (the partial RPC implementation, To/ToOwner companions) keep the user's parameter
+        //     names (named-argument call sites keep binding); generated locals inside those bodies take a safe
+        //     name ONLY on an actual collision with this RPC's parameter names.
+
+        /// <summary>F13 — renders a user parameter name as a valid C# identifier. Keyword names (e.g. @event) lose
+        /// their escape in symbol.Name, so it is restored at every declaration/reference emit site.</summary>
+        static string Escaped(string name)
+            => Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(name) == Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
+                && Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetContextualKeywordKind(name) == Microsoft.CodeAnalysis.CSharp.SyntaxKind.None
+                    ? name : "@" + name;
+
+        /// <summary>F13 — ordinal alias for one data parameter on private generated surfaces (deterministic; user names can never collide with it).</summary>
+        static string ArgAlias(int index) => "__arg" + index;
+
+        /// <summary>F13 — a generated body-local name that stays usable even when a user parameter shadows the preferred one.</summary>
+        static string SafeLocal(string name, HashSet<string> taken)
+        {
+            while (taken.Contains(name)) name = "__" + name;
+            return name;
+        }
+
+        static string PrivateParamsSignature(RpcModel rpc)
+        {
+            var parts = new List<string>();
+            for (var i = 0; i < rpc.Parameters.Count; i++)
+                parts.Add(", " + TypeDisplay2(rpc.Parameters[i]) + " " + ArgAlias(i));
+            return string.Concat(parts);
+        }
+
+        static string PrivateArgList(RpcModel rpc)
+        {
+            var parts = new List<string>();
+            for (var i = 0; i < rpc.Parameters.Count; i++)
+                parts.Add(ArgAlias(i));
             return string.Join(", ", parts);
         }
 

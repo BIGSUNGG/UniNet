@@ -76,6 +76,7 @@ await UniNetManager.HostAsync(7777);                    // server + client in on
 Rules that follow from the design:
 
 - RPC methods are `partial` declarations — the body goes in `{Name}_Implementation`, never in the declaration.
+- Legal C# parameter names, including `netId`, `r`, `server`, and escaped keywords, are supported without colliding with generated codec locals. Public payload names remain available for named arguments. In a targeted `To` companion, use a positional recipient if the payload itself has `connId`: the recipient name is prefixed with `__` until it no longer conflicts.
 - Wrong declarations fail at **compile time** with `UNINET0xx` diagnostics (see Exception & Error).
 - Minimal runnable sample: Package Manager → **UniNet ▸ Samples ▸ Basics**.
 
@@ -271,8 +272,9 @@ The source generator rejects broken declarations before you can ship them. Fix a
 | UNINET011 | Error | `Validate = true` but `{Name}_Validate` missing | Add the hook: same parameters, `Task<bool>` return. |
 | UNINET012 | Warning | `_Validate` method exists but no `Validate = true` flag | Opt in with `[ServerRpc(Validate = true)]` — there is no auto-detection. |
 | UNINET013 | Error | Custom serializer contract violation | Provide `static void Write(ref MessageBufferWriter, in T)` + `static T Read(ref MessageBufferReader)` (optional `static bool Equals(in T, in T)`). |
-| UNINET014 | Error | Collection element type unsupported | Elements must be primitives, `string`, `[Message]` types, or serializer-designated types. |
+| UNINET014 | Error | Replicated field collection element type unsupported | Elements must be primitives, `string`, `[Message]` types, or field-serializer-designated types. Custom field serializers do not extend RPC parameter types (UNINET002). |
 | UNINET015 | Error | Nested collection (`T[][]`, `List<List<T>>`) | Wrap inner collections in a `[Message]` type or flatten. (The 65,535 element cap is a runtime check — see the runtime table.) |
+| UNINET016 | Error | Generic `NetworkBehaviour` definition (`class Foo<T> : NetworkBehaviour`) | A generic type can never be attached as a Unity component. Declare a closed non-generic derived type (e.g. `class Player : Foo<int>`) — it flows the normal generation path. |
 
 ### Runtime errors & warnings
 
@@ -304,7 +306,7 @@ All runtime log messages are emitted **in Korean with a `[UniNet]` prefix** — 
 - **Moving the transform of a networked object on a client** does nothing authoritative — the server owns positions. Use `[Replicated]` fields or `NetworkTransform`.
 - **Expecting transform sync after spawn** — spawn propagates position/rotation once; ongoing movement needs `[Replicated]` fields or `NetworkTransform`.
 - **Reliance on plain `Destroy` for networked objects** works only because ghost detection propagates the destroy after the fact. Use `NetworkDestroy` for deterministic despawn.
-- **Collections as RPC parameters** — unsupported. Wrap the collection in a `[Message]` type.
+- **Nested collection RPC parameters** — one-dimensional `T[]`/`List<T>` of a supported element type ARE valid RPC parameters (null flag + `UInt16` count + elements, at most 65,535). Only nesting (`T[][]`, `List<List<T>>`) and unsupported element types are rejected (UNINET002/UNINET014/UNINET015) — wrap the inner collection in a `[Message]` type.
 - **Forgetting `SetViewerPosition` per connection** silently disables distance culling (relevancy hook AND distance; no viewer position ⇒ no cull).
 
 ## Advanced — Tuning & Deep Usage
@@ -499,7 +501,7 @@ Checklist for a production dedicated server: set `ConnectionKey`, `MaxConnection
 - **Movement ownership epoch (0.5.0)** — the epoch bumps only on tenure→tenure changes (previous observed owner nonzero and different); adoption from unowned is a silent baseline, and the rule is timing-independent (a dynamic spawn whose owning connection attaches after the first Update does not bump). A same-frame A→B→A flip (two `SetOwner` calls in one frame on the same object) is observed as no change, so the restarted stream is adopted only after it climbs past the old tenure's last sequence (bounded, self-healing — seconds at 60 Hz). Spread transfers across frames if a game needs instant flip-flops. Also: right after gaining ownership, a client's inputs carry a stale (or absent) epoch until the OwnerOnly epoch delta reaches it (~1 replication tick for a continuing owner; up to the ~0.25 s quiescence resend for a first-time adoptee) and are rejected in that window (`MoveEpochMismatches` includes them).
 
 - No transform/hierarchy parenting sync for dynamic objects — spawn flat objects and parent on each client yourself.
-- No direct collection RPC parameters — wrap in `[Message]`.
+- No nested collection RPC parameters — one-dimensional `T[]`/`List<T>` with a supported element type is accepted directly (≤65,535 elements); wrap inner collections in a `[Message]` type.
 - 32 `[Replicated]` fields per `NetworkBehaviour` type (mask width); 255 `NetworkBehaviour`s per object (SubId width).
 - OwnerOnly fields with no owner can lose intermediate changes to the next owner (single server snapshot).
 - First one-way RPC right after connect may be lost (pre-welcome race) — send after the connection is confirmed.

@@ -25,6 +25,11 @@ jobs:
           [ "${GITHUB_REF_TYPE:-}" = "tag" ] && ARGS="--tag ${GITHUB_REF_NAME}"
           bash Package/tools/validate-package.sh $ARGS
 
+      # AUDIT-20261027-F04 — verify-install.sh 결과 판정 hermetic 회귀
+      # (Unity 없음·임시 경로만 사용)
+      - name: 무Unity 회귀 — verify-install.sh 결과 판정 블록
+        run: bash Tests/PackageTools/run-tests.sh
+
       # FR-07 — 소스 생성기 회귀: 소스 빌드와 동봉 analyzer를 같은 headless 호스트로 각각 검증한다.
       # (update-dlls.sh는 C:/Projects/DS/unity-nuget 로컬 경로에 의존 — CI에서 실행하지 않는다.)
       - uses: actions/setup-dotnet@v4

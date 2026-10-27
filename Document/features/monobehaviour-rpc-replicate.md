@@ -135,6 +135,10 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 - **호스트 RepNotify** — 호스트(서버=클라 동일 인스턴스)는 권위 원본이라 값 재기록 없이 Notify만 호출된다
 - **소유권 이전 시 baseline 재전송(OWN-002/ADR-0048)** — `SetOwner`·`ResumeSession` 재부착·고아 입양으로 소유권이 바뀌면 새 owner(Owner 뷰)와 직전 owner(Others 뷰)에게 조건 필드(OwnerOnly/SkipOwner/InitialOnly 포함)의 현재값 baseline이 재전달되고 RepNotify가 발화한다(prev = 수신자 직전 뷰). 예산 연기 델타는 baseline이 대체(스테일 오버라이드 없음), 관련성 게이트 준수, 즉시 캐치업이 따르는 연결은 중복 baseline 억제(캐치업이 전체상태 전송)
 
+## RPC 인자 이름 (0.2.19 생성기)
+
+`netId`·`r`·`w`·`server`·`__n`·`__i` 및 `@event`처럼 유효한 C# 인자 이름은 생성 코드의 프로토콜 인자·local과 충돌하지 않는다. private 인코더/수신/디스패치는 결정적 서수 별칭을 사용하고, 원본 partial 구현과 공개 `To`/`ToOwner`의 페이로드 인자 이름은 유지한다(named argument 호환). `To`의 대상 연결 인자 기본 이름은 `connId`지만, 같은 이름의 페이로드 인자가 있으면 충돌이 없어질 때까지 `__` 접두를 붙인다. 대상 연결은 위치 인자로 전달하면 이름 충돌을 피할 수 있다. methodId·와이어·타입 코덱은 불변이다. 실제 생성기 컴파일·서버/클라이언트/멀티캐스트 디스패치·named argument 회귀는 `Tests/UniNet.CodeGenerator.Tests`에서 검증한다.
+
 ## 다중 NetworkBehaviour (2층 식별자)
 
 한 게임오브젝트에 여러 NetworkBehaviour가 있으면 각자 `SubId`(슬롯 = GetComponents 순서)를 받아 **독립적으로 RPC·리플리케이션**된다 (ADR-0010 — UE Actor/Component 상당). 소유권·파괴는 오브젝트 단위:
@@ -159,7 +163,7 @@ var go = UniNetManager.NetworkInstantiate(_robotPrefab);   // 서브 구성은 �
 - **접속 직후 첫 전송 레이스** — 접속 완료 직후(Welcome/소유권 수신 전) 즉발 one-way RPC가 유실될 수 있음 (ADR-0008 알려진 한계 — 상류 조사 후보). 연결 확정 후 전송하는 자연 패턴은 무영향.
 - **연결 종료 수명주기** — 해소됨: 아래 "수명주기 종료 (Stop API)" 섹션 참조 (2026-09-17 — 명시적 Stop API 구현)
 - **소유권은 라운드로빈 최소 정책**, dirty 검출은 틱마다 폴링 비교 (ADR-0008 — 위빙 배제의 대가). **명시적 이전**: `NetworkServer.SetOwner(netId, connId)`로 살아있는 오브젝트의 소유자를 서버가 넘긴다(전 연결에 OwnerUpdate 전파·connId 0 = 방치 후 재배정 입양 — [[0030-명시적-소유권-이전-API]]). 아이템 줍기·탈것 등 상용 패턴용.
-- **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 컬렉션(List<T> 등)의 직접 파라미터는 여전히 미지원 — 메시지 내부 필드로 담아 전달(MP가 처리). 32필드 상한(UNINET008) 유지.
+- **RPC 매개변수·리플리케이션 필드의 기본형 한계 해소** — MessageProtocol `[Message]` 타입(class·struct, MessageKind.NonId 제외)을 지원한다 (위 "메시지 타입 파라미터" 섹션 참조). 1차원 컬렉션(`T[]`/`List<T>`, 지원 요소 타입)도 직접 RPC 파라미터로 지원한다 — null 플래그 + `UInt16` 개수 + 요소 순차 코덱, 상한 65,535(초과 시 직렬화 전 `ArgumentException`). 중첩 컬렉션은 미지원(UNINET002/UNINET015) — 내부 컬렉션을 메시지 필드로 감싸 전달. 수신측은 배열 개수가 남은 페이로드 바이트보다 크면 선할당 전에 거부한다(지원 요소마다 와이어 ≥1바이트, 생성기 0.2.19). 잘린 입력을 빈/짧은 배열로 바꿔 받아들이지 않는다. 32필드 상한(UNINET008) 유지.
 - **동적 스폰 제약** — 스폰은 `NetworkSpawnable` 마킹 프리팹만(ADR-0024 — 미마킹·런타임 생성 거부, 구성 불일치 거부), 스폰 후 이동은 [Replicated] 필드로 동기화(변환은 스폰 시 1회), parenting(계층 구조) 미지원, OwnerOnly 필드의 소유자 부재 시 변경 유실 (ADR-0009)
 - **슬롯 불변식** — 런타임 AddComponent/Destroy로 NetworkBehaviour를 증감하면 안 된다(ADR-0010). 씬 오브젝트의 증감은 감지 창구가 없어 계약으로만 방어, 동적 스폰은 구성 대조로 거부. 오브젝트당 NetworkBehaviour 상한 **255개**(SubId byte — 초과 시 등록·스폰 거부)
 - **같은 프로세스 재시작** — 해소됨: Stop으로 정리 후 동일 포트 재리슨 검증 (`LifecycleStopTests.호스트_정지후_재시작_성공`)

@@ -33,8 +33,10 @@ cp "$PKG_ROOT/Samples~/Basics/BasicsSample.cs" "$FRESH/Assets/"
 
 echo "== Unity 배치 임포트 (수 분 소요)"
 LOG="$WORK/unity.log"
-"$UNITY" -batchmode -quit -nographics -projectPath "$WIN_WORK/FreshProject" -logFile "$LOG"
-EXIT=$?
+# set -e aborts the script on Unity's non-zero exit BEFORE the exit code is captured, so the FAIL
+# summary and log path below are never reached (AUDIT-20261027-F04). Guard with || EXIT=$? instead.
+EXIT=0
+"$UNITY" -batchmode -quit -nographics -projectPath "$WIN_WORK/FreshProject" -logFile "$LOG" || EXIT=$?
 
 echo "== 결과 판정"
 FAIL=0

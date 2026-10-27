@@ -3,9 +3,25 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-10-27]
+
+### Fixed
+
+- AUDIT-20261027-F05(P1) — 생성 RPC 배열 수신기가 공격자 지정 `UInt16` 길이만으로 `new T[65535]`를 선할당하던 신뢰 경계를 수정한다(실제 생성 핸들러의 12바이트 위조 헤더 → 263,136바이트 할당 후 실패, `evidence/array-allocation-before.log`). 생성 허브의 private 길이 판독기가 개수를 먼저 읽고 남은 바이트보다 크면 **할당 전에 거부**한다. 최소 요소 크기는 1바이트 이상이다(참조형 null 플래그·기본형·vector·ID 메시지 헤더). 단순 길이 클램프는 금지: 마지막 배열 인자에서는 잘린 입력을 빈/짧은 배열로 받아들이는 새 결함이 생기며, 부모가 실제 드라이버·핸들러의 음성 회귀 2건으로 확인했다(`evidence/array-clamp-rejected.log`, 31/33 예상 실패). 길이 local은 private 판독기 안에 두어 사용자 인자와 충돌시키지 않는다. 정상 와이어·null·empty·65,535 수신은 유지한다. 생성기 0.2.19, 실제 드라이버/핸들러 실행 회귀는 `Tests/UniNet.CodeGenerator.Tests`에 남긴다. 새 보안 회귀·source/bundled 실행 결과는 최종 감사 보고에서 실제 실행본별로 구분한다.
+- AUDIT-20261027-F13(P2) — 합법 RPC 인자명과 프로토콜 매개변수·local의 충돌을 제거한다. 실제 driver의 `netId/r/w/server/__n/__i` 재현이 컴파일에 실패했으며, private 인코더·수신기·dispatch는 서수 별칭, 공개 래퍼는 원래 인자명+충돌 시 안전 local을 사용한다. 키워드 인자는 escape를 복원한다. `To`의 연결 인자명은 payload `connId`와 겹칠 때만 `__` 접두로 분리한다. source helper의 interpolation 누락과 소유자 fixture 전제를 부모가 추가 수정했고, 실제 컴파일·named argument·송수신/targeting **45/45**를 확인했다(`evidence/packet-a-hygiene-source-r2.log`). source/bundled 최종 재검증은 별도 기록한다.
+- AUDIT-20261027-F14(P3) — README RPC 종류 첫 항목의 ‘per-client targeting 미구현’ 잔재를 실제 `To`/`ToOwner` 지원 계약과 일치시킨다.
+- AUDIT-20261027-F04(P2) — `Package/tools/verify-install.sh`가 `set -e` 때문에 Unity 비정상 종료 시 종료코드 수집(`EXIT=$?`)·FAIL 요약·상세 로그 경로 안내에 도달하지 못하던 결함 수정(`EXIT=0` 초기화 + `|| EXIT=$?` 가드). 신규 hermetic 회귀 `Tests/PackageTools/run-tests.sh` — 실제 스크립트의 Unity 호출+결과 판정 블록을 앵커로 그대로 추출해 `set -euo pipefail` 하에서 구동(재모델링 아님): fake Unity exit 23→FAIL+상세로그+exit 1, exit 0 정상→PASS, exit 0+컴파일 에러→FAIL, com.ds.uninet 흔적 없음→FAIL. 실제 Unity·git clone·네트워크·기존 자산 미사용, 임시 경로만 사용. `.github/workflows/upm.yml` validate에 무Unity 회귀로 필수 연결. 실제 public install 검증은 미실행(부모 담당).
+- AUDIT-20261027-F01(P3) — `AGENTS.md` '프로젝트 사실'의 구현 상태 오술(기능 코드 미착수·어셈블리/참조 방식 미정)을 현재 사실로 정정: Package/Runtime 하위 UniNet.Core(엔진 무의존)·UniNet.Unity·UniNet.Unity.Editor 3 asmdef + `Package/Runtime/Dependencies` 동봉 의존 DLL + `CodeGenerator/` UniNet.CodeGenerator analyzer(패키지에 DLL 동봉), 검증 상태는 [[overview]]·[[architecture]] 참조. 원칙·질문·리뷰 규칙은 불변 — 하네스 규칙 변경이 아닌 상태 사실 정정임을 [[harness]] 제약/비고에 기록. 과거 ADR은 수정하지 않음.
+
+### Changed
+
+- AUDIT-20261027-F02/F03(P2/P3) — 소비자 매뉴얼 `skills/uninet/SKILL.md`의 컬렉션 RPC 미지원 오술 2곳(잘못된 사용 패턴 목록·Known Limitations)을 현행 계약(1차원 `T[]`/`List<T>` 지원·65,535 상한·중첩 미지원)에 맞게 정정하고, 컴파일 타임 진단 표에 UNINET016(제네릭 NetworkBehaviour 미지원 — 유니티 컴포넌트로 부착 불가, 닫힌 비제네릭 파생 타입 선언으로 해결) 정의·대응 추가. 소비자 문서는 영문 유지.
+- 문서 동기화 — README(컬렉션 RPC 수신 선할당 경계 문장)·`Package/CHANGELOG.md`(0.23.0 Fixed에 0.2.19 수신 경계·설치 검증 스크립트 수정)·[[features/monobehaviour-rpc-replicate]](컬렉션 파라미터 계약 정정·수신 경계)·[[migration-v0-23]](생성기 행 0.2.19·동작 변경 2항 수신 경계)을 필요한 만큼만 갱신. 패키지 버전 0.23.0·태그 불변, 과거 0.2.18 수행 증거는 새 버전으로 일괄 치환하지 않음.
+
 ## [2026-10-26]
 
 ### Added
+
 - v0.23.0 버전 전환·검증 — `Package/package.json` 0.23.0·`UniNetInfo.Version` 0.23.0(핸드셰이크 기본 버전 상승 — ADR-0028 관례)·생성기 0.2.18(동봉 analyzer 재빌드 sha 3ba4a4f3…). [[migration-v0-23]] 신규(와이어 불변·동작 변경 6건·관측 지점·배포 순서). 통합 검증: EditMode 연속 2회 310/0/1·PlayMode 47/47·headless 양경로 19/19·기존 사용자 자산 61파일 무변경 대조. 기존 결함 2건 판별 — 점프 착지 프레임 상한(기준점 HEAD에서 재현되는 사전 존재 하네스 예산 결함, 6000 상향 수리), 파괴 정리 1회 실패(기준점·재실행 통과 — 타이밍 플레이크, 근본 원인 미특정 기록). 원시 증거 `.pi-subagents/artifacts/v0-23-stabilization/`.
 
 - v0.23.0 FR-06 — 의미 보존형 유한 복제 적체 + 명시적 초과 처리: 지속 과부하(생성량>예산)에서 예산 초과 델타가 `DeferDelta` 큐에 시간에 비례해 무한 축적되던 것(연구 재현: 120틱 → DeferredSendCount=120)을, 같은 (NetId, SubId)의 기존 연기 항목을 **최신 권위 전체 상태(TryWriteFull 재사용)**로 대체 병합해 큐를 키 수에 묶는다. 전체 상태 페이로드는 수신 적용기가 임의 이전 상태에서 수렴시키므로 의미가 보존되며(FastArray op(tag-0)도 최신 full(tag-1) 치환 — FR-02와 동일 원칙), Seq·EnqueuedAt·수신자 비트는 유지돼 공정 순서·기아 부스트·무손실이 그대로다. 병합 실패(직렬화 장애·전 필드 조건 은닉) 시 둘 다 유지(무손실 폴백). 큐 상한 `MaxDeferredDeltas`(기본 1024 — 병합 후 큐는 고유 서브 키 수에 비례하므로 1024 동시 기아 서브는 이미 병리 상태, 풀 상태 평균 <1KB로 수 MB 미만 메모리 상한) 도달 시 초과 후보는 **강제 송신**(예산 초과 단일 델타 반전송 선례 재사용)되고 `DeferredForcedSendCount`로 관측된다 — 드롭이 아니므로 조용한 누락이 없고 버스트 후 큐는 상한 이하로 드레인된다. 연결 종료를 택하지 않은 이유: 큐는 서버 전역(다수신자 공유)이라 '해당 연결'이 정의되지 않는다. 휴면 보류 항목은 기존 계약 그대로 유지(휴면 중 생산 중단으로 객체 수에 유한). 메인 큐 `UniNetEnvironment.MainQueue`에 유한 상한 `MainQueueCapacity`(기본 65536) 추가 — 초과 적재는 드롭되지만 `LogFault` 예외 노출+`DroppedMainActions` 카운터로 명시적(예외 throw는 네트워크 디스패치 스레드를 죽이므로 최소 파괴 명시 실패 선택), `PumpMain` 전량 드레인 계약은 불변. 수신 측 생성 디스패치(배치 per-entry, 개별 RPC)의 슬롯 부재/미등록 methodId 조용 skip을 `DroppedReplicateEntries` 카운터로 관측(생성기 변경 — 동봉 analyzer DLL 재빌드 필요). 신규 관측: `NetworkServer.DeferredCoalescedCount`·`DeferredForcedSendCount`, `UniNetEnvironment.DroppedMainActions`·`DroppedReplicateEntries`. 회귀: `DeferredBacklogTests` 4종(120틱 과부하 큐 상한·최신 수렴, FastArray 최신 전체 수렴, 상한 초과 강제 송신 명시성, 메인 큐 상한 초과 관측) — **검증 완료**: EditMode 전수(연속 2회 310/0/1)·집중 ReplicationDeliveryBatchTests 10/10.

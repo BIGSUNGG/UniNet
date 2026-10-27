@@ -43,7 +43,7 @@
 - 정체성: **상용 유니티 게임 서버용 네트워크 프레임워크 라이브러리**. 원칙 “사용은 간단하게, 기능은 강력하게”.
 - 기능 목표: MonoBehaviour 기준 RPC / 변수 자동 Replicate / UE Network Framework 패리티 (`Document/roadmap.md` 매트릭스).
 - 기반 스택: MessageProtocol + DRPC(Communication 간접) **적극 재사용**. 최소 Unity 6, 서버는 Unity 서버 빌드(서버 권위).
-- 구현 상태: 기능 코드 미착수 — 어셈블리 구조·참조 방식은 미정이므로 추측 금지. 정의 상세: `Document/overview.md`.
+- 구현 상태: 로드맵 P1~P4 구현 완료(v0.23.0 검증 — 현재 검증 상태는 `Document/overview.md`·`Document/architecture.md` 참조). 어셈블리 구조는 확정돼 있다: `Package/Runtime` 하위 `UniNet.Core`(엔진 무의존)·`UniNet.Unity`·`UniNet.Unity.Editor` 3 asmdef, 의존 스택 DLL은 `Package/Runtime/Dependencies`에 동봉, 소스 생성기는 `CodeGenerator/`(UniNet.CodeGenerator analyzer, 패키지에 DLL로 동봉). 정의 상세: `Document/overview.md`.
 - 기술: C#/Unity (netstandard2.1 호환). 코딩 규약: `Document/conventions.md`.
 - Unity 관련 작업(테스트·빌드·자동화)은 에디터 연동 도구 없이 **Unity CLI(배치 모드)**로 수행한다 (`Document/harness.md` 참조).
 - 문서·보고·질문 언어: **한국어**.

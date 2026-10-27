@@ -1,6 +1,6 @@
 ## 0.23.0
 
-**Stabilization release — FR-01..07 (generator 0.2.18; wire formats unchanged, default handshake version bumps as usual).**
+**Stabilization release — FR-01..07 plus audit hardening (generator 0.2.19; wire formats unchanged, default handshake version bumps as usual).**
 
 ### Added
 
@@ -16,6 +16,9 @@
 - **Generator source build restored** — a merge remnant in `UniNetCodeGenerator.cs` (CS1010/CS1002) made the generator source uncompilable; the shipped analyzer DLL was a stale artifact. The source pipeline is whole again and the packaged DLL is rebuilt from it (0.2.18).
 - **RPC collection codec (FR-03)** — receiving a `List<T>` RPC argument pre-allocated capacity instead of adding elements (empty list + every following argument corrupted); arrays/collections longer than 65,535 elements now throw `ArgumentException` before serialization instead of wrapping the UInt16 count; a fully-decoded but misaligned payload (trailing bytes) never reaches the game implementation. Wire format unchanged for existing payloads.
 - **Parser crash on unsupported RPC args** — an unsupported parameter (e.g. `List<List<int>>`) reported UNINET002 but kept emitting, crashing the generator (CS8785) and swallowing the diagnostic; it now reports and skips only that RPC (matching the Replicated-field path).
+- **Malformed array receive hardening (generator 0.2.19)** — the generated array receiver no longer pre-allocates from the wire's `UInt16` count alone: a forged 12-byte header with count 65,535 used to allocate ~263 KB before failing. The count is rejected before allocation if it exceeds the remaining payload bytes (every supported element consumes at least one byte). Malformed lengths are never clamped into empty or shorter arrays: terminal-array and truncated-byte-array regressions assert that the implementation is not invoked. Wire format, null/empty/max-size receive unchanged. The headless regression host now dispatches a header-only forged 65,535-count frame (implementation not invoked, no count-sized allocation) plus array/null/empty/65,535 round-trips through the real generated handler.
+- **RPC identifier hygiene (F13)** — legal payload names such as `netId`, `r`, `w`, `server`, `__n`, and `__i`, plus escaped keywords, no longer collide with generated protocol fields or locals. Private wire helpers use ordinal aliases; public payload names and working named-argument calls are preserved. A `To` recipient parameter gains `__` prefixes only if its usual `connId` name conflicts with a payload name. Method IDs and wire bytes are unchanged. Real compile, dispatch, targeting, and named-argument regressions cover all three RPC kinds.
+- **verify-install.sh exit handling** — `set -e` aborted the script on Unity's non-zero exit before the FAIL summary, the compiler-error scan, and the detailed-log path could run; the capture is now guarded (`|| EXIT=$?`). A hermetic regression (`Tests/PackageTools/run-tests.sh`) executes the real script's judgment block against a fake Unity — exit 23 → FAIL + log path + exit 1, exit 0 → PASS, exit 0 + `error CS` → FAIL, missing package trace → FAIL — and is wired into the CI `validate` job. No real Unity, clone, or network involved.
 - **Arena PlayMode jump wait** — the 1000-frame guard fired before the physically accurate 3 s simulation cap under batch-mode headless FPS (a pre-existing harness budget bug); raised to the file-wide 6000 convention.
 
 ## 0.22.0
