@@ -159,6 +159,10 @@ namespace UniNet.CodeGenerator
                     s.Add($"w.WriteBoolean({name} == null);");
                     s.Add($"if ({name} != null)");
                     s.Add("{");
+                    // FR-03 — the length prefix is UInt16: an over-long collection must be rejected explicitly BEFORE serialization,
+                    // never silently truncated to (count mod 65536).
+                    s.Add($"    if ({count} > global::System.UInt16.MaxValue)");
+                    s.Add($"        throw new global::System.ArgumentException(\"[UniNet] RPC collection argument exceeds 65535 elements (\" + {count} + \") — refusing to truncate\");");
                     s.Add($"    w.WriteUInt16((ushort){count});");
                     s.Add($"    for (int __i = 0; __i < {count}; __i++)");
                     s.Add("    {");
@@ -255,11 +259,15 @@ namespace UniNet.CodeGenerator
                 case ArgKind.List:
                 {
                     var element = ((INamedTypeSymbol)type).TypeArguments[0];
-                    s.Add($"var {name} = r.ReadBoolean() ? null : new global::System.Collections.Generic.List<{KeywordOrGlobal(element)}>(r.ReadUInt16());");
+                    // FR-03 — the UInt16 prefix is the element COUNT, not a capacity hint: read it into a local and Add that
+                    // many elements (the old `new List<T>(prefix)` + `i < Count` loop read Count==0 and desynchronized every
+                    // subsequent argument).
+                    s.Add($"var {name} = r.ReadBoolean() ? null : new global::System.Collections.Generic.List<{KeywordOrGlobal(element)}>();");
                     s.Add($"if ({name} != null)");
                     s.Add("{");
-                    s.Add($"    for (int __i = 0; __i < {name}.Count; __i++)");
-                    s.Add($"        {name}[__i] = {ArgElementRead(element)};");
+                    s.Add("    int __n = r.ReadUInt16();");
+                    s.Add("    for (int __i = 0; __i < __n; __i++)");
+                    s.Add($"        {name}.Add({ArgElementRead(element)});");
                     s.Add("}");
                     return s;
                 }
@@ -883,7 +891,12 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("                        try");
             sb.AppendLine("                        {");
             sb.AppendLine("                            var o = client?.Get(netIds[i], subIds[i]);");
-            sb.AppendLine("                            if (o == null || payloads[i].Length == 0 || !global::UniNet.Core.Hosting.UniNetBatchRegistry.TryGet(methodIds[i], out var apply)) continue;");
+            sb.AppendLine("                            if (o == null || !global::UniNet.Core.Hosting.UniNetBatchRegistry.TryGet(methodIds[i], out var apply))   // FR-06 — no live object at the slot or unregistered methodId: observed, never a silent skip");
+            sb.AppendLine("                            {");
+            sb.AppendLine($"                                {Env}.CountDroppedReplicateEntry();");
+            sb.AppendLine("                                continue;");
+            sb.AppendLine("                            }");
+            sb.AppendLine("                            if (payloads[i].Length == 0) continue;   // an explicitly empty payload applies nothing");
             sb.AppendLine("                            var rr = new " + Reader + "(payloads[i]);");
             sb.AppendLine("                            apply(o, ref rr);");
             sb.AppendLine("                        }");
@@ -1006,8 +1019,14 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine("                " + stmt);
                 }
             }
+            // FR-03 — the frame is exactly [netId][subId][args]: a fully-decoded-but-misaligned payload (wrong collection
+            // count, trailing bytes) must never reach the game implementation. MessageBufferReader throws on over-read
+            // (the catch below isolates that); this check rejects the under-consumed case the reader cannot detect.
+            sb.AppendLine("                if (r.Remaining != 0)");
+            sb.AppendLine("                    throw new global::System.IO.InvalidDataException($\"[UniNet] RPC payload decode mismatch — {r.Remaining} trailing byte(s); implementation not invoked\");");
             sb.AppendLine($"                var o = {envSlot}?.Get(netId, subId) as {TypeDisplay2(m)};");
             sb.AppendLine("                if (o != null)");
+            sb.AppendLine("                {");
             if (rpc.Kind == RpcKind.Server)
             {
                 string dispatchCall = $"{TypeDisplay2(m)}.__UniNetServerDispatch_{rpc.Name}(o, senderConnId{callArgs})";
@@ -1018,6 +1037,8 @@ namespace UniNet.CodeGenerator
             }
             else
                 sb.AppendLine($"                    {Env}.QueueOnMain(() => {TypeDisplay2(m)}.{dispatchPrefix}{rpc.Name}(o{callArgs}));");
+            sb.AppendLine("                }");
+            sb.AppendLine($"                else {Env}.CountDroppedReplicateEntry();   // FR-06 — no live object at (netId, subId): observed (DroppedReplicateEntries), never a silent skip");
             sb.AppendLine($"                return global::System.Threading.Tasks.Task.FromResult({Empty});");
             sb.AppendLine("            }");
             sb.AppendLine("            catch (global::System.Exception ex)   // malformed/short payload — isolated per connection");
@@ -1236,7 +1257,7 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine("            if (server != null && IsServer)");
                         sb.AppendLine("            {");
                         sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
-                        sb.AppendLine("                    if (!conn.Disconnected && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)");
+                        sb.AppendLine("                    if (conn.CanReceiveGameData && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)   // FR-01 — approved, not disconnected, not scene-held (system handshake unaffected)");
                         sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("            }");
                         sb.AppendLine("            // called on a client: server-authoritative — nothing to send");
@@ -1252,7 +1273,7 @@ namespace UniNet.CodeGenerator
                         sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
                         sb.AppendLine("                {");
                         sb.AppendLine("                    if (conn.ConnId != connId) continue;");
-                        sb.AppendLine("                    if (conn.Disconnected || !(conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)) return;   // known but unsendable — no exception, no send");
+                        sb.AppendLine("                    if (!conn.CanReceiveGameData || !(conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)) return;   // FR-01 — known but unapproved/scene-held/unsendable: no exception, no send, no queue/replay");
                         sb.AppendLine($"                    ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("                    return;   // targeted — exactly one send");
                         sb.AppendLine("                }");
@@ -1298,7 +1319,7 @@ sb.AppendLine("        }");
                         sb.AppendLine("            if (server != null && IsServer)");
                         sb.AppendLine("            {");
                         sb.AppendLine("                foreach (var conn in server.SnapshotConnections())");
-                        sb.AppendLine("                    if (!conn.Disconnected && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)");
+                        sb.AppendLine("                    if (conn.CanReceiveGameData && conn.Channel is global::UniNet.Core.Hosting.IUniNetSystemChannel ch)   // FR-01 — local execution above is unaffected; network send only to eligible connections");
                         sb.AppendLine($"                        ch.UniNetSend({id}, __UniNetEncode_{rpc.Name}(NetId, SubId{callArgs}), global::DRPC.RpcDeliveryMode.{rpc.Delivery});");
                         sb.AppendLine("            }");
                         sb.AppendLine("        }");

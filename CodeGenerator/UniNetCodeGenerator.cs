@@ -51,7 +51,6 @@ namespace UniNet.CodeGenerator
                 }
 
                 spc.AddSource("UniNet.Generated.g.cs", Emitter.Emit(models, compilation.Assembly.Name));
-" + Emitter.Emit(models, compilation.Assembly.Name)); } catch { }
             });
         }
     }
@@ -158,7 +157,10 @@ namespace UniNet.CodeGenerator
             {
                 p.IsMessage = IsMessageType(p.Type);
                 if (!Emitter.IsRpcArgSupported(p.Type))
+                {
                     Report(Diagnostics.UnsupportedType, method.Locations[0], p.Type.ToDisplayString(), method.Name);
+                    return;   // FR-03/07 — report and skip ONLY this RPC: emitting it would throw at EmitArgRead, crash the generator (CS8785), and swallow the diagnostic. Mirrors the Replicated-field path below.
+                }
             }
 
             // _Implementation presence and signature check

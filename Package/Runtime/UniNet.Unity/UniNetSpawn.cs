@@ -18,7 +18,18 @@ namespace UniNet.Unity
         {
             var client = UniNetEnvironment.Client;
             if (client == null) return;
-            if (client.Get(netId) != null) return;   // already registered — ignore the duplicate spawn
+
+            var existing = client.Get(netId);
+            if (existing != null && existing.Length > 0)
+            {
+                // FR-04 — a duplicate spawn is the AOI re-entry baseline for an EXISTING client instance (the object was
+                // deliberately kept client-side on exit). Refresh in place instead of ignoring: a host entry holds the
+                // server originals (the server stays authoritative — never overwrite them); a pure client re-applies the
+                // spawn-form baseline (transform + per-sub full state, RepNotify raised like the first spawn).
+                if (UniNetEnvironment.Server?.GetEntry(netId) != null) return;   // host duplicate — registration already IS the server original
+                RefreshExistingInstance(netId, existing, px, py, pz, qx, qy, qz, qw, subCount, typeKeys, states);
+                return;
+            }
 
             // Host — reuse the server's component array as the client registration (avoids double instantiation). Values and transform are already the server originals, left as-is.
             var server = UniNetEnvironment.Server;
@@ -83,6 +94,43 @@ namespace UniNet.Unity
                 {
                     var reader = new MessageProtocol.Serialize.MessageBufferReader(states[i]);
                     handler.ApplyDelta(comps[i], ref reader);   // full state — includes InitialOnly; raises RepNotify (local initial values)
+                }
+            }
+        }
+
+        /// <summary>
+        /// FR-04 — AOI re-entry: applies the spawn-form baseline (transform + per-slot full state) to an EXISTING client
+        /// instance without re-instantiating. Slot composition is verified against the message's typeKeys first — a
+        /// mismatched message leaves the instance untouched and fails loudly (the same contract as the first spawn).
+        /// </summary>
+        private static void RefreshExistingInstance(ulong netId, object[] existing,
+            float px, float py, float pz, float qx, float qy, float qz, float qw, byte subCount, ulong[] typeKeys, byte[][] states)
+        {
+            var comps = new NetworkBehaviour[existing.Length];
+            for (int i = 0; i < existing.Length; i++)
+            {
+                if (existing[i] is not NetworkBehaviour nb)
+                {
+                    Debug.LogError($"[UniNet] 재진입 스폰 실패 — 등록된 슬롯이 NetworkBehaviour 가 아니다 (netId={netId}, slot={i})");
+                    return;
+                }
+                comps[i] = nb;
+            }
+            if (subCount != comps.Length || typeKeys == null || typeKeys.Length != subCount || !VerifySlots(comps, typeKeys))
+            {
+                Debug.LogError($"[UniNet] 재진입 스폰 슬롯 불일치 (netId={netId}) — 서버 구성이 클라 인스턴스와 다르다 (초과·누락·순서 어긋남)");
+                return;
+            }
+
+            // Spawn baseline order — transform first, then per-slot state (the object may have moved while irrelevant).
+            comps[0].transform.SetPositionAndRotation(new Vector3(px, py, pz), new Quaternion(qx, qy, qz, qw));
+            for (byte i = 0; i < comps.Length; i++)
+            {
+                var handler = UniNetTypeRegistry.Find(comps[i].GetType());
+                if (states != null && i < states.Length && states[i] != null && states[i].Length > 0 && handler != null)
+                {
+                    var reader = new MessageProtocol.Serialize.MessageBufferReader(states[i]);
+                    handler.ApplyDelta(comps[i], ref reader);   // full state — includes InitialOnly; raises RepNotify (same contract as the first spawn baseline)
                 }
             }
         }

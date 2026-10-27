@@ -36,7 +36,8 @@
 
 ### research/ — 비교·조사 문서
 
-- [[research/unity-server-functional-review|unity-server-functional-review]] — v0.22.0 최신 기능 검토: 승인 경계·유실 복구·컬렉션 RPC 등의 격리 반례, Mirror/FishNet/NGO/Fusion 공식 본문 비교와 장르별 우선순위 (2026-10-23, 검토 결과이며 미수정)
+- [[research/unity-server-functional-review|unity-server-functional-review]] — v0.22.0 최신 기능 검토: 승인 경계·유실 복구·컬렉션 RPC 등의 격리 반례, Mirror/FishNet/NGO/Fusion 공식 본문 비교와 장르별 우선순위 (2026-10-23 작성, **FR-01~07은 2026-10-26 v0.23.0에서 해결 — [[research/v0-23-stabilization-review]]·[[migration-v0-23]] 참조**)
+- [[research/v0-23-stabilization-review|v0-23-stabilization-review]] — v0.23.0 안정화 구현·검증 종합 리뷰: FR-01~07 각 수정·실행 증거·구조/보안/성능 검토·잔여 한계 (2026-10-26, 부모 직접 검토)
 - [[research/commercial-netcode-audit|commercial-netcode-audit]] — 기존 상용 넷코드 내부 감사·런타임 44개 파일 대응표·기능 문제 대장 (2026-10-22 기존 항목 CLOSED 기준점). 후속 발견 사항은 위 기능 검토 참조. 기능별 원시 증거·검증·배포 연결은 `research/commercial-netcode-evidence.json`
 - [[research/network-framework-comparison|network-framework-comparison]] — UE NF·Photon Fusion 2·NGO·N4E·FishNet·Mirror 비교 역사 자료 (2026-09 조사, 현재 기능 판정에는 위 2026-10-23 검토 우선)
 
@@ -106,6 +107,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-26 — **v0.23.0 FR-01~07 안정화** (FR 검토 7건 전부 해결·배포 준비 — 태그/릴리스 제외): 승인/씬 준비 전 게임 RPC 즉시 드롭(`CanReceiveGameData`), Unreliable 이동 중 1.0s 주기 기준선·AOI 재진입 기존 인스턴스 갱신, RPC 컬렉션 코덱 경계(수신 List 복원·65535 초과 명시 거부·미소비 검증), 위치 무관 권위 TState 리컨사일(`ReconcileState` DIM), 연기 큐 최신 전체 병합·상한 강제 송신·메인 큐 상한, 생성기 소스 빌드 복구·headless 회귀 CI 게이트(0.2.18). EditMode 연속 2회 310/0/1·PlayMode 47/47·headless 양경로 19/19·사용자 자산 61파일 무변경. [[migration-v0-23]]·[[research/v0-23-stabilization-review]] 신규. 구현은 pi-crew executor(glm-5.3)+탐색/reviewer(glm-5.3-flash) 4단계·중간 reviewer CLEAN 4회.
 - 2026-10-26 — **Unity 작업 수단 일원화 — Unity CLI** (ADR-0055·[[harness]] "Unity 작업 수단" 절 신설. Sandbox·Builds 2Proc의 에디터 연동 패키지 매니페스트·잠금·캐시와 pi 하네스의 연동 서버 등록 제거. Unity 작업은 배치 모드 CLI(`-runTests`·`run2proc.sh`·`UniNetSolutionGenerator`)로 수행·증거는 종료코드·로그·NUnit XML. `AGENTS.md` 프로젝트 사실에도 반영)
 - 2026-10-23 — **상용 Unity 서버용 기능 재검토**: v0.22.0 코드·동봉 생성기·격리 실행에서 승인 전 게임 RPC 송신·유실 필드 미복구·RPC List/길이 경계·예산 적체를 확인하고, 정적 재진입/상태 리컨사일 경로·생성기 소스 빌드 오류를 구분해 기록. 4개 프레임워크 공식 본문 17개로 추가 비교. [[research/unity-server-functional-review]] — 구현 변경·결함 해결·신규 배포 아님.
 - 2026-10-21 — **OWN-002 v0.11.0 해결 — 소유권 이전 시 조건 필드 baseline 재전송** (ADR-0048·재현 확정: 이전 3경로가 OwnerUpdate만 전파해 신규 owner는 비변경 OwnerOnly/InitialOnly를 영구 기본값으로 보고 이전 owner도 SkipOwner 기본값 고착 — 감사 항목이 가정하지 않은 추가 피해. `SendOwnershipBaseline` 상태 전용 baseline(스폰 재전송 없음·지연 델타 무효화 선행·관련성 게이트·즉시 캐치업 연결 억제)을 3경로에 적용. 와이어·생성기 무변경. **검증·배포 완료**: EditMode 230/230(신규 9종 — Notify·SkipOwner·InitialOnly·예산 연기 무효화·ResumeSession·입양 경계·동적 스폰 미재전송 등)·PlayMode 36/36(실루프백 재입양 baseline) 2회 연속·음성 대조·리뷰 r13 CLEAN(zai/glm-5.3-flash)·커밋 `fcd62aa` → [v0.11.0 Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.11.0)·CI 성공·신규 설치 PASS — OWN-002 CLOSED, 지연 큐 프라이버시 오탐 메모 확인 처리. 리뷰 r13(대장 선점 기재 등 5건 지적)→r14 CLEAN)

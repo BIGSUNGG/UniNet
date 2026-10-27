@@ -302,7 +302,7 @@ namespace UniNet.Tests
                 player.Score = 42;
                 server.TickReplication(server.SnapshotObjects(), 1.1);
                 Assert.AreEqual(42, server.GetEntry(player.NetId).Subs[0].Snapshot[0], "유보 중 스냅샷은 최신 값으로 전진");
-                Assert.AreEqual(2, server.DeferredSendCount, "오래된 델타와 B용 최신 델타 모두 예산 연기");
+                Assert.AreEqual(1, server.DeferredSendCount, "오래된 델타와 B용 최신 델타는 FR-06 병합으로 키당 1항목(최신 전체상태)으로 연기됨");
                 Assert.AreEqual(0, chA.Replicates.Count, "A는 유보 중 상태 미수신");
                 Assert.IsFalse(chB.Replicates.Exists(e => e.netId == player.NetId), "B의 최신 변경도 아직 큐에 있음");
 
@@ -380,7 +380,7 @@ namespace UniNet.Tests
                 high.Score = 3;
                 player.Score = 42;
                 server.TickReplication(server.SnapshotObjects(), 1.1);
-                Assert.AreEqual(2, server.DeferredSendCount, "다른 수신자용 과거·현재 델타 모두 연기");
+                Assert.AreEqual(1, server.DeferredSendCount, "다른 수신자용 과거·현재 델타는 FR-06 병합으로 키당 1항목(최신 전체상태)으로 연기됨");
                 Assert.IsFalse(target.Replicates.Exists(e => e.netId == player.NetId), "비관련 전환 중 미전송");
 
                 if (reenterBeforeRelease)
@@ -392,7 +392,10 @@ namespace UniNet.Tests
                     Assert.AreEqual(1, baseline.Count, "재진입 전체 기준선 1회");
                     Apply(baseline[0].payload);
                     Assert.AreEqual(42, receiver.Score, "재진입 현재값 적용");
-                    Assert.AreEqual(2, server.DeferredSendCount, "다른 수신자의 큐는 재진입에도 보존");
+                    // FR-06 병합 계약 — 재진입 기준선은 다른 수신자의 연기 변경을 무효화하지 않는다. 그 변경은 키당
+                    // 최신 전체상태 1항목이고 크기가 예산을 넘으면 즉시 강제 송신된다(보존 = 유실 없음, 구 중간 델타 대기 아님).
+                    Assert.GreaterOrEqual(peer.Replicates.FindAll(e => e.netId == player.NetId).Count, 1,
+                        "다른 수신자의 연기 변경은 재진입에도 유실되지 않는다");
                     target.Clear();
                 }
 
@@ -402,11 +405,9 @@ namespace UniNet.Tests
                 Assert.IsFalse(target.Replicates.Exists(e => e.netId == player.NetId),
                     reenterBeforeRelease ? "새 기준선 뒤 낡은 델타 전달 없음" : "송신 시 비관련이면 과거 관련 수신자도 제외");
                 var deliveries = peer.Replicates.FindAll(e => e.netId == player.NetId);
-                Assert.AreEqual(2, deliveries.Count, "다른 수신자의 연기 변경은 손실 없음");
+                Assert.AreEqual(1, deliveries.Count, "다른 수신자의 연기 변경은 유실 없음 — FR-06 병합으로 최신 전체상태 1회 전달");
                 Apply(deliveries[0].payload);
-                Assert.AreEqual(10, receiver.Score, "다른 수신자 과거 델타");
-                Apply(deliveries[1].payload);
-                Assert.AreEqual(42, receiver.Score, "다른 수신자 최신 델타");
+                Assert.AreEqual(42, receiver.Score, "다른 수신자는 최신 전체상태로 수렴");
                 Assert.AreEqual(0, server.DeferredSendCount, "큐 배출 완료");
             }
             finally

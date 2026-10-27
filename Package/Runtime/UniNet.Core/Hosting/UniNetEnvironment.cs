@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 
 namespace UniNet.Core.Hosting
 {
@@ -11,6 +12,34 @@ namespace UniNet.Core.Hosting
     public static class UniNetEnvironment
     {
         private static readonly ConcurrentQueue<Action> MainQueue = new();
+
+        // FR-06 — finite main-queue bound. _mainQueueDepth is incremented before enqueue and decremented at dequeue,
+        // so under enqueue races the cap is approximate (a safety bound, not an exact invariant); the drain path is exact.
+        private static long _mainQueueDepth;
+        private static long _droppedMainActions;
+        private static long _droppedReplicateEntries;
+
+        /// <summary>FR-06 — default cap on queued main-thread actions (see <see cref="MainQueueCapacity"/>).</summary>
+        public const int DefaultMainQueueCapacity = 65536;
+
+        /// <summary>
+        /// FR-06 — hard cap on actions waiting for <see cref="PumpMain"/>. A healthy pump drains every frame, so real
+        /// depth stays in the tens; the cap exists to keep a blocked or starved main thread from growing the queue without
+        /// bound. An action enqueued past the cap is DROPPED but never silently: <see cref="LogFault"/> fires and
+        /// <see cref="DroppedMainActions"/> counts it (throwing instead would kill network dispatch threads — the least
+        /// destructive explicit failure). Default <see cref="DefaultMainQueueCapacity"/> (≈ a few MB of delegates worst case).
+        /// </summary>
+        public static int MainQueueCapacity { get; set; } = DefaultMainQueueCapacity;
+
+        /// <summary>FR-06 — cumulative actions dropped because the main queue was at capacity (explicit overflow observability).</summary>
+        public static long DroppedMainActions => Interlocked.Read(ref _droppedMainActions);
+
+        /// <summary>
+        /// FR-06 — cumulative replication/RPC entries dropped at the client apply step (no live object at the
+        /// (netId, subId) slot, or an unregistered methodId — version-skew or spawn/destroy races). Counted by the
+        /// generated batch/single dispatch paths so the drop is observed instead of silently skipped.
+        /// </summary>
+        public static long DroppedReplicateEntries => Interlocked.Read(ref _droppedReplicateEntries);
 
 
         /// <summary>This process's server runtime (set when the server/host starts).</summary>
@@ -71,20 +100,42 @@ namespace UniNet.Core.Hosting
         /// <summary>Sets the client hub send slot (generated client hub only).</summary>
         public static void SetClientSender(IUniNetClientSender sender) => ClientSender = sender;
 
-        /// <summary>Schedules work for the main thread to run (callable from network threads).</summary>
+        /// <summary>
+        /// Schedules work for the main thread to run (callable from network threads). FR-06 — past
+        /// <see cref="MainQueueCapacity"/> the action is dropped with an explicit fault (never a silent loss, never a
+        /// throw that would kill the dispatch thread).
+        /// </summary>
         public static void QueueOnMain(Action action)
         {
-            if (action != null) MainQueue.Enqueue(action);
+            if (action == null) return;
+            if (Interlocked.Increment(ref _mainQueueDepth) > MainQueueCapacity)
+            {
+                Interlocked.Decrement(ref _mainQueueDepth);
+                Interlocked.Increment(ref _droppedMainActions);
+                LogFault(new InvalidOperationException(
+                    $"[UniNet] main-thread queue over capacity ({MainQueueCapacity}) — action dropped. PumpMain is not keeping up (blocked or starved main thread); UniNet keeps the queue finite instead of growing without bound."));
+                return;
+            }
+            MainQueue.Enqueue(action);
         }
+
+        /// <summary>FR-06 — counts a dropped apply-time entry (generated dispatch paths; see <see cref="DroppedReplicateEntries"/>).</summary>
+        public static void CountDroppedReplicateEntry() => Interlocked.Increment(ref _droppedReplicateEntries);
 
         /// <summary>Number of main-queue actions waiting for the next pump drain (ADR-0029 queue-depth observability).</summary>
         public static int PendingMainActions => MainQueue.Count;
 
-        /// <summary>Runs all scheduled work — call from the main thread (the Unity driver Update).</summary>
+        /// <summary>
+        /// Runs ALL scheduled work — call from the main thread (the Unity driver Update). The full-drain contract is
+        /// unchanged (ordering and completion); the FR-06 capacity bounds growth at enqueue time, not here.
+        /// </summary>
         public static void PumpMain()
         {
             while (MainQueue.TryDequeue(out var action))
+            {
+                Interlocked.Decrement(ref _mainQueueDepth);
                 action();
+            }
         }
     }
 }

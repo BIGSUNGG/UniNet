@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using MessageProtocol.Serialize;
 
 namespace UniNet.Core.Hosting
@@ -58,9 +59,12 @@ namespace UniNet.Core.Hosting
         private int _qHead;         // next write index
         private int _qCount;
 
-        // owner client history ring — (seq, input value, position after the step); struct copies, no serialization on replay
+        // owner client history ring — (seq, input value, position after the step, state after the step); struct copies, no serialization on replay.
+        // The state snapshot (v0.23.0) is what ReconcileState compares against the server's ack echo — the state the
+        // owner predicted for that exact sequence, without re-running anything.
         private readonly uint[] _hSeq = new uint[HistoryCapacity];
         private readonly TInput[] _hIn = new TInput[HistoryCapacity];
+        private readonly TState[] _hState = new TState[HistoryCapacity];
         private readonly float[] _hX = new float[HistoryCapacity];
         private readonly float[] _hY = new float[HistoryCapacity];
         private readonly float[] _hZ = new float[HistoryCapacity];
@@ -135,6 +139,7 @@ namespace UniNet.Core.Hosting
             // record AFTER the step — the stored position is what the server should echo for this seq
             _hSeq[_hHead] = seq;
             _hIn[_hHead] = _input;
+            _hState[_hHead] = _state;
             _hX[_hHead] = x; _hY[_hHead] = y; _hZ[_hHead] = z;
             _hHead = (_hHead + 1) % HistoryCapacity;
             if (_hCount < HistoryCapacity) _hCount++;
@@ -161,14 +166,14 @@ namespace UniNet.Core.Hosting
         /// <inheritdoc />
         void INetworkMoveSimulation.Rollback(uint ackSeq, byte[] serverState, float serverX, float serverY, float serverZ, ref float x, ref float y, ref float z)
         {
-            bool found = ContainsSeq(ackSeq);
+            bool found = IndexOfSeq(ackSeq) >= 0;
             RestoreStateCore(serverState);
             x = serverX; y = serverY; z = serverZ;
 
             if (found)
             {
-                // replay unacknowledged inputs (seq > ackSeq, oldest first) — refreshing their snapshots so the
-                // NEXT ack compares against exactly what this replay produced
+                // replay unacknowledged inputs (seq > ackSeq, oldest first) — refreshing their snapshots (position AND
+                // state, v0.23.0) so the NEXT ack compares against exactly what this replay produced
                 int oldest = (_hHead - _hCount + HistoryCapacity) % HistoryCapacity;
                 for (int i = 0; i < _hCount; i++)
                 {
@@ -176,11 +181,25 @@ namespace UniNet.Core.Hosting
                     if (_hSeq[idx] <= ackSeq) continue;
                     TInput input = _hIn[idx];
                     _step(ref _state, ref x, ref y, ref z, in input, StepIntervalSeconds);
+                    _hState[idx] = _state;
                     _hX[idx] = x; _hY[idx] = y; _hZ[idx] = z;
                 }
             }
 
             Compact(ackSeq);   // acked inputs (a prefix of the ring — sequences only increase) are dropped; not-found leaves an empty ring (hard snap)
+        }
+
+        /// <inheritdoc />
+        bool INetworkMoveSimulation.ReconcileState(uint ackSeq, byte[] serverState, float serverX, float serverY, float serverZ, ref float x, ref float y, ref float z)
+        {
+            // FR-05 — the caller has already judged the positions consistent; decide the STATE question exactly:
+            // compare the snapshot predicted for ackSeq against the server's echo and replay only on real divergence.
+            // An agreeing ack costs one lookup + one state serialization + a byte compare — never a re-simulation.
+            int idx = IndexOfSeq(ackSeq);
+            if (idx < 0 || StateMatchesAt(idx, serverState))
+                return false;   // no anchor (outside the ring — the caller's hard-snap path owns stale windows) / exact agreement
+            ((INetworkMoveSimulation)this).Rollback(ackSeq, serverState, serverX, serverY, serverZ, ref x, ref y, ref z);
+            return true;
         }
 
         // ── server (authority) ────────────────────────────────────
@@ -308,12 +327,31 @@ namespace UniNet.Core.Hosting
 
         // ── internals ─────────────────────────────────────────────
 
-        private bool ContainsSeq(uint seq)
+        private int IndexOfSeq(uint seq)
         {
             int oldest = (_hHead - _hCount + HistoryCapacity) % HistoryCapacity;
             for (int i = 0; i < _hCount; i++)
-                if (_hSeq[(oldest + i) % HistoryCapacity] == seq) return true;
-            return false;
+            {
+                int idx = (oldest + i) % HistoryCapacity;
+                if (_hSeq[idx] == seq) return idx;
+            }
+            return -1;
+        }
+
+        /// <summary>Exact state comparison at a history slot: serializes the snapshot predicted for that sequence and
+        /// byte-compares it against the server's echo. A null/empty echo means the server's default state (the wire
+        /// convention <see cref="RestoreStateCore"/> applies when restoring).</summary>
+        private bool StateMatchesAt(int idx, byte[] serverState)
+        {
+            if (serverState == null || serverState.Length == 0)
+                return EqualityComparer<TState>.Default.Equals(_hState[idx], default);
+            var w = MessageBufferWriter.Create();
+            _writeState(ref w, in _hState[idx]);
+            byte[] local = w.ToArray();
+            if (local.Length != serverState.Length) return false;
+            for (int i = 0; i < local.Length; i++)
+                if (local[i] != serverState[i]) return false;
+            return true;
         }
 
         /// <summary>Compacts the ring by dropping entries with Seq &lt;= cutoff. Sequences only increase, so the dropped set is a prefix — a single in-place pass suffices (the write cursor can never overtake the read cursor).</summary>
@@ -331,6 +369,7 @@ namespace UniNet.Core.Hosting
                 {
                     _hSeq[write] = _hSeq[idx];
                     _hIn[write] = _hIn[idx];
+                    _hState[write] = _hState[idx];
                     _hX[write] = _hX[idx]; _hY[write] = _hY[idx]; _hZ[write] = _hZ[idx];
                 }
                 write = (write + 1) % HistoryCapacity;

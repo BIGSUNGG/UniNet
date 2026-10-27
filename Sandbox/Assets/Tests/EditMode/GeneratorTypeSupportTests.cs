@@ -147,8 +147,9 @@ namespace UniNet.Tests
         }
 
         // T4 — int[]·List<Vector3> RPC 인자: null 플래그 + UInt16 길이 + 순차 원소 (string[]의 null 요소 포함).
+        // FR-003 — 기존 Ignore 제거: 등록은 StartRpcFixture의 리플렉션 Register()로 이미 실제 경로이며, 당시 실패 원인은
+        // 수신 List의 capacity/Count 혼동 버그였다 (Emitter EmitArgRead 수정으로 해소 — CollectionRpcBoundaryTests 참조).
         [Test]
-        [Ignore("EditMode 크로스 어셈블리 등록: Fixtures 어셈블리 타입의 dispatch/type-registry 등록이 EditMode에서 누락됨 — PlayMode 또는 명시적 Fixtures Register() 호출 필요. r29-r31 참조.")]
         public void int배열과_List_Vector3_RPC_인자는_왕복한다()
         {
             var o = StartRpcFixture<Gen004VectorRpcObject>("gen004-coll");

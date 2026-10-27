@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨
 - **최초 작성**: 2026-09-18
-- **마지막 갱신**: 2026-10-20
+- **마지막 갱신**: 2026-10-26 (재진입 기준선 기존 인스턴스 적용 — FR-04)
 
 ## 개요
 
@@ -24,8 +24,8 @@
 ## 동작 상세
 
 - **즉시 모드 vs 시간 모드**: `TickReplication(objects)`는 P2 호환(정책 미적용). 드라이버는 `TickReplication(objects, Time.unscaledTimeAsDouble)`로 실제 시계를 제공해 정책을 활성화한다
-- **가시성**: 판정 = `IsNetworkRelevant(connId)` AND 거리(`SetViewerPosition` 필요 — 미설정 연결은 컬 무효). 씬 오브젝트 첫 평가는 조용한 시드(P2 계약 유지), 재진입·동적 첫 평가는 스폰/전체 상태으로 기준선 복구 — 진입 기준선에는 캐치업과 동일하게 객체별 소유권 통보가 상태보다 먼저 포함된다(OWN-001, 소유자 0 포함). 비관련 전환 시 델타만 중단(클라는 마지막 상태 유지 — 전파 파괴 미지원)
-- **우선순위·기아**: 후보+연기분 병합 후 `priority × (1 + 대기초/0.1)` 순 전송(UE GetNetPriority 공식). 전역 예산 `ReplicationBudgetPerTickBytes`(0=무제한), 유형별 `SetReplicationChannelBudget(Type, bytes)` — 유형 초과분만 연기. 예산보다 큰 단일 델타는 강제 전송
+- **가시성**: 판정 = `IsNetworkRelevant(connId)` AND 거리(`SetViewerPosition` 필요 — 미설정 연결은 컬 무효). 씬 오브젝트 첫 평가는 조용한 시드(P2 계약 유지), 재진입·동적 첫 평가는 스폰/전체 상태으로 기준선 복구 — 진입 기준선에는 캐치업과 동일하게 객체별 소유권 통보가 상태보다 먼저 포함된다(OWN-001, 소유자 0 포함). 동적 객체 재진입 기준선은 클라에 이미 인스턴스가 있어도 적용된다(FR-04, 2026-10-26): `UniNetSpawn.Apply`가 기존 인스턴스의 트랜스폼+서브별 전체 상태를 갱신하고(무재생성·SubId 슬롯·typeKeys 검증 유지, 불일치 시 거부·기존 값 보존), 호스트 중복은 서버 원본 불변. 비관련 전환 시 델타만 중단(클라는 마지막 상태 유지 — 전파 파괴 미지원)
+- **우선순위·기아**: 후보+연기분 병합 후 `priority × (1 + 대기초/0.1)` 순 전송(UE GetNetPriority 공식). 전역 예산 `ReplicationBudgetPerTickBytes`(0=무제한), 유형별 `SetReplicationChannelBudget(Type, bytes)` — 유형 초과분만 연기. 예산보다 큰 단일 델타는 강제 전송. **연기 큐는 유한하다(FR-06, 2026-10-26)**: 같은 (NetId, SubId)의 연기 항목은 최신 권위 전체 상태로 대체 병합돼 큐가 키 수에 묶이고(시간 무한 축적 불가, `DeferredCoalescedCount` 관측), 상한 `MaxDeferredDeltas`(기본 1024) 도달 초과분은 강제 송신된다(`DeferredForcedSendCount` 관측 — 조용한 누락 금지). 휴면 보류 항목은 기존 드롭 금지 계약 유지. 상세는 [[features/replication-batching-delivery]]
 - **휴면**: `NetworkDormant = true` 동안 델타 비교 생략(스냅샷 동결). `FlushNetworkDormancy()`로 해제 — 누적 변경분이 한 번에 전송
 - **주기**: `NetworkUpdateFrequencyHz` — 기본 30Hz (ADR-0040 — 무제한 기본값이 메시지 수 과다를 만들지 않도록). 미도달 틱은 비교 생략, 도달 틱에 최신 변경분 전송(최신값 승). `0` 설정으로 매 틱 전송 옵트인
 - **전송 신뢰성 (v0.3.0)**: `NetworkReplicationDelivery` — 기본 `ReliableOrdered`, `Unreliable`은 Sequenced 스트림. 배칭·정지 재전송 포함 상세는 [[features/replication-batching-delivery]] ([[0039-복제-배칭과-신뢰성-분리]])
@@ -57,5 +57,7 @@ server.ReplicationBudgetPerTickBytes = 8192;                    // P3-② 전역
 
 ## 변경 이력
 
+- 2026-10-26 — FR-06: 연기 큐를 유한 적체로 전환(키별 최신 전체 상태 병합·상한 초과 강제 송신·관측 카운터). 메인 큐 상한(`UniNetEnvironment.MainQueueCapacity`)도 이 단계에 추가 — 상세는 [[features/replication-batching-delivery]].
+- 2026-10-26 — FR-04: 동적 객체 재진입 기준선이 클라 기존 인스턴스에 적용(`UniNetSpawn.Apply` 분기 — 무재생성·SubId 슬롯·typeKeys 검증·불일치 거부·호스트 원본 불변). `AoiReentryBaselineTests` 3종 신규.
 - 2026-10-20 — OWN-001: 가시성 복귀의 씬/동적 소유권 기준선을 후발 캐치업과 공유하고 0 소유자도 전송, 상태/Notify보다 앞선 캐시 갱신을 보장. 초기 동적 스폰도 동일 순서로 정렬. 관련성 필터·휴면·예산 정책은 유지.
 - 2026-09-18 — 최초 작성 (P3 완결 — ADR-0011)

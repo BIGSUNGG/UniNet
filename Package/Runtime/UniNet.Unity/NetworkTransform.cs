@@ -437,7 +437,10 @@ namespace UniNet.Unity
         /// Server acknowledged an input sequence (ADR-0038) — compares the position predicted for that sequence
         /// against the server's echo; on divergence beyond <see cref="RollbackThresholdSq"/> rolls the state back to
         /// the server's (position, state) and re-simulates every unacknowledged input. An ack outside the history
-        /// window (extreme latency) hard-snaps to the server state.
+        /// window (extreme latency) hard-snaps to the server state. Even when positions agree, the state predicted
+        /// for the acknowledged sequence is reconciled against the server's echoed state (v0.23.0) — game state
+        /// (cooldowns, speeds, movement modes) converges to the authority even while standing still, at the cost of
+        /// one comparison per ack and a re-simulation only on actual divergence.
         /// </summary>
         private void OnAckSeqChanged(uint prev)
         {
@@ -450,6 +453,17 @@ namespace UniNet.Unity
                 float dx = hx - _px, dy = hy - _py, dz = hz - _pz;
                 if (dx * dx + dy * dy + dz * dz <= RollbackThresholdSq)
                 {
+                    // FR-05 — positions agree within tolerance, but the authoritative game state may still differ
+                    // (a dash cooldown the server never adopted, an input-expiry step the prediction never ran).
+                    // ReconcileState compares the state predicted for this sequence against the server echo EXACTLY
+                    // and re-simulates the unacknowledged inputs only on divergence; an agreeing ack costs one
+                    // comparison and no replay. Custom simulations without the hook keep the legacy discard-only path.
+                    if (sim.ReconcileState(_ackSeq, _ackState?.Data, _px, _py, _pz, ref _predX, ref _predY, ref _predZ))
+                    {
+                        // the replay moved the prediction — never lerp from the pre-reconcile position (all three axes;
+                        // an agreeing ack must leave the render baseline untouched entirely)
+                        _prevPredX = _predX; _prevPredY = _predY; _prevPredZ = _predZ;
+                    }
                     sim.DiscardThrough(_ackSeq);
                     return;
                 }

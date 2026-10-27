@@ -549,5 +549,121 @@ namespace UniNet.Tests
             Assert.Throws<System.ArgumentOutOfRangeException>(() =>
                 NewSim(inputExpirySteps: -1));
         }
+
+        // ── v0.23.0 FR-05 — 위치 일치 ack의 상태 전용 리컨사일 ─────────────
+
+        private static byte[] SerializeState(in TSt s)
+        {
+            var w = MessageBufferWriter.Create();
+            WriteState(ref w, in s);
+            return w.ToArray();
+        }
+
+        private static TSt ReadStateFrom(byte[] blob)
+        {
+            var r = new MessageBufferReader(blob);
+            return ReadState(ref r);
+        }
+
+        [Test]
+        public void 리컨사일은_위치가_같고_상태가_다르면_권위_상태를_복원한다()
+        {
+            // FR-05 core reproduction — the client dashed at seq 1 with Dx = 0: the cooldown STATE diverges while the
+            // position stays identical, so the position threshold alone never triggers. The server never adopted the
+            // dash (dropped input): its echo at ack 3 carries cooldown 0.
+            var client = NewSim();
+            var csim = (INetworkMoveSimulation)client;
+            float cx = 0f, cy = 0f, cz = 0f;
+            client.SetInput(new TIn { Dash = true });
+            csim.PredictStep(1, ref cx, ref cy, ref cz);
+            client.SetInput(default);
+            csim.PredictStep(2, ref cx, ref cy, ref cz);
+            csim.PredictStep(3, ref cx, ref cy, ref cz);
+            Assert.Greater(ReadStateFrom(csim.WriteState()).DashCd, 0.9f, "클라 예측 쿨다운 진행 중 — 상태가 어긋난 전제");
+
+            byte[] echo = SerializeState(new TSt { Vy = 0f, DashCd = 0f });   // authoritative state at ack 3 — cooldown 0
+            bool acted = csim.ReconcileState(3, echo, 0f, 0f, 0f, ref cx, ref cy, ref cz);
+
+            Assert.IsTrue(acted, "상태 차이 감지 — 복원 수행");
+            Assert.AreEqual(0f, ReadStateFrom(csim.WriteState()).DashCd, 1e-5f, "권위 TState(쿨다운 0)로 수렴 — FR-05 반례 수정");
+            Assert.AreEqual(0f, cx, 1e-6f, "위치 불변 — 보정은 상태 전용 (재생할 미확인 입력 없음)");
+            Assert.AreEqual(0, csim.PendingCount, "승인 히스토리 폐기(Compact 포함)");
+        }
+
+        [Test]
+        public void 리컨사일은_상태가_같으면_재시뮬_비용을_내지_않는다()
+        {
+            // cost-minimization regression — an agreeing echo must cost zero step-rule invocations and no state/position writes
+            int steps = 0;
+            var client = new MoveSimulation<TIn, TSt>(
+                (ref TSt st, ref float x, ref float y, ref float z, in TIn i, float dt) => { steps++; Step(ref st, ref x, ref y, ref z, in i, dt); },
+                WriteInput, ReadInput, WriteState, ReadState, 60f);
+            var csim = (INetworkMoveSimulation)client;
+            float cx = 0f, cy = 0f, cz = 0f;
+            client.SetInput(new TIn { Dx = 1 });
+            for (uint seq = 1; seq <= 5; seq++)
+                csim.PredictStep(seq, ref cx, ref cy, ref cz);
+
+            byte[] echo = csim.WriteState();   // identical run — the state at ack 5 exactly (nothing pending beyond it)
+            float px = cx, py = cy, pz = cz;
+            int stepsBefore = steps;
+            byte[] stateBefore = csim.WriteState();
+
+            bool acted = csim.ReconcileState(5, echo, px, py, pz, ref cx, ref cy, ref cz);
+
+            Assert.IsFalse(acted, "상태 일치 — 무행동");
+            Assert.AreEqual(stepsBefore, steps, "스텝 룰 재호출 0회 — 일치 ack의 비용은 비교뿐");
+            Assert.AreEqual(px, cx, 0f, "위치 무변경");
+            Assert.AreEqual(py, cy, 0f, "위치 무변경 (y)");
+            CollectionAssert.AreEqual(stateBefore, csim.WriteState(), "상태 무변경 (추가 직렬화 외 할당·쓰기 없음)");
+            Assert.AreEqual(5, csim.PendingCount, "히스토리 무변경 — 폐기는 호출자(DiscardThrough) 책임");
+        }
+
+        [Test]
+        public void 리컨사일은_미확인_입력을_재생해_정정된_궤적을_유지한다()
+        {
+            // FR-05 with a pending input — ack 3 state differs, seq 4 is unacknowledged: the replay re-runs it from the
+            // CORRECTED state, so the position tracks the true (server) trajectory instead of the stale-cooldown one.
+            var client = NewSim();
+            var csim = (INetworkMoveSimulation)client;
+            float cx = 0f, cy = 0f, cz = 0f;
+            client.SetInput(new TIn { Dash = true });                       // cooldown state diverges, Dx = 0 → position stays 0
+            csim.PredictStep(1, ref cx, ref cy, ref cz);
+            client.SetInput(default);
+            csim.PredictStep(2, ref cx, ref cy, ref cz);
+            csim.PredictStep(3, ref cx, ref cy, ref cz);
+            client.SetInput(new TIn { Dx = 1 });                             // pending — with the stale cooldown this step would run at dash speed
+            csim.PredictStep(4, ref cx, ref cy, ref cz);
+            Assert.AreEqual(DashSpeed * Dt, cx, 1e-4f, "재생 전 — 낡은 쿨다운(>0.8)이 대시 속도를 만든다");
+
+            byte[] echo = SerializeState(new TSt { Vy = 0f, DashCd = 0f });
+            bool acted = csim.ReconcileState(3, echo, 0f, 0f, 0f, ref cx, ref cy, ref cz);
+
+            // reference — the same pending input stepped from the CORRECT state: run speed, cooldown stays 0
+            var reference = NewSim();
+            float rx = 0f, ry = 0f, rz = 0f;
+            reference.SetInput(new TIn { Dx = 1 });
+            ((INetworkMoveSimulation)reference).PredictStep(1, ref rx, ref ry, ref rz);
+
+            Assert.IsTrue(acted, "상태 차이 감지");
+            Assert.AreEqual(rx, cx, 1e-5f, "미확인 입력 재생 — 정정된 상태 기준 궤적과 정확히 일치 (위치 유지)");
+            Assert.AreEqual(0f, ReadStateFrom(csim.WriteState()).DashCd, 1e-5f, "재생 후 상태도 권위 기준으로 전진");
+            Assert.AreEqual(1, csim.PendingCount, "seq 4만 미확인 잔여");
+            Assert.IsTrue(csim.TryGetPredicted(4, out float hx, out _, out _), "스냅샷 조회");
+            Assert.AreEqual(rx, hx, 1e-5f, "히스토리 스냅샷 갱신 — 다음 ack 비교 기준이 재생 결과");
+        }
+
+        [Test]
+        public void 리컨사일은_링_밖_ack는_무시한다()
+        {
+            var sim = NewSim();
+            var isim = (INetworkMoveSimulation)sim;
+            float x = 1f, y = 0f, z = 0f;   // empty ring — no snapshot to anchor the comparison on
+
+            bool acted = isim.ReconcileState(999, SerializeState(new TSt()), 0f, 0f, 0f, ref x, ref y, ref z);
+
+            Assert.IsFalse(acted, "히스토리 밖 ack — 무행동 (하드스냅은 Rollback 경로 소관)");
+            Assert.AreEqual(1f, x, "위치 무변경");
+        }
     }
 }

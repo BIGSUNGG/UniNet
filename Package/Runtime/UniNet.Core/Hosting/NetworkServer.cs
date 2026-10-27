@@ -34,6 +34,8 @@ namespace UniNet.Core.Hosting
         private bool[] _relevanceScratch = Array.Empty<bool>();
         private ulong[] _relevanceOverflowScratch = Array.Empty<ulong>();
         private long _seq;
+        private long _deferredCoalesced;   // FR-06 — deferrals merged into a retained latest-full-state entry
+        private long _deferredForcedSends;   // FR-06 — entries force-sent past the budget because the queue hit the cap
 
         // Batched replication — per-connection accumulation buffers (parallel to the tick's connection snapshot;
         // index-stable for the duration of one TickReplication call). Cleared and reused every tick.
@@ -251,6 +253,13 @@ namespace UniNet.Core.Hosting
             /// <summary>Forces the next delta onto the reliable batch (dormancy flush — a lost unreliable flush would strand stale state).</summary>
             public bool NextSendReliable;
 
+            /// <summary>
+            /// Server time of the last full-state baseline send on the tick clock (-1 = not armed yet; armed on the first tick
+            /// evaluation — the spawn/catch-up/visibility baseline already carried full state). Unreliable subs re-baseline on a
+            /// fixed interval so a LOST delta converges even while other fields keep changing (FR-02).
+            /// </summary>
+            public double LastBaselineTime = -1;
+
             public SubObjectEntry(object instance) => Instance = instance;
         }
 
@@ -301,6 +310,17 @@ namespace UniNet.Core.Hosting
                 internal set => System.Threading.Volatile.Write(ref _versionApproved, value ? 1 : 0);
             }
             private int _versionApproved;
+
+            /// <summary>
+            /// FR-01 — read-only send-eligibility gate for server-originated game RPCs (broadcast ClientRpc, To/ToOwner,
+            /// Multicast): exactly <c>!Disconnected &amp;&amp; VersionApproved &amp;&amp; !AwaitingSceneReady</c> — the same triple the
+            /// replication and catch-up paths already use (CON-001 undeclared connections receive no game data; SCN-002
+            /// scene-held connections wait for the ready report). Deliberately NOT IsClientSceneReady: that set only tracks
+            /// in-flight scene transitions, so an approved connection that never changed scenes is still eligible here.
+            /// Generated send paths live in another assembly and cannot read the internal AwaitingSceneReady flag, so this
+            /// property is the shared public boundary for them.
+            /// </summary>
+            public bool CanReceiveGameData => !Disconnected && VersionApproved && !AwaitingSceneReady;
 
             /// <summary>
             /// CON-002 — the approval callback has been dispatched for this connection (its declaration was accepted and the
@@ -1252,6 +1272,20 @@ namespace UniNet.Core.Hosting
         public int DeferredSendCount => _queue.Count;
 
         /// <summary>
+        /// FR-06 — cumulative deferrals coalesced into an already-queued entry for the same (NetId, SubId). The retained
+        /// entry is rewritten to the LATEST full state (semantic-preserving replacement: any receiver converges from any
+        /// prior state, collections included — a tag-1 full, never an op-delta replay). Observation counter (main thread).
+        /// </summary>
+        public long DeferredCoalescedCount => _deferredCoalesced;
+
+        /// <summary>
+        /// FR-06 — cumulative entries force-sent past the replication budget because the deferred queue was at
+        /// <see cref="MaxDeferredDeltas"/>. An overload beyond the cap is EXPLICIT (counter + transmitted state), never a
+        /// silent drop; the burst drains the queue back under the cap. Observation counter (main thread).
+        /// </summary>
+        public long DeferredForcedSendCount => _deferredForcedSends;
+
+        /// <summary>
         /// Disconnects a client explicitly (ADR-0027) — flushes a disconnect notice to the wire (the reason rides
         /// the wire, best effort) and then closes the transport connection; DetachConnection follows via the hub's
         /// Disconnected event, so ownership reassignment and lifecycle events run the normal path. Returns false when
@@ -1495,6 +1529,41 @@ namespace UniNet.Core.Hosting
                         if (handler == null || !handler.HasFields) continue;
                         if (timed && hz > 0f && time < sub.NextReplicateTime) continue;   // rate not due yet — snapshot kept, changes go on the due tick
 
+                        bool unreliableSub = (policy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
+
+                        // FR-02 — periodic in-motion baseline. The snapshot advances the moment a delta is produced, so a
+                        // LOST delta's bits never reappear while OTHER fields keep changing (the quiescence resend below only
+                        // fires once the whole sub goes quiet). While an unreliable sub keeps producing deltas, re-send its full
+                        // state on the reliable batch at a fixed interval — every receiver converges to the latest authoritative
+                        // state within one interval regardless of drops (NGO axial-frame direction; the full state replaces
+                        // collections wholesale — a tag-1 full, never an arbitrary op-delta replay). Armed on the first
+                        // evaluation; every full baseline send (periodic or quiescence) restarts the interval.
+                        if (timed && unreliableSub)
+                        {
+                            if (sub.LastBaselineTime < 0) sub.LastBaselineTime = time;
+                            else if (time - sub.LastBaselineTime >= UnreliableBaselineIntervalSeconds
+                                     && sub.LastChangeTime >= 0 && time - sub.LastChangeTime < UnreliableBaselineIntervalSeconds)   // IN-MOTION only — a quiet sub is healed once by the quiescence resend below; without this gate every idle-but-visible unreliable sub would re-send full state forever
+                            {
+                                sub.LastBaselineTime = time;
+                                sub.QuiescenceResent = true;   // this full baseline already heals a lost final delta — no extra quiescence resend for the current quiet stretch
+                                _pending.Add(new DeferredDelta
+                                {
+                                    NetId = netId,
+                                    SubId = subId,
+                                    MethodId = handler.MethodId,
+                                    Owner = TryWriteFull(handler, sub.Instance, true),
+                                    Others = TryWriteFull(handler, sub.Instance, false),
+                                    SenderType = sub.Instance.GetType(),
+                                    Priority = policy?.NetworkPriority ?? 1f,
+                                    EnqueuedAt = time,
+                                    RelevantMask = relevantMask,
+                                    RelevantOverflow = CaptureRelevanceOverflow(connections.Count),
+                                    Seq = _seq++,
+                                    ForceReliable = true,
+                                });
+                            }
+                        }
+
                         byte[] toOwner, toOthers;
                         try
                         {
@@ -1515,11 +1584,11 @@ namespace UniNet.Core.Hosting
                             // Unreliable streams heal an in-motion loss with the next delta — but a lost FINAL delta strands
                             // the remote (nothing follows it). Once an unreliable sub has been quiet past the resend delay,
                             // re-send its full state once on the reliable batch. Reliable subs never need this.
-                            bool unreliableSub = (policy?.NetworkReplicationDelivery ?? Delivery.ReliableOrdered) == Delivery.Unreliable;
                             if (timed && unreliableSub && !sub.QuiescenceResent && sub.LastChangeTime >= 0
                                 && time - sub.LastChangeTime >= QuiescenceResendDelaySeconds)
                             {
                                 sub.QuiescenceResent = true;
+                                sub.LastBaselineTime = time;   // the quiescence resend IS a full baseline — the periodic interval restarts from here
                                 _pending.Add(new DeferredDelta
                                 {
                                     NetId = netId,
@@ -1588,12 +1657,28 @@ namespace UniNet.Core.Hosting
                     if (entryPolicy != null && entryPolicy.IsNetworkDormant)
                     {
                         // Went dormant — hold the deferrals too. Dropping them would lose changes permanently (the snapshot
-                        // was already updated), so they are sent once dormancy is flushed.
-                        DeferDelta(item, connections, ref recipientIds);
+                        // was already updated), so they are sent once dormancy is flushed. Held entries are exempt from the
+                        // FR-06 cap force-send: dormancy halts candidate production, so holds are bounded by the object count.
+                        DeferDelta(item, entry, connections, ref recipientIds);
+                        continue;
+                    }
+
+                    // FR-06 ordering invariant — a key whose (coalesced, latest-full) entry is STILL QUEUED must not put a
+                    // FRESH delta on the wire: FastArray op deltas carry absolute element indices, so an op produced after
+                    // the queued full's state presumes elements the receiver never saw (its last wire state is an older full)
+                    // — the receiver-side Insert lands out of range (isolated per-entry in the batch, but the entry is lost
+                    // until a later full). Deferring the fresh candidate into the queued entry merges both into the latest
+                    // full, which force-sends intact — the key's wire stream stays index-continuous end to end.
+                    // (Every _pending item here has Queued == false: queue items had the flag cleared before the loop, and
+                    // items deferred DURING the loop are not re-visited — the check below is on the key, not the flag.)
+                    if (QueueHoldsKey(item.NetId, item.SubId))
+                    {
+                        DeferDelta(item, entry, connections, ref recipientIds);
                         continue;
                     }
 
                     int size = Math.Max(item.Owner?.Length ?? 0, item.Others?.Length ?? 0);
+                    bool forceThrough = false;   // FR-06 — set when the deferred-queue cap forces this candidate through the budget
                     bool globalOk = budgetLeft >= size || (budget > 0 && size > budget);   // force-send a single delta larger than the budget (anti-starvation)
                     bool typeOk = true;
                     if (_typeBudgetLeft.TryGetValue(item.SenderType, out int typeLeft))
@@ -1603,8 +1688,18 @@ namespace UniNet.Core.Hosting
                     }
                     if (!globalOk || !typeOk)
                     {
-                        DeferDelta(item, connections, ref recipientIds);   // EnqueuedAt is preserved so the starvation boost keeps growing
-                        continue;
+                        // FR-06 — the queue holds at most one entry per (NetId, SubId) after coalescing, so a FULL queue means
+                        // more DISTINCT overloaded subs than the cap. Silent loss is forbidden: force this entry through the
+                        // budget (same precedent as a single delta larger than the budget). Bounded — the burst drains the
+                        // queue back under the cap — and explicit via DeferredForcedSendCount (counted below only when the
+                        // forced candidate actually reached a recipient — an entry with no eligible recipient is not a send).
+                        if (_queue.Count >= MaxDeferredDeltas)
+                            forceThrough = true;
+                        else
+                        {
+                            DeferDelta(item, entry, connections, ref recipientIds);   // EnqueuedAt is preserved so the starvation boost keeps growing
+                            continue;
+                        }
                     }
 
                     int spent = 0;
@@ -1637,6 +1732,7 @@ namespace UniNet.Core.Hosting
                         spent += payload.Length;
                     }
                     item.ReleaseRecipients();
+                    if (forceThrough && spent > 0) _deferredForcedSends++;   // count actual forced deliveries, not zero-recipient attempts
                     budgetLeft = Math.Max(0, budgetLeft - spent);
                     if (_typeBudgetLeft.ContainsKey(item.SenderType))
                         _typeBudgetLeft[item.SenderType] = Math.Max(0, _typeBudgetLeft[item.SenderType] - spent);
@@ -1658,8 +1754,26 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>Captures identity once per deferred tick; each candidate keeps only its own compact visibility bits.</summary>
-        private void DeferDelta(DeferredDelta item, IReadOnlyList<ServerConnection> connections, ref long[] recipientIds)
+        /// <summary>
+        /// Captures identity once per deferred tick; each candidate keeps only its own compact visibility bits.
+        /// FR-06 — semantic-preserving coalescing: at most one deferred entry per (NetId, SubId). A queued delta whose
+        /// snapshot already advanced cannot alone converge a receiver that missed the earlier deltas, so the RETAINED
+        /// entry is rewritten to the latest full state (the same wire shape a catch-up baseline uses — a full mask applies
+        /// from any prior state, and collections ride a tag-1 full replacement, never an op-delta replay). Seq/EnqueuedAt
+        /// keep the retained entry's values (fair order + a starvation boost that keeps growing); recipient bits union so
+        /// nobody entitled to the state loses it. Keeps the deferred queue FINITE under sustained overload (bounded by
+        /// distinct sub-objects, not by time).
+        /// </summary>
+        /// <summary>FR-06 — whether the deferred queue already holds an entry for this (NetId, SubId) key. The queue is
+        /// coalesced per key, so this scan is bounded by the number of DISTINCT starved subs (≤ <see cref="MaxDeferredDeltas"/>).</summary>
+        private bool QueueHoldsKey(ulong netId, byte subId)
+        {
+            for (int i = 0; i < _queue.Count; i++)
+                if (_queue[i].NetId == netId && _queue[i].SubId == subId) return true;
+            return false;
+        }
+
+        private void DeferDelta(DeferredDelta item, ServerObjectEntry entry, IReadOnlyList<ServerConnection> connections, ref long[] recipientIds)
         {
             if (item.Recipients == null)
             {
@@ -1671,8 +1785,55 @@ namespace UniNet.Core.Hosting
                 }
                 item.Recipients = recipientIds;
             }
+            for (int i = _queue.Count - 1; i >= 0; i--)
+            {
+                var held = _queue[i];
+                if (held.NetId != item.NetId || held.SubId != item.SubId) continue;
+                if (CoalesceIntoHeld(held, entry))
+                {
+                    held.ForceReliable |= item.ForceReliable;   // a reliable flush/baseline subsumed into a held delta keeps riding the reliable batch
+                    MergeRecipientBits(held, item);
+                    item.ReleaseRecipients();
+                    _deferredCoalesced++;
+                    return;   // the new candidate is subsumed — the queue keeps exactly one entry for this key
+                }
+                break;   // rewrite impossible (serializer fault / every field condition-hidden) — keep BOTH entries (loss-free fallback). NOTE: this fallback Add bypasses the cap (only this pathological path can: it needs a faulting serializer or a condition asymmetry EVERY tick, both already surfaced via LogFault); under normal merge success the queue is bounded by the distinct-key count and the cap force-send.
+            }
             _queue.Add(item);
             item.Queued = true;
+        }
+
+        /// <summary>
+        /// FR-06 — rewrites a held deferral's payloads to the entry's CURRENT full state. A faulted or all-empty write
+        /// must not wipe the retained payload (that would be a silent loss), so a failed rewrite keeps the caller's
+        /// both-entries fallback. Per-side: a successful side replaces, a faulted side keeps the older payload.
+        /// </summary>
+        private bool CoalesceIntoHeld(DeferredDelta held, ServerObjectEntry entry)
+        {
+            if (entry == null || held.SubId >= entry.Subs.Length) return false;
+            var sub = entry.Subs[held.SubId];
+            var handler = sub.Replication;
+            if (handler == null || !handler.HasFields) return false;
+            byte[] ownerFull = TryWriteFull(handler, sub.Instance, true);
+            byte[] othersFull = TryWriteFull(handler, sub.Instance, false);
+            if (IsEmpty(ownerFull) && IsEmpty(othersFull)) return false;
+            if (!IsEmpty(ownerFull)) held.Owner = ownerFull;
+            if (!IsEmpty(othersFull)) held.Others = othersFull;
+            return true;
+        }
+
+        /// <summary>FR-06 — unions the incoming candidate's visibility bits into the held entry over shared connIds (both recipient arrays are ascending).</summary>
+        private static void MergeRecipientBits(DeferredDelta held, DeferredDelta item)
+        {
+            int h = 0, n = 0;
+            while (h < held.Recipients.Length && n < item.Recipients.Length)
+            {
+                long hc = held.Recipients[h], nc = item.Recipients[n];
+                if (hc < nc) { h++; continue; }
+                if (nc < hc) { n++; continue; }
+                if (item.IsRecipientIndex(n) && !held.IsRecipientIndex(h)) held.AddRecipient(h);
+                h++; n++;
+            }
         }
 
         private void InvalidateDeferredRecipient(ulong? netId, long connId)
@@ -1720,6 +1881,26 @@ namespace UniNet.Core.Hosting
 
         /// <summary>How long an unreliable sub must stay quiet after its last delta before the one-shot full-state resend fires (seconds).</summary>
         internal const double QuiescenceResendDelaySeconds = 0.25;
+
+        /// <summary>
+        /// FR-02 — full-state baseline interval for unreliable subs that keep producing deltas (seconds). A lost delta's bits never
+        /// reappear in later deltas (the snapshot advances on production), so while the sub stays in motion the periodic reliable
+        /// full state is what converges dropped fields. Cost bound: one full-state entry per interval per visible sub per connection.
+        /// </summary>
+        internal const double UnreliableBaselineIntervalSeconds = 1.0;
+
+        /// <summary>
+        /// FR-06 — hard cap on the deferred replication queue (entries). After (NetId, SubId) coalescing the queue holds at
+        /// most one entry per distinct overloaded sub-object, so 1024 simultaneously-starving subs (≈ an entire large
+        /// server's visible set) is already deep pathology; with full-state payloads averaging well under 1 KB this bounds
+        /// the backlog to single-digit MB. Entries beyond the cap are FORCE-SENT (explicit, never dropped) — see
+        /// DeferredForcedSendCount. Dormant-held deferrals are exempt (dormancy halts production, so holds are bounded
+        /// by the object count). Internal + settable so regressions can exercise the boundary cheaply.
+        /// </summary>
+        internal const int DefaultMaxDeferredDeltas = 1024;
+
+        /// <summary>FR-06 — current deferred-queue cap (see <see cref="DefaultMaxDeferredDeltas"/>; main thread).</summary>
+        internal int MaxDeferredDeltas { get; set; } = DefaultMaxDeferredDeltas;
 
         private void FlushBatch(BatchBuffer batch, IUniNetSystemChannel channel, bool unreliable)
         {
@@ -1977,6 +2158,12 @@ namespace UniNet.Core.Hosting
                 for (int i = 0; i < words; i++)
                     if (RelevantOverflow[i] != 0) return true;
                 return false;
+            }
+
+            public void AddRecipient(int index)
+            {
+                if (index < 64) RelevantMask |= 1ul << index;
+                else RelevantOverflow[index / 64 - 1] |= 1ul << (index % 64);
             }
 
             public void RemoveRecipient(long connId)

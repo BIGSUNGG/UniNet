@@ -407,5 +407,138 @@ namespace UniNet.Tests
             Assert.AreEqual(42u, GetU(a, "_clientSeq"), "다른 객체 소유권 변화 — 무간섭");
             Assert.AreEqual(0u, GetU(b, "_clientSeq"), "본인 객체 획득 — 재바인딩");
         }
+
+        // ── FR-05 (v0.23.0) — 위치 일치 ack의 상태 전용 리컨사일 ─────────────
+        // Positions matching within RollbackThresholdSq used to return early (DiscardThrough only), leaving diverged
+        // game state — a dash cooldown the server never adopted — stuck until the next POSITION divergence
+        // (reproduction: client cooldown >0 vs server 0.000 at identical positions). Engine semantics are in
+        // MoveSimulationTests (ReconcileState); these drive the REAL component ack path.
+
+        /// <summary>FR-05 input — horizontal axis plus a dash trigger (Dx = 0 keeps the position identical while the cooldown state diverges).</summary>
+        private struct DIn { public sbyte Dx; public bool Dash; }
+
+        /// <summary>FR-05 state — the dash cooldown: diverges without any positional footprint, exactly the FR-05 class.</summary>
+        private struct DSt { public float DashCd; }
+
+        private static int _dashStepCalls;   // cost probe — counts step-rule invocations (prediction and replay both go through here)
+
+        private static void DashStep(ref DSt st, ref float x, ref float y, ref float z, in DIn i, float dt)
+        {
+            _dashStepCalls++;
+            if (i.Dash && st.DashCd <= 0f)
+                st.DashCd = 1f;   // fresh cooldown — a dash burst only affects position when Dx != 0
+            st.DashCd = Math.Max(0f, st.DashCd - dt);
+            x += i.Dx * (st.DashCd > 0.8f ? 20f : 5f) * dt;
+        }
+
+        private static void DashWriteInput(ref MessageProtocol.Serialize.MessageBufferWriter w, in DIn i)
+        {
+            w.WriteSByte(i.Dx);
+            w.WriteBoolean(i.Dash);
+        }
+
+        private static DIn DashReadInput(ref MessageProtocol.Serialize.MessageBufferReader r)
+            => new DIn { Dx = r.ReadSByte(), Dash = r.ReadBoolean() };
+
+        private static void DashWriteState(ref MessageProtocol.Serialize.MessageBufferWriter w, in DSt s)
+            => w.WriteSingle(s.DashCd);
+
+        private static DSt DashReadState(ref MessageProtocol.Serialize.MessageBufferReader r)
+            => new DSt { DashCd = r.ReadSingle() };
+
+        private static NetworkTransform NewDashOwner(out MoveSimulation<DIn, DSt> sim)
+        {
+            var go = new GameObject("nt-state-reconcile");
+            var nt = go.AddComponent<NetworkTransform>();
+            sim = new MoveSimulation<DIn, DSt>(DashStep, DashWriteInput, DashReadInput, DashWriteState, DashReadState, StepHz);
+            nt.Simulation = sim;
+
+            var client = new NetworkClient();
+            client.SetLocalConnId(1);
+            client.ApplyOwner(nt.NetId, 1);   // owner = connId 1 = LocalConnId → IsOwner = true
+            UniNetEnvironment.SetClient(client);
+            typeof(NetworkBehaviour).GetMethod("MarkClientRegistered", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(nt, null);
+            return nt;
+        }
+
+        private static void InvokeAck(NetworkTransform nt)
+            => typeof(NetworkTransform).GetMethod("OnAckSeqChanged", BindingFlags.NonPublic | BindingFlags.Instance)
+                .Invoke(nt, new object[] { 0u });
+
+        private static float ReadDashCd(INetworkMoveSimulation sim)
+        {
+            var r = new MessageProtocol.Serialize.MessageBufferReader(sim.WriteState());
+            return DashReadState(ref r).DashCd;
+        }
+
+        /// <summary>Owner predicted seq 1..3 with a dash at seq 1 (Dx = 0) — cooldown > 0, position identical to the server's. The server never adopted the dash: its echo carries cooldown 0.</summary>
+        private static void PredictDivergedOwnerState(NetworkTransform nt, MoveSimulation<DIn, DSt> sim)
+        {
+            var isim = (INetworkMoveSimulation)sim;
+            sim.SetInput(new DIn { Dash = true });
+            float px = 0f, py = 0f, pz = 0f;
+            isim.PredictStep(1, ref px, ref py, ref pz);
+            sim.SetInput(default);
+            isim.PredictStep(2, ref px, ref py, ref pz);
+            isim.PredictStep(3, ref px, ref py, ref pz);
+            Assert.Greater(ReadDashCd(isim), 0.9f, "클라 예측 쿨다운 진행 중 — 위치와 무관하게 상태가 어긋난 전제 (FR-05 재현)");
+            SetField(nt, "_predX", px);
+            SetField(nt, "_predY", py);
+            SetField(nt, "_predZ", pz);   // all zero — Dx never moved
+        }
+
+        [Test]
+        public void 권위_TState가_다르면_위치가_같아도_ack가_상태를_보정한다()
+        {
+            var nt = NewDashOwner(out var sim);
+            var isim = (INetworkMoveSimulation)sim;
+            PredictDivergedOwnerState(nt, sim);
+
+            // server: never adopted the dash — same position (0,0,0), authoritative cooldown 0
+            var authority = new MoveSimulation<DIn, DSt>(DashStep, DashWriteInput, DashReadInput, DashWriteState, DashReadState, StepHz);
+            byte[] serverState = ((INetworkMoveSimulation)authority).WriteState();   // default state — cooldown 0
+            SetField(nt, "_ackState", new UniNetBlobEnvelope { Data = serverState });
+            SetField(nt, "_px", 0f);
+            SetField(nt, "_py", 0f);
+            SetField(nt, "_pz", 0f);
+            SetU(nt, "_ackSeq", 3u);
+
+            InvokeAck(nt);
+
+            Assert.AreEqual(0f, ReadDashCd(isim), 1e-5f, "위치가 같아도 권위 TState(쿨다운 0)로 수렴 — FR-05 반례 수정");
+            Assert.AreEqual(0f, GetField(nt, "_predX"), 1e-6f, "위치 불변 — 보정은 상태 전용");
+            Assert.AreEqual(0f, GetField(nt, "_prevPredX"), 1e-6f, "렌더 기준점 동기 재설정 — 재생 후 이전 좌표에서 lerp하지 않는다");
+            Assert.AreEqual(0, isim.PendingCount, "승인 입력 폐기");
+        }
+
+        [Test]
+        public void 상태가_같으면_ack는_재시뮬_비용을_내지_않는다()
+        {
+            var nt = NewDashOwner(out var sim);
+            var isim = (INetworkMoveSimulation)sim;
+            PredictDivergedOwnerState(nt, sim);
+
+            // an agreeing echo — the state predicted for seq 3 itself (nothing pending beyond it)
+            byte[] echo = isim.WriteState();
+            SetField(nt, "_ackState", new UniNetBlobEnvelope { Data = echo });
+            SetField(nt, "_px", 0f);
+            SetField(nt, "_py", 0f);
+            SetField(nt, "_pz", 0f);
+            SetU(nt, "_ackSeq", 3u);
+
+            _dashStepCalls = 0;
+            float cdBefore = ReadDashCd(isim);
+            float predXBefore = (float)GetField(nt, "_predX");
+            float prevPredYBefore = (float)GetField(nt, "_prevPredY");
+            float prevPredZBefore = (float)GetField(nt, "_prevPredZ");
+            InvokeAck(nt);
+
+            Assert.AreEqual(0, isim.PendingCount, "ack 경로는 실행됨 — 승인 히스토리 폐기");
+            Assert.AreEqual(0, _dashStepCalls, "스텝 룰 재호출 0회 — 일치 상태의 ack는 비교만 하고 재생하지 않는다 (비용 최소화)");
+            Assert.AreEqual(cdBefore, ReadDashCd(isim), 1e-6f, "상태 무변경 — 예측 상태 그대로");
+            Assert.AreEqual(predXBefore, (float)GetField(nt, "_predX"), 1e-6f, "위치 무변경");
+            Assert.AreEqual(prevPredYBefore, (float)GetField(nt, "_prevPredY"), 0f, "렌더 기준점 Y 무변경 — 일치 ack는 어떤 축의 기준점도 덮지 않는다 (dangling-if 회귀)");
+            Assert.AreEqual(prevPredZBefore, (float)GetField(nt, "_prevPredZ"), 0f, "렌더 기준점 Z 무변경");
+        }
     }
 }

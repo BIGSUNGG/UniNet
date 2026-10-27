@@ -86,13 +86,15 @@ Rules that follow from the design:
 | Attribute | Direction | Notes |
 | --- | --- | --- |
 | `[ServerRpc]` | client → server | **Owner-only by default**; runs on the server. |
-| `[ClientRpc]` | server → specific clients | A client-side call is ignored (UE parity). |
+| `[ClientRpc]` | server → specific clients | A client-side call is ignored (UE parity). Sent only to eligible connections (see the send gate below). |
 | `[MulticastRpc]` | server → everyone (+ server) | Called on a client it executes locally without propagating. |
+
+- **Game-RPC send gate (server → client)** — broadcast `[ClientRpc]`, the `To`/`ToOwner` companions, and `[MulticastRpc]` network sends go only to connections that are **approved and not scene-held** (`!Disconnected && VersionApproved && !AwaitingSceneReady`). Calls made before approval or during a scene transition are **dropped immediately — no queue, no replay**; the multicast local execution and the system handshake (Welcome etc.) are unaffected. A connection that was approved but never changed scenes sends normally.
 
 - **Delivery modes** — `[ClientRpc(Delivery.Unreliable)]` / `[MulticastRpc(Delivery.Unreliable)]` for loss-tolerant data (movement, FX). Default is `Delivery.ReliableOrdered`. The bundled RUDP transport provides five delivery modes underneath.
 - **Owner enforcement (security default)** — the server rejects `ServerRpc` calls from connections that do not own the object (spoofed `netId` payloads cannot invoke another object's RPC). Opt out for cross-client reporting with `[ServerRpc(RequireOwnership = false)]`. Rejections are logged with a rate-limited warning (see Exception & Error).
 - **Validation hooks (opt-in)** — `[ServerRpc(Validate = true)]` awaits `{Name}_Validate` (same parameters, returns `Task<bool>`) after the ownership check; returning `false` skips the implementation. There is **no automatic detection**: a `_Validate` method without the flag never runs (warning UNINET012).
-- **Message parameters** — RPC parameters can be primitives, `string`, or `[Message]` types (MessageProtocol). `[Message]` types support **official polymorphism**: declare the base type, send a subclass, cast on receipt.
+- **Message parameters** — RPC parameters can be primitives, `string`, or `[Message]` types (MessageProtocol). `[Message]` types support **official polymorphism**: declare the base type, send a subclass, cast on receipt. One-dimensional collections (`T[]` / `List<T>` with a supported element type) are also accepted as RPC parameters: null flag + `UInt16` element count + elements in order. **Length limit**: at most **65,535 elements** — anything larger throws `ArgumentException` before serialization (no silent truncation). A malformed payload (truncated collection, unconsumed trailing bytes) is dropped at the generated decode boundary and never invokes your implementation.
 
 ```csharp
 [Message] public partial class DamageMsg { public int Amount { get; set; } }
@@ -109,7 +111,7 @@ private void RpcApplyDamage_Implementation(DamageMsg damage)
 }
 ```
 
-Every concrete type sent must carry `[Message]` (non-ID message kinds are unsupported). Collections cannot be RPC parameters directly — wrap them in a `[Message]` type.
+Every concrete type sent must carry `[Message]` (non-ID message kinds are unsupported). Nested collections (`List<List<int>>`) are rejected with UNINET002 — wrap inner collections in a `[Message]` type.
 
 ### Replicated state
 
@@ -154,6 +156,7 @@ var token = NetworkInstantiate(_avatarPrefab, ownerConnId: connId);
 - **Ownership** — `NetworkInstantiate(original, ownerConnId)` spawns pre-owned; `ReassignOwnership` keeps live owners intact and reassigns only orphans, so reconnections and restarts cannot steal ownership.
 - **Death gate clears pending prediction (0.13.0, ADR-0049)** — when `NetworkTransform.SimulationEnabled` turns off (death/disable), the engine calls `DropPendingHistory()` on the injected simulation once: unsent inputs and predicted history are cleared while the authoritative `TState` and latest input survive (the `MoveSimulation` implementation; the interface default falls back to `OnTeleport()`, which clears everything). On re-enable the component re-anchors to the server position — a remote respawn never renders the pre-death trajectory or replays dead-era inputs. Implement custom `INetworkMoveSimulation`s accordingly.
 - **Opt-in input expiry (0.14.0, ADR-0050)** — by default `MoveSimulation` holds the last input forever while the input queue is empty (hold-last). Construct with `inputExpirySteps: N` (0 = disabled) to make the server seal the input to `default(TInput)` after N starved steps (swapped once, idempotent) until fresh input arrives — stops runaway movement for stalled connections and grace-session owners. The timer resets on `OnTeleport` / `ResetOwnershipStream` / `DropPendingHistory` and on every `SetInput` refresh (a live host feed never expires). Choose `TInput` so that `default` is a safe posture — the framework applies it verbatim (determinism contract).
+- **State-only ack reconciliation (v0.23.0, FR-05)** — an ack whose predicted position already matches within `RollbackThresholdSq` no longer returns early: the engine calls `ReconcileState(ackSeq, serverState, serverPos, ref x, ref y, ref z)` on the injected simulation, which byte-compares the state snapshot recorded for that sequence in the prediction history against the server's echoed state and, only on divergence, restores the authoritative `TState` and re-simulates the unacknowledged inputs (identical replay semantics to `Rollback`, returns `true`; the caller then resets its render baseline). An agreeing ack costs one comparison — no re-simulation. **Caveat**: the comparison is an exact byte match on `WriteState` output, so a lossy state codec (e.g. quantized floats) can encode distinct states identically — divergence below wire precision is skipped (the same wire-precision limit the rollback restore already has). The interface default is a no-op returning `false`, so custom `INetworkMoveSimulation` implementations keep the legacy discard-only behavior unless they implement it. Wire fields, the death gate, the ownership epoch, and the teleport re-anchor are unchanged.
 
 - **Ownership-change event (0.5.0)** — `NetworkClient.OwnershipChanged(netId, prev, next)` fires only when the owner value actually changes (first assignment is a baseline — silent; repeated same-owner notices are silent). It fires on the **DRPC dispatch thread**: marshal with `UniNetEnvironment.QueueOnMain` before touching Unity state, and null-guard your local netId lookup (notices arrive for objects this client has not registered):
 
@@ -228,6 +231,10 @@ await UniNetManager.ClientAsync(host, port, options);        // client declares 
 var st = server.TrafficStats;                                 // BytesSent/BytesReceived/PacketsSent/PacketsReceived (Interlocked)
 double rtt = UniNetEnvironment.Client.RoundTripTimeMs;        // client-measured EMA (built-in 1 Hz ping probe, -1 until the first round trip)
 int deferred = server.DeferredSendCount;                      // budget-deferred deltas this tick
+long coalesced = server.DeferredCoalescedCount;              // FR-06 — deferrals merged into a retained latest-full-state entry (queue bounded per (NetId,SubId))
+long forced = server.DeferredForcedSendCount;                // FR-06 — entries force-sent because the deferred queue hit the cap (explicit overflow, never a silent drop)
+long mqDropped = UniNetEnvironment.DroppedMainActions;       // FR-06 — main-queue actions dropped past UniNetEnvironment.MainQueueCapacity (default 65536; each drop raises LogFault)
+long rxEntries = UniNetEnvironment.DroppedReplicateEntries;  // FR-06 — receive-side entries skipped at apply time (no live object / unregistered methodId)
 foreach (var conn in server.SnapshotConnections())
     /* conn.RttMs */;                                         // client-reported per-connection RTT (observational — do not use for authoritative decisions)
 
@@ -347,9 +354,9 @@ Tuning notes:
 - **Scheduling order** — candidates and deferred sends are merged, then sent in `priority × (1 + waitSeconds / 0.1)` order (UE `GetNetPriority` formula). Starved objects eventually go through — you do not need custom fairness logic.
 - **Update frequency default** — objects replicate at 30 Hz out of the box (misses coalesce to the latest value); `NetworkUpdateFrequencyHz = 0` opts back in to every-tick sends. Immediate mode (`TickReplication(objects)` without a clock) ignores the rate, preserving the P2-compatible contract.
 - **Budgets** — a type over its channel budget is deferred, not dropped; a single delta larger than the whole budget forces through so one huge object cannot stall.
-- **Batching & delivery (v0.3.0)** — a tick sends at most two replication messages per connection (one reliable + one unreliable batch, wire 13), regardless of how many objects changed. `NetworkReplicationDelivery = Delivery.Unreliable` rides the lossy-but-ordered stream (no ACKs); if the final delta of a quiet stretch is lost, the server re-sends the object's full state once on the reliable batch ~0.25 s later, so a stopped object never strands. `NetworkTransform` defaults to Unreliable; dormancy flushes are always forced reliable.
+- **Batching & delivery (v0.3.0)** — a tick sends at most two replication messages per connection (one reliable + one unreliable batch, wire 13), regardless of how many objects changed. `NetworkReplicationDelivery = Delivery.Unreliable` rides the lossy-but-ordered stream (no ACKs); if the final delta of a quiet stretch is lost, the server re-sends the object's full state once on the reliable batch ~0.25 s later, so a stopped object never strands. While an Unreliable sub keeps producing deltas, the server also re-sends its full state on the reliable batch every ~1 s (periodic baseline, v0.23.0) - any dropped delta converges to the latest authoritative state within one interval, and collections recover by wholesale full replacement (never partial op replay). `NetworkTransform` defaults to Unreliable; dormancy flushes are always forced reliable.
 - **Dormancy** skips comparison (cheapest idle state); flush is a single batched send. Use it for dead/idle objects, not for pausing gameplay state you expect to change soon.
-- **Relevancy transitions** — leaving relevancy stops deltas but does **not** despawn on the client (it keeps the last state); re-entering restores a baseline via full state. Design your game around frozen-at-last-state off-screen objects.
+- **Relevancy transitions** — leaving relevancy stops deltas but does **not** despawn on the client (it keeps the last state); re-entering restores a baseline via full state - for dynamic objects this re-sends the spawn-form baseline and the client **updates the existing instance in place** (transform + full state, no re-instantiation, v0.23.0), so values changed server-side while off-screen are refreshed on re-entry. Design your game around frozen-at-last-state off-screen objects.
 - **Grid visibility** spatially pre-filters objects with a cull distance set (quantization error ≤ `cellSize`), ANDed with their own `NetworkCullDistance`. Objects with **no cull distance stay always relevant in every mode** — the grid never culls them. For large worlds with many distance-culled objects, this is the scalable path (RepGraph-style).
 
 ### Custom field serializers

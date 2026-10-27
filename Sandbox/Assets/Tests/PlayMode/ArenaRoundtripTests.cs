@@ -139,7 +139,9 @@ namespace UniNet.Tests
             alpha.SubmitMoveInput(new ArenaMovement.MoveInput { Jump = true });
             yield return WaitUntil(() => alpha.transform.position.y > ArenaConfig.GroundY + 0.3f, 5, "점프 상승 (속도 상태)");
             alpha.SubmitMoveInput(default);
-            yield return WaitForSim(() => alpha.transform.position.y <= ArenaConfig.GroundY + 0.01f, 3f, 1000, "점프 착지 (궤적 완주)");
+            // Frame cap raised to the file-wide 6000 convention: at batchmode headless FPS the old 1000-frame guard
+            // (~0.7s of sim) fired before the physically accurate 3s sim cap could (pre-existing failure, fixed with v0.23.0).
+            yield return WaitForSim(() => alpha.transform.position.y <= ArenaConfig.GroundY + 0.01f, 3f, 6000, "점프 착지 (궤적 완주)");
 
             // Dash — a burst window at 4x speed, then a cooldown that blocks an immediate re-dash
             float x0 = alpha.transform.position.x;
@@ -163,7 +165,7 @@ namespace UniNet.Tests
             // Teleport — server SetNetworkPosition resets state and re-anchors the prediction
             alpha.TryTeleport();
             yield return WaitUntil(() => NearAnySpawn(alpha.transform.position), 5, "텔레포트 스폰 이동");
-            yield return WaitForSim(() => alpha.transform.position.y <= ArenaConfig.GroundY + 0.01f, 3f, 1000, "텔레포트 후 상태 리셋 (지면)");
+            yield return WaitForSim(() => alpha.transform.position.y <= ArenaConfig.GroundY + 0.01f, 3f, 6000, "텔레포트 후 상태 리셋 (지면)");
         }
 
         private static bool NearAnySpawn(Vector3 pos)

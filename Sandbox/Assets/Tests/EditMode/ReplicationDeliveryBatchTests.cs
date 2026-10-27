@@ -1,8 +1,11 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using DRPC;
 using UniNet.Core;
 using UniNet.Core.Hosting;
+using UniNet.Unity;
+using UnityEngine;
 
 namespace UniNet.Tests
 {
@@ -145,6 +148,151 @@ namespace UniNet.Tests
             finally
             {
                 UniNetEnvironment.SetServer(null);
+            }
+        }
+
+        // ── FR-02 — in-motion loss convergence ──
+        // A delta dropped from the unreliable (Sequenced) stream never re-appears in later deltas (the snapshot advanced),
+        // so while OTHER fields keep changing the periodic full-state baseline on the reliable batch is what converges.
+
+        private static (NetworkServer server, RecordingChannel ch, T obj) SetupUnreliable<T>(string name) where T : NetworkBehaviour
+        {
+            var server = new NetworkServer();
+            var obj = ReplicationTestSupport.RegisterScene<T>(server, name);
+            obj.NetworkReplicationDelivery = Delivery.Unreliable;
+            var ch = new RecordingChannel();
+            server.AttachConnection(ch);
+            server.OnClientVersionDeclared(ch.UniNetConnId, server.ExpectedProtocolVersion ?? "");   // CON-001 — real clients declare automatically; fake channels must too
+            UniNetEnvironment.PumpMain();
+            ch.Clear();
+            return (server, ch, obj);
+        }
+
+        /// <summary>Applies every batch recorded since the cursor to a remote client instance — dropSequenced leaves the Sequenced batch unapplied (loss simulation).</summary>
+        private static void Drain(RecordingChannel ch, UniNetReplicationHandler handler, object remote, ref int consumed, bool dropSequenced)
+        {
+            for (; consumed < ch.Batches.Count; consumed++)
+            {
+                var (mode, entries) = ch.Batches[consumed];
+                if (dropSequenced && mode == RpcDeliveryMode.Sequenced) continue;   // loss simulation — this batch never arrives
+                foreach (var (_, _, _, payload) in entries)
+                {
+                    if (payload.Length == 0) continue;
+                    var r = new MessageProtocol.Serialize.MessageBufferReader(payload);
+                    handler.ApplyDelta(remote, ref r);
+                }
+            }
+        }
+
+        [Test]
+        public void 유실된_델타는_다른_필드가_계속_변해도_주기_기준선으로_수렴한다()
+        {
+            var (server, ch, duo) = SetupUnreliable<UnreliableDuo>("fr02-motion");
+            var clientGo = new GameObject("fr02-remote");
+            var remote = clientGo.AddComponent<UnreliableDuo>();
+            var handler = UniNetTypeRegistry.Find(typeof(UnreliableDuo));
+            handler.InitClientSnapshot(remote);
+            try
+            {
+                int consumed = 0;
+                duo.FieldA = 111;   // A changes ONCE — this delta will be lost
+                server.TickReplication(server.SnapshotObjects(), 0.0);
+                Drain(ch, handler, remote, ref consumed, dropSequenced: true);   // the Sequenced batch carrying A's delta is dropped
+
+                for (int i = 1; i <= 30; i++)   // B keeps changing at 60 Hz — half a baseline interval
+                {
+                    duo.FieldB = i;
+                    server.TickReplication(server.SnapshotObjects(), i / 60.0);
+                    Drain(ch, handler, remote, ref consumed, dropSequenced: false);
+                }
+                Assert.AreEqual(0, remote.FieldA, "수렴 전 — 유실된 A는 이후 델타에 다시 나타나지 않는다 (스냅샷 전진)");
+                Assert.AreEqual(30, remote.FieldB, "B는 계속 수신된다");
+
+                for (int i = 31; i <= 90; i++)   // past the baseline interval — a reliable full-state baseline must have arrived
+                {
+                    duo.FieldB = i;
+                    server.TickReplication(server.SnapshotObjects(), i / 60.0);
+                    Drain(ch, handler, remote, ref consumed, dropSequenced: false);
+                }
+                Assert.AreEqual(111, remote.FieldA, "FR-02 — 유실된 A가 주기 기준선(신뢰 전체 상태)으로 수렴한다");
+                Assert.AreEqual(90, remote.FieldB, "B는 최신 권위 값");
+                Assert.GreaterOrEqual(ch.Batches.Count(b => b.mode == RpcDeliveryMode.ReliableOrdered), 1,
+                    "수렴을 이끈 것은 신뢰 배치의 전체 상태 기준선이다");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(clientGo);
+                UnityEngine.Object.DestroyImmediate(duo.gameObject);
+            }
+        }
+
+        [Test]
+        public void 조용한_비신뢰_서브는_기준선_후_주기_재전송을_하지_않는다()
+        {
+            var (server, ch, duo) = SetupUnreliable<UnreliableDuo>("fr02-idle");
+            var clientGo = new GameObject("fr02-idle-remote");
+            var remote = clientGo.AddComponent<UnreliableDuo>();
+            var handler = UniNetTypeRegistry.Find(typeof(UnreliableDuo));
+            handler.InitClientSnapshot(remote);
+            try
+            {
+                int consumed = 0;
+                duo.FieldA = 5;   // one change — its Sequenced delta (applied) and the quiescence full-state resend (reliable) are all this sub should ever send
+                server.TickReplication(server.SnapshotObjects(), 0.0);
+                Drain(ch, handler, remote, ref consumed, dropSequenced: false);
+
+                for (double t = 0.3; t <= 3.5; t += 0.1)   // quiet past the 0.25s quiescence delay and several 1.0s baseline intervals
+                    server.TickReplication(server.SnapshotObjects(), t);
+                Drain(ch, handler, remote, ref consumed, dropSequenced: false);
+
+                Assert.AreEqual(5, remote.FieldA, "정지 재전송으로 수렴 (양성 유지)");
+                Assert.AreEqual(1, ch.Batches.Count(b => b.mode == RpcDeliveryMode.ReliableOrdered),
+                    "FR-02 게이트 — 조용한 서브는 퀴에센스 재전송 1회뿐, 주기 기준선은 무한 재전송하지 않는다");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(clientGo);
+                UnityEngine.Object.DestroyImmediate(duo.gameObject);
+            }
+        }
+
+        [Test]
+        public void FastArray_오파_델타_유실은_최신_전체_치환으로_수렴한다()
+        {
+            var (server, ch, tank) = SetupUnreliable<FastArrayTank>("fr02-fa");
+            var clientGo = new GameObject("fr02-fa-remote");
+            var remote = clientGo.AddComponent<FastArrayTank>();
+            var handler = UniNetTypeRegistry.Find(typeof(FastArrayTank));
+            handler.InitClientSnapshot(remote);
+            try
+            {
+                int consumed = 0;
+                tank.Scores.AddRange(new[] { 1, 2, 3 });   // element op delta (tag-0) — will be lost
+                server.TickReplication(server.SnapshotObjects(), 0.0);
+                Drain(ch, handler, remote, ref consumed, dropSequenced: true);
+
+                for (int i = 1; i <= 30; i++)
+                {
+                    tank.Names = new[] { "n" + i };   // another field keeps changing (60 Hz)
+                    server.TickReplication(server.SnapshotObjects(), i / 60.0);
+                    Drain(ch, handler, remote, ref consumed, dropSequenced: false);
+                }
+                Assert.IsEmpty(remote.Scores, "수렴 전 — 유실된 op 델타는 자체 수렴이 불가능하다 (인덱스 기반)");
+                Assert.AreEqual("n30", remote.Names[0], "Names 는 계속 수신");
+
+                for (int i = 31; i <= 90; i++)
+                {
+                    tank.Names = new[] { "n" + i };
+                    server.TickReplication(server.SnapshotObjects(), i / 60.0);
+                    Drain(ch, handler, remote, ref consumed, dropSequenced: false);
+                }
+                CollectionAssert.AreEqual(new[] { 1, 2, 3 }, remote.Scores, "FR-02 — 유실 후 최신 전체(tag-1) 치환으로 수렴한다 (op 리플레이 아님)");
+                Assert.AreEqual("n90", remote.Names[0], "Names 최신 값");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(clientGo);
+                UnityEngine.Object.DestroyImmediate(tank.gameObject);
             }
         }
     }

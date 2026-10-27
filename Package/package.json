@@ -1,17 +1,17 @@
 {
-  "name": "com.ds.uninet",
-  "displayName": "UniNet",
-  "version": "0.22.0",
-  "unity": "6000.0",
-  "description": "Server-authoritative networking framework for Unity — MonoBehaviour RPC, automatic variable replication, and Unreal-Engine-grade features: relevancy, priority, dormancy, prediction and lag-compensation hooks.",
-  "author": {
-    "name": "DS"
-  },
-  "samples": [
-    {
-      "displayName": "Basics",
-      "description": "Minimal working example: RPC calls and variable replication",
-      "path": "Samples~/Basics"
-    }
-  ]
+    "name": "com.ds.uninet",
+    "displayName": "UniNet",
+    "version": "0.23.0",
+    "unity": "6000.0",
+    "description": "Server-authoritative networking framework for Unity — MonoBehaviour RPC, automatic variable replication, and Unreal-Engine-grade features: relevancy, priority, dormancy, prediction and lag-compensation hooks.",
+    "author": {
+        "name": "DS"
+    },
+    "samples": [
+        {
+            "displayName": "Basics",
+            "description": "Minimal working example: RPC calls and variable replication",
+            "path": "Samples~/Basics"
+        }
+    ]
 }

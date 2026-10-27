@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- FR-07 — headless generator regression host (no test framework; plain PASS/FAIL and exit code).
+       Runs on the installed .NET SDK; the generator under test is always provided as a DLL argument
+       so the SAME host validates both the source-built analyzer and the packaged one:
+       dotnet run with project Tests/UniNet.CodeGenerator.Tests in Release, passing the
+       UniNet.CodeGenerator.dll path as the only argument. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same Roslyn the generator targets (Unity 6.0 LTS / Roslyn 4.3) — the loaded generator binds to the host's copy. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The host itself builds reference wire bytes (FR-03 exact-payload assertions) — the real checked-in DLL. -->
+    <Reference Include="MessageProtocol.Core">
+      <HintPath>..\..\Package\Runtime\Dependencies\MessageProtocol.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

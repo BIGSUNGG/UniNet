@@ -35,6 +35,20 @@ namespace UniNet.Core.Hosting
         /// <summary>Rolls back to the server's authoritative (position, state) at ackSeq and re-simulates every unacknowledged input. When ackSeq is no longer in the ring (extreme latency / cleared history), performs a hard snap instead.</summary>
         void Rollback(uint ackSeq, byte[] serverState, float serverX, float serverY, float serverZ, ref float x, ref float y, ref float z);
 
+        /// <summary>
+        /// State-only reconciliation (v0.23.0) — called by the owner's ack path when the position predicted for ackSeq
+        /// already matches the server's within the rollback threshold. Compares the state predicted for ackSeq against
+        /// the server's echoed state and, only on divergence, restores the authoritative state and re-simulates the
+        /// unacknowledged inputs with exactly <see cref="Rollback"/>'s replay semantics (oldest first, history
+        /// snapshots refreshed), returning true. When the states already agree the call must stay cheap and return
+        /// false without stepping. Acknowledged history is dropped only on the acting path (it reuses Rollback's
+        /// compaction); the no-op path leaves it to the caller — pairing with <see cref="DiscardThrough"/> is
+        /// idempotent either way. The default is a no-op returning false (legacy behavior: custom engines keep
+        /// discarding acknowledged inputs only); <see cref="MoveSimulation{TInput,TState}"/> implements the exact
+        /// snapshot comparison.
+        /// </summary>
+        bool ReconcileState(uint ackSeq, byte[] serverState, float serverX, float serverY, float serverZ, ref float x, ref float y, ref float z) => false;
+
         // ── server (authority) ────────────────────────────────────
 
         /// <summary>Adopts a received input (order-checked) into the server queue. Malformed payloads are dropped, never thrown.</summary>
