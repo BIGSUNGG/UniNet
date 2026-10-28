@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨
 - **최초 작성**: 2026-09-21
-- **마지막 갱신**: 2026-10-27 (AUDIT-F12 — 포화 시 정리 보존·입장 역압)
+- **마지막 갱신**: 2026-10-28 (AUDIT-F06/F12/F17 — 클라 미러 정리·포화 정리 보존·자동 소유자 승인 경계)
 
 ## 개요
 
@@ -60,6 +60,10 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 ## 연결 승인 수명주기 (0.6.0 — ADR-0043)
 
 버전 검사가 활성(기본 — `ProtocolVersion` 비었지 않음)인 한, 와이어 7 선언이 수용되기 전까지 연결은 **Welcome만 수신**한다. 미승인 연결은 소유권 재배정(후보·수신)·캐치업·복제 틱·스폰/파괴 통보·LoadScene 브로드캐스트·씬 준비 게이트·`ClientConnected`에서 제외되고, 생성 허브의 게임 ServerRpc는 `IsVersionApproved` 게이트에서 조용히 기각된다(`UnapprovedServerRpcDrops` 카운터). 시스템 와이어 7/8/10/12는 게이트 밖 — 핸드셰이크 생존 필수. 승인 시 보류 작업이 기존 순서(대기 씬→재배정→캐치업→`ClientConnected`)로 정확히 1회 실행되고 재선언은 멱등이다. 미승인 연결의 해제는 `ClientDisconnected`·유예 세션 없이 조용히 정리된다. 미선언 연결은 `VersionDeclareTimeoutMs`(기본 10000, 0=스윕 비활성) 후 기존 킥 경로로 `VersionMismatch` 퇴장된다. `ProtocolVersion`을 빈 문자열로 두면 즉시 동기 승인 — 기존 동작 완전 호환. 실제 클라이언트는 생성 허브가 자동 선언하므로 무변경.
+
+**동적 자동 소유권도 동일 경계(F17)**: `RegisterDynamicObject`/명시 owner 없는 `NetworkInstantiate`는 `CanReceiveGameData` 참가자만 자동 라운드로빈 후보로 삼는다. 미승인·해제·씬 유보 연결을 건너뛰며, 적격자 부재는 owner0(이후 정상 재배정)이다. 신뢰된 서버의 명시 owner 지정은 불변이다. `ArenaBootstrap.ManagePlayers`의 인구 수는 승인 여부로 계산하되 승인된 씬 유보 참가자의 기존 아바타는 유지한다(인구 유지와 신규 자동 소유자 선택은 서로 다른 계약).
+
+**클라 정리 경계(F06/F08)**: `ClientAsync`/`ReconnectAsync`의 클라 세대 교체와 `ClientStop`은 클라 전용 동적 미러를 정리한다. 호스트의 살아있는 서버 권위 원본은 netId가 아닌 컴포넌트/GameObject 정체성으로 보존되며 서버 정지 때 제거된다. 숨은 드라이버의 sceneLoaded 구독도 실제 드라이버 파괴와 대칭으로 해제된다. [[monobehaviour-rpc-replicate]]의 수명주기 절 참조.
 
 ## 씬 전환 잔여 (0.8.0 — ADR-0045)
 
@@ -139,6 +143,8 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - **종료·실패·재시작 대칭 정리 (LIF-001/ADR-0052)** — `ServerStopAsync`도 동기 정지와 동일하게 동적 스폰을 스윕하고(메인 스레드 계약), `ServerAsync` listen 실패는 환경 탈착 후 재던진다. 등록 추적은 세대 스탬프(`NetworkServer.Generation`/`NetworkClient.Generation`)로 교체 — 새 서버/클라 인스턴스마다 씬 객체가 자동 재등록되고 같은 세대 재호출은 멱등이다. 세대 값은 와이어 미전송(0.19.0).
 
 ## 변경 이력
+
+- 2026-10-28 — AUDIT-F06/F08/F17: 클라 세대/역할별 동적 미러 정리·실제 드라이버 구독 수명과 동적 자동 소유자의 승인/씬 유보 경계 동기화. 집중 EditMode 20/20·PlayMode 3/3(전수 결과와 구분).
 
 - 2026-10-27 — AUDIT-F12: 포화 메인 큐에서 detach cleanup 유실(dead-owner·플레이어 매핑·콜백 누락) 수정 — `TryQueueOnMain` 명시적 수락/거부·수락 연결 1회성 cleanup 예약 FIFO(포화 시 신규 입장 실제 거부로 유계)·승인 경로 예약 실패 가시화 문서화·회귀 추가
 - 2026-10-21 — ADR-0047 연결 승인 콜백: 와이어 7 페이로드 확장 `[version][credential]`(조건부 읽기로 구 클라 호환)·`UniNetEndpointOptions.ConnectionApprover/ConnectionCredential`·`UniNetDisconnectReason.ApprovalRejected = 6`·콜백 대기 중 CON-001 유예 상태 재사용·`VersionDeclareTimeoutMs` 총예산 재사용. 0.10.0 (CON-002 CLOSED — EditMode 221/221·PlayMode 35/35·실RUDP 승인/거부/초과페이로드 PASS·리뷰 r11→r12 CLEAN)

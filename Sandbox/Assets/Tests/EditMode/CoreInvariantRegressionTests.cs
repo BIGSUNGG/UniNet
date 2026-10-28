@@ -145,6 +145,36 @@ namespace UniNet.Tests
         public void 소유자뷰만_장애인_부분실패는_새_owner_델타를_버리지_않는다(int peers, Delivery delivery)
             => RunFaultedOverload(2, "owner-only-full-fault", peers, delivery);
 
+        [Test]
+        public void 자동_동적소유권은_승인_준비된_수신자만_라운드로빈으로_선택한다()
+        {
+            var server = new NetworkServer();
+            var silent = new ProbeChannel();
+            server.AttachConnection(silent);
+            UniNetEnvironment.PumpMain();
+            ulong unowned = server.RegisterDynamicObject(new object[] { new FaultyThing() });
+            Assert.AreEqual(0, server.GetOwner(unowned), "미승인 연결만 있으면 자동 소유자는 0이다");
+            var a = AddPeer(server);
+            var b = AddPeer(server);
+            Assert.IsTrue(server.IsVersionApproved(a.UniNetConnId));
+            var owners = Enumerable.Range(0, 4)
+                .Select(_ => server.GetOwner(server.RegisterDynamicObject(new object[] { new FaultyThing() }))).ToArray();
+            Assert.IsTrue(owners.All(id => id == a.UniNetConnId || id == b.UniNetConnId));
+            Assert.AreNotEqual(owners[0], owners[1], "두 승인 수신자 사이에서 순환한다");
+            Assert.AreEqual(owners[0], owners[2]);
+            Assert.AreEqual(owners[1], owners[3]);
+
+            server.LoadScene("f17-gate");
+            ulong held = server.RegisterDynamicObject(new object[] { new FaultyThing() });
+            Assert.AreEqual(0, server.GetOwner(held), "씬 유보 중인 연결도 자동 배정에서는 제외한다");
+            server.OnClientSceneLoaded(a.UniNetConnId, "f17-gate");
+            ulong ready = server.RegisterDynamicObject(new object[] { new FaultyThing() });
+            Assert.AreEqual(a.UniNetConnId, server.GetOwner(ready), "실제 ready 뒤에는 배정이 재개된다");
+            ulong explicitOwner = server.RegisterDynamicObject(new object[] { new FaultyThing() }, silent.UniNetConnId);
+            Assert.AreEqual(silent.UniNetConnId, server.GetOwner(explicitOwner),
+                "신뢰된 서버의 명시적 ownerConnId 지정 계약은 이번 자동 선택 수정으로 바꾸지 않는다");
+        }
+
         [TestCase(20000f)]
         [TestCase(0.01f)]
         public void 우선순위_변경과_다른키_혼합도_동일키_이전델타를_추월하지_않는다(float priority)

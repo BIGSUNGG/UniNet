@@ -206,18 +206,23 @@ namespace Arena
                 Debug.Log($"[Arena] 퇴장 플레이어 아바타 파괴 connId={connId} count={destroyed}");
         }
 
-        /// <summary>Server — matches the dynamic player count to the connection count. (Viewer positions were removed with the
-        /// grid demo: the small arena sets no cull distances, so per-connection viewers were dead weight — ADR-0026.)</summary>
+        /// <summary>Server — matches the dynamic player count to the APPROVED participant count. (Viewer positions were removed with the
+        /// grid demo: the small arena sets no cull distances, so per-connection viewers were dead weight — ADR-0026.)
+        /// F10 — the poll counts approved participants (CON-001 version-declared AND game-approved via the ClientConnected
+        /// gateway), never raw live transport connections: a silent undeclared channel must not spawn an avatar for an
+        /// unauthenticated player nor mark existing avatars surplus. Approved connections that are scene-held
+        /// (awaiting the scene-ready report) keep their avatars — a transition must not create duplicates or destroy
+        /// existing players, so IsClientSceneReady is deliberately NOT required here.</summary>
         private void ManagePlayers()
         {
-            int connections = 0;
+            int approved = 0;
             foreach (var conn in _server.SnapshotConnections())
-                if (!conn.Disconnected)
-                    connections++;
+                if (!conn.Disconnected && conn.VersionApproved)
+                    approved++;
 
             var players = FindObjectsByType<ArenaPlayer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 
-            int diff = connections - players.Length;
+            int diff = approved - players.Length;
 
             for (int i = 0; i < diff; i++)
                 SpawnPlayer();

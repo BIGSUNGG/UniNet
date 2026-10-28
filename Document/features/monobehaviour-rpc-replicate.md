@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨 (P1 전체 + P2 전체 + 다중 컴포넌트 + spawnable 프리팹 스폰 — [[0008-구현-아키텍처]]·[[0009-동적-스폰-조건부-리플리케이션]]·[[0010-2층-식별자-다중-컴포넌트]]·[[0024-Fusion식-spawnable-프리팹-스폰-시스템]] 참조)
 - **최초 작성**: 2026-09-14
-- **마지막 갱신**: 2026-10-20
+- **마지막 갱신**: 2026-10-28 (AUDIT-F06/F07/F08/F17)
 
 ## 개요
 
@@ -111,6 +111,8 @@ UniNetManager.NetworkDestroy(gameObject);         // 전 클라 파괴 전파 + 
 - **무한정자 호출** — 파일 상단에 `using static UniNet.Unity.Net;`를 두면 `NetworkInstantiate(...)`·`NetworkDestroy(...)`를 일반 Instantiate/Destroy처럼 한정자 없이 쓸 수 있다 (`Net` 정적 클래스 — UniNetManager 전달 전용. 사용례: ArenaBootstrap)
 - **복제는 직렬화 복사** — `Object.Instantiate`는 public·[SerializeField] 필드만 복사한다. private [Replicated] 초기화(InitialOnly 기준선 등)는 **configure 콜백**으로 세팅한다 — 콜백은 복제 직후·전파 직전에 클론으로 실행된다 (ADR-0017): `NetworkInstantiate(original, clone => clone.GetComponent<Player>().InitServerState("Alpha", 123))`. `MoveSimulation` 주입(`Simulation`)·서버 동작 플래그(NetworkCullDistance 등 비전파 상태)는 스폰 후 클론에 주입해도 무관하다 (기준선에 실리지 않음)
 
+- **각인·베이크 저장 범위(F07)** — import 중 메모리 테이블은 동기 갱신하되, 디스크 저장은 한 개의 지연 콜백으로 병합해 이 연산이 변경한 프리팹·테이블에만 `AssetDatabase.SaveAssetIfDirty`를 적용한다. 전역 `SaveAssets`를 호출하지 않아 무관한 dirty 자산은 미저장 상태를 유지한다. 대상 자산 자체는 전체 저장되며 삭제/파괴된 대상에는 전역 폴백하지 않는다.
+- **자동 소유자(F17)** — 명시적 `ownerConnId`가 없으면 연결 목록에서 `CanReceiveGameData`(`!Disconnected && VersionApproved && !AwaitingSceneReady`)인 참가자만 라운드로빈으로 선택한다. 적격자가 없으면 owner=0으로 두고 이후 정상 재배정에서 입양한다. 씬 전환 이력이 없는 승인 참가자는 정상 후보다. 신뢰된 서버가 명시한 owner는 기존대로 존중한다.
 - **클라 생성 = 동일 프리팹 인스턴스화** (ADR-0024): 스폰 메시지의 프리팹 ID를 베이크 테이블(`Assets/Resources/UniNet/UniNetPrefabTable.asset` — 포스트프로세서가 마킹 프리팹에서 자동 생성)로 해석해 클라가 자기 프리팹 사본을 Instantiate한다. **양단 프리팹 에셋 존재 필수**(Fusion과 동일 전제). 클라 프리팹의 컴포넌트 구성이 서버와 다르면 자동 복원 대신 **거부**(슬롯 불일치 에러). 한 타입에 프리팹 N개 허용(구 typeKey 1:1 카탈로그·RegisterPrefab·자동 복원 폐기)
 - **변환(위치·회전)은 스폰 시 1회 전파** — 이후 이동은 [Replicated] 필드(예: 좌표 float)로 게임 코드가 동기화. NetworkTransform의 `SyncRotation`/`SyncScale`(기본 off)을 켜면 회전 쿼터니언(Slerp 보간+각변위 스냅)과 localScale(즉시)이 지속 동기화되고 `SetNetworkRotation`으로 서버 권위 텔레포트도 가능 — TRS-001(0.21.0)
 - **후발 접속 캐치업** — 연결 확정 시 기존 동적 오브젝트(스폰+전체 상태)·씬 오브젝트(전체 상태) 일괄 합류. **객체별 소유권 기준선이 상태/스폰보다 먼저** 도착한다(기존 OwnerUpdate 와이어 재사용, 소유자 0도 명시적 기준선 — OWN-001): 후발 클라의 `IsOwner`·소유자 캐시가 캐치업 시점부터 정확하다. 초기 동적 스폰 브로드캐스트도 동일 순서(소유권 → 스폰 상태)로 전송한다
@@ -184,11 +186,15 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 
 - 멱등 — 리슨 중이 아니면 아무것도 하지 않는다
 - 환경 정리 — `UniNetEnvironment`의 Server/Client/ClientSender 참조를 해제해 `IsServer`·`IsClient`가 즉시 false
+- **클라 세대 경계(F06)** — `ClientAsync`/`ReconnectAsync`는 새 클라 레지스트리 교체 전에 이전 세대 동적 미러를 정리한다. `ClientStop`도 클라 미러만 제거하며, 살아있는 호스트 서버 엔트리의 컴포넌트/GameObject와 실제로 같은 권위 원본은 보존한다(netId만 같다는 이유로 보존하지 않음). 서버 정지는 서버 동적 객체를 제거한다. PlayMode의 `Destroy`는 프레임 말까지 지연되며, 지연 파괴는 새 세대 레지스트리를 netId로 해제하지 않는다.
+- **드라이버 수명(F08)** — `Ensure`의 `sceneLoaded` 구독은 실제 드라이버 `OnDestroy`에서 해제된다. 반복 Ensure는 멱등, 파괴/재생성은 구독을 누적하지 않는다.
 - 게임은 `OnApplicationQuit`(또는 컴포넌트 비활성)에서 동기 버전을 호출한다 — 예: Sandbox `ArenaBootstrap`
 - 정지 경로에서는 이미 닫힌 세션으로의 잔여 송신이 InvalidOperationException(“세션이 끊겨…”)로 실패할 수 있다 —
   생성 코드(FireAndForget)는 이 경우를 예외 대신 경고 로그로 처리한다 (UniNet.CodeGenerator 0.1.1)
 
 ## 테스트 / 검증
+
+- **2026-10-28 감사 집중 회귀** — `ClientSessionPurgeTests` 3건(실제 public 접속/재접속 세대 경계·호스트 원본·재사용 ID), `TargetedPersistenceTests` 1건(실제 stamp/bake·패키지 저장 콜백·별도 dirty 센티널 디스크 불변), `CoreInvariantRegressionTests` 16건(F17 자동 소유권 포함)을 격리 Unity CLI EditMode로 **20/20** 실행했다(`Sandbox/Logs/audit-c-edit-r3.xml`). 실제 runtime 파괴를 검사하는 `DriverLifetimePlayTests`와 Arena 발사/승인 인구 회귀는 PlayMode **3/3**이다(`audit-c-play-r1.xml`). 이전 EditMode 드라이버 검사는 runtime-only MonoBehaviour의 실제 `OnDestroy`를 실행하지 않아 실패했으며, 이를 수동 호출 통과로 위장하지 않고 PlayMode로 이동했다. 전수 검증·독립 리뷰는 별도 게이트다.
 
 - **2026-10-20 OWN-001 검증** — `OwnerBaselineTests` 8/8(후발·씬/동적 재진입·초기 스폰의 owner-before-state·0 기준선·다중 서브·실제 생성 수신기/Notify), EditMode 전수 146/146·PlayMode 전수 27/27·Arena 실제 RUDP 진단 PASS. Arena는 유예 소유자 KEEP 후 fresh 합류와 스테일 캐시 fault injection 후 재진입 와이어 복원을 확인한 단일 프로세스 마커 진단이며, 최종 3프로세스 검증은 아니다. 원시 증거·배포 상태는 `Document/research/commercial-netcode-evidence.json` 참조.
 - 아래 항목은 각 기능 도입 당시 세부 검증 기록이다.
@@ -199,6 +205,7 @@ UniNetManager.HostStop();                // 동기 조합 — 종료 직전 경�
 - 2-프로세스 왕복: `Sandbox/Assets/Tests/Fixtures/TwoProcessRunner.cs` (`--uninet-role=server|client`) — 프로세스 간 RUDP — RPC·리플리케이션 + `[UNINET-2PROC] DYNAMIC-SPAWN-DESTROY PASS`(캐치업·브로드캐스트·조건 3종·파괴) + `[UNINET-2PROC] MULTI-COMPONENT PASS`(다중 서브 스폰·서브별 델타·슬롯·파괴) (로그: `Sandbox-2proc-*.log`)
 - 사용법 예제: `Sandbox/Assets/Scripts/Arena/` — ArenaBootstrap(관리 스폰 NetworkInstantiate+configure)·ArenaPlayer(RPC 3종·조건부 리플리케이션 전종·RepNotify)
 
+- 2026-10-28 — AUDIT-F06/F07/F08/F17: 클라 동적 미러의 역할별 세대 정리, 프리팹/테이블 표적 지연 저장, 드라이버 실제 수명 구독 대칭, 승인·비유보 연결만 자동 동적 소유자 선택.
 - 2026-10-22 — LIF-001(ADR-0052) — 정지→재시작 후 씬 객체 자동 재등록(등록 세대 스탬프)·ServerStopAsync 스윕·listen 실패 롤백(0.19.0)
 
 - 2026-10-22 — GEN-003 — enum RPC 매개변수·Replicated 필드 지원(0.18.0, 생성기 0.2.16)

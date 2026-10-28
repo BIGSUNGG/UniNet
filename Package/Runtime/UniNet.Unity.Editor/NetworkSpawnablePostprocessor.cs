@@ -42,7 +42,7 @@ namespace UniNet.Unity.Editor
 
         private static void StampPrefabs(List<string> prefabPaths)
         {
-            bool dirty = false;
+            var stampedPrefabs = new List<GameObject>();   // F07 — exact assets this stamp changed; persisted targeted, after the import callback
 
             if (prefabPaths != null)
             {
@@ -69,12 +69,13 @@ namespace UniNet.Unity.Editor
                         {
                             prop.ulongValue = id;
                             so.ApplyModifiedPropertiesWithoutUndo();
-                            dirty = true;
+                            stampedPrefabs.Add(prefab);   // only prefabs whose stamp actually changed
                         }
                     }
                 }
             }
-            if (dirty) AssetDatabase.SaveAssets();
+            foreach (var prefab in stampedPrefabs)
+                DeferSave(prefab);   // F07 — targeted persistence: ONLY the stamped assets, deferred off the import pipeline (never a global SaveAssets)
         }
 
         private static void BakeTable()
@@ -114,9 +115,35 @@ namespace UniNet.Unity.Editor
             table.Bake(entries);
             EditorUtility.SetDirty(table);
             UniNetPrefabTable.ResetCache();   // runtime lookup cache — rebuilt from the fresh in-memory table on next use
-            EditorApplication.delayCall += () => { EditorUtility.SetDirty(table); AssetDatabase.SaveAssets(); };   // persist off the import pipeline
+            DeferSave(table);   // F07 — persist ONLY this table asset off the import pipeline (coalesced with stamp saves); the in-memory table is synchronously usable
 
             Debug.Log($"[UniNet] spawnable 프리팹 테이블 갱신 — {entries.Count}개 등록 ({TablePath}){(isNew ? " 신규" : "")}");
+        }
+
+        // ── F07 — targeted deferred persistence ─────────────────────────────────────────────────────────────
+        // Saves queued ONLY after the import callback (SaveAssets inside the import pipeline risks re-entrant
+        // imports) and ONLY for the exact assets this operation changed — the previous global SaveAssets flushed
+        // unrelated dirty user assets to disk. One coalesced delay call flushes every pending target (stamp and
+        // bake share it). Destroyed/deleted targets are skipped safely; there is never a global fallback.
+        private static readonly HashSet<Object> PendingTargetedSaves = new();
+        private static bool _targetedSaveScheduled;
+
+        private static void DeferSave(Object target)
+        {
+            if (target == null) return;   // destroyed/deleted target — nothing of ours to persist
+            PendingTargetedSaves.Add(target);
+            if (_targetedSaveScheduled) return;
+            _targetedSaveScheduled = true;
+            EditorApplication.delayCall += FlushTargetedSaves;
+        }
+
+        private static void FlushTargetedSaves()
+        {
+            _targetedSaveScheduled = false;
+            foreach (var target in PendingTargetedSaves)
+                if (target != null)   // destroyed between queue and flush — skip, do not fall back to a global save
+                    AssetDatabase.SaveAssetIfDirty(target);   // Unity 6 targeted save — single-asset scope
+            PendingTargetedSaves.Clear();
         }
     }
 }

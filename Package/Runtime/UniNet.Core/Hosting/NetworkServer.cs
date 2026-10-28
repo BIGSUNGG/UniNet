@@ -390,8 +390,9 @@ namespace UniNet.Core.Hosting
         /// <summary>
         /// Registers a dynamic object and returns its server-assigned netId. Accepts all components in slot
         /// order plus the spawnable prefab identity (stamped NetworkSpawnable GUID hash — ADR-0024).
-        /// The owning connection is assigned immediately: ownerConnId when given (explicit ownership —
-        /// NetSession spawns each joiner's token for that joiner), otherwise round-robin. Afterwards call
+        /// The owning connection is assigned immediately: ownerConnId when given (explicit trusted-server ownership —
+        /// NetSession spawns each joiner's token for that joiner), otherwise round-robin among approved, non-scene-held
+        /// receivers only. With no eligible receiver the object stays unowned until normal reassignment. Afterwards call
         /// BroadcastSpawn(netId) to propagate it to all clients (main thread).
         /// </summary>
         public ulong RegisterDynamicObject(IReadOnlyList<object> components, long ownerConnId = 0, ulong prefabId = 0)
@@ -408,8 +409,16 @@ namespace UniNet.Core.Hosting
                     entry.OwnerConnId = ownerConnId;
                 else if (_connections.Count > 0)
                 {
-                    entry.OwnerConnId = _connections[_rrCursor % _connections.Count].ConnId;
-                    _rrCursor++;
+                    int start = _rrCursor % _connections.Count;
+                    for (int offset = 0; offset < _connections.Count; offset++)
+                    {
+                        int index = (start + offset) % _connections.Count;
+                        var candidate = _connections[index];
+                        if (!candidate.CanReceiveGameData) continue;
+                        entry.OwnerConnId = candidate.ConnId;
+                        _rrCursor = (index + 1) % _connections.Count;
+                        break;
+                    }
                 }
                 _objects[netId] = entry;
                 return netId;

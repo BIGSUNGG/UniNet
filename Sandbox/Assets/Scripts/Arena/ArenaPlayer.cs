@@ -399,6 +399,7 @@ namespace Arena
 
         private Task<bool> RpcFire_Validate(float dirX, float dirY, double hitTime)
             => Task.FromResult(IsFinite01(dirX) && IsFinite01(dirY)
+                               && (dirX * dirX + dirY * dirY) > 0f   // F09 — a zero direction is not a shot (finite-only per-component checks stay; magnitude authority is normalized server-side below)
                                && !double.IsNaN(hitTime) && !double.IsInfinity(hitTime)
                                && hitTime <= UniNetTime.Now + 1.0);   // reject future aim times (trust boundary — the server clamps the past)
 
@@ -417,6 +418,14 @@ namespace Arena
 
         private void RpcFire_Implementation(float dirX, float dirY, double hitTime)
         {
+            // F09 — server-side unit normalization: the projection below assumes a unit vector, and per-component
+            // validation alone let (1,1) reach sqrt(2)×HitscanRange. Normalizing here makes the authoritative range
+            // independent of the client-sent magnitude; a degenerate zero direction is rejected defensively (Validate
+            // already refuses it — nothing is consumed for an invalid shot).
+            var dir = new Vector2(dirX, dirY);
+            dir.Normalize();
+            if (dir.sqrMagnitude < 1e-6f) return;
+
             if (_respawnAt > 0f) return;
             if (Time.time < _nextFireAllowed) return;          // fire-rate cooldown (server authority)
             if (_ammo <= 0) return;                            // ammo check (server authority)
@@ -430,7 +439,6 @@ namespace Arena
             double rewindTime = Math.Clamp(hitTime, UniNetTime.Now - ArenaConfig.RewindWindowSeconds, UniNetTime.Now);
 
             var origin = new Vector2(transform.position.x, transform.position.z);   // authoritative coordinates synced by NetworkTransform
-            var dir = new Vector2(dirX, dirY);
             ArenaPlayer hitTarget = null;
             float bestT = float.MaxValue;
             var end = origin + dir * ArenaConfig.HitscanRange;

@@ -9,8 +9,8 @@
 UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아레나** 예시 게임. 에셋 없이 Unity 기본 도형(Plane·Cube·Sphere)과 간단한 FX만으로 캐릭터·맵·이펙트를 구성한다. 서버 권위 모델을 그대로 따른다 — 입력은 ServerRpc로 서버에 제출하고, 시뮬레이션(이동·충돌·발사·피해)은 서버만 수행하며, 결과가 조건부 리플리케이션으로 각 클라에 동기화된다.
 
 - **맵**: 36×36 바닥 + 4면 경계 벽 + 중앙 기둥 4개 (규격은 `ArenaConfig` 단일 진실 공급원 — 씬 비주얼과 서버 판정이 같은 값을 쓴다)
-- **플레이어**: 접속 수만큼 서버가 동적 스폰. WASD 이동, Space 점프, Shift 대시(쿨다운 2s), T 텔레포트(랜덤 스폰), 마우스 조준, 좌클릭 발사. 탄약 8발(자동 재생), HP 100, 사망 시 2초 후 랜덤 스폰 지점 리스폰
-- **발사(히트스캔)**: 좌클릭 즉시 판정 — 서버가 발신자 조준 시각으로 위치를 리와인드해(P4 래그컴펜세이션) 명중을 확정하고, 전원에게 발사자 색 트레이서 FX를 로컬 재생. 명중 시 25 피해(4발마다 치명타 2배)
+- **플레이어**: 승인된 참가자 수만큼 서버가 동적 스폰(`!Disconnected && VersionApproved`; 무음·승인 대기 transport 제외, 승인된 씬 유보 참가자는 기존 아바타 유지). WASD 이동, Space 점프, Shift 대시(쿨다운 2s), T 텔레포트(랜덤 스폰), 마우스 조준, 좌클릭 발사. 탄약 8발(자동 재생), HP 100, 사망 시 2초 후 랜덤 스폰 지점 리스폰
+- **발사(히트스캔)**: 좌클릭 즉시 판정 — 0·비유한 방향은 거부하고 서버가 비영 방향을 정규화해 대각선 입력도 고정 사거리를 넘기지 않는다. 서버가 발신자 조준 시각으로 위치를 리와인드해(P4 래그컴펜세이션) 명중을 확정하고, 전원에게 발사자 색 트레이서 FX를 로컬 재생. 명중 시 25 피해(4발마다 치명타 2배)
 - **승부**: 킬 수를 점수로 집계 — HUD 점수 팝업 + 킬피드
 
 파일 구성:
@@ -19,7 +19,7 @@ UniNet의 구현된 기능 전부를 활용하는 **탑다운 2~4인 슈팅 아�
 | --- | --- |
 | `ArenaConfig.cs` | 시뮬레이션 상수·스폰 지점·기둥 규격 (단일 진실 공급원). 데모 빌드 식별자 `ProtocolVersion = "arena-2-uninet-0.4"` (ADR-0028/0041 — SDK 와이어 변경 시 양단 함께 상향) |
 | `ArenaRole.cs` | 역할 판별 — 인스펙터 강제값 → MPPM 태그 → MPPM 토폴로지 |
-| `ArenaBootstrap.cs` | 역할별 UniNet 시작 + 서버의 접속 수 ↔ 플레이어 수 동기화 |
+| `ArenaBootstrap.cs` | 역할별 UniNet 시작 + 서버의 승인 참가자 수 ↔ 플레이어 수 동기화 |
 | `ArenaPlayer.cs` | RPC 3종·[Replicated] 조건 4종·RepNotify·서버 권위 시뮬레이션·로컬 입력·비주얼 |
 | `ArenaMovement.cs` | 이동 규칙 단일 공급원 — 서버 시뮬과 클라 예측이 같은 Step을 공유 (P4 예측) |
 | `ArenaFx.cs` | 로컬 FX (네트워크 오브젝트 아님 — MulticastRpc 구현이 전원에서 호출) |
@@ -117,6 +117,8 @@ Arena 씬 Play Mode에서 `ArenaBootstrap` 컴포넌트의 컨텍스트 메뉴 *
 동일 진입 패턴의 **`Diag/OWN-001 후발 소유권 기준선 (기존 세션 정지 후)`** — 사이드 포트(ArenaConfig.Port+8·SEC-001 진단과 상호 재진입 가드)에서 실제 RUDP로 ① 첫 클라 접속·비동적 마커 소유 시 실제 클라 캐시(`NetworkClient.GetOwner`)에 소유권 기준선 도착 ② 첫 클라 정상 해제 → 유예 소유권 유지 ③ 후발 fresh 접속의 캐치업이 기존(유예) 소유자 기준선을 실제 수신(수정 전에는 0으로 남음) ④ 타임드 틱(`TickReplication(snapshot, Time.unscaledTimeAsDouble)` — P3 정책 경로)으로 관련성 비관련→재진입 사이클 실행: 비관련 틱 뒤 **진단용 fault injection**으로 로컬 캐시에 owner 0을 주입하고(정상 게임 사용 패턴 아님), 재진입 틱이 실제 RUDP wire-2로 기존 owner를 복원해야 통과(전송 없으면 0 잔존 = 실패)함을 Console `[UNINET-VERIFY] OWN-001` 로그로 확인한다. **단일 프로세스 싱글턴 제약으로 첫 클라 해제→유예→후발 합류 경로 재현이며 살아 있는 기존 owner 검증은 EditMode 회귀·최종 다중 프로세스는 별도 단계다**(토큰 미출력·기존 데모 명시적 정상 정지·finally 정리 동일).
 
 ### PlayMode 테스트 (Test Runner)
+
+**2026-10-28 감사 회귀(F09/F10/F17)** — `ArenaFireAuthorityTests`는 실제 `TryFire`→생성 ServerRpc→서버 구현으로 대각선 사거리 밖 HP 불변·사거리 내 양성 명중·0방향 검증 거부·서버 cooldown 중 탄약 보존을 검사한다(테스트가 해당 인스턴스 deadline만 제어해 0.25s 벽시계 경합을 피함). `ArenaApprovalPopulationTests`는 먼저 붙은 무음 미승인 transport와 별도의 승인 참가자를 두고 실제 `ManagePlayers`의 아바타 수·적격 소유자·플레이어 매핑·씬 유보 중 보존을 검사한다. 드라이버 실제 수명 검사와 함께 격리 CLI PlayMode **3/3 PASS**(`Sandbox/Logs/audit-c-play-r1.xml`); 전수/인터넷/장기 부하 인증을 뜻하지 않는다. 자동 동적 소유권도 적격 참가자만 선택하도록 Core에서 수정됐다.
 
 `UniNet.Tests.ArenaRoundtripTests.호스트_아레나_왕복_스폰_RPC_리플리케이션_킬플로우` — 실제 루프백 RUDP로 이동 ServerRpc → 서버 시뮬 → 발사·히트스캔 명중(래그컴펜세이션) → 피해·RepNotify → 탄약(OwnerOnly) → 사망·킬 크레딧 → ClientRpc 킬피드 → 리스폰을 단언한다. 대기는 프레임 수 기반 — 에디터 스로틀링으로 `Time.deltaTime`이 실제 시간과 왜곡되는 환경에서도 강건하다.
 

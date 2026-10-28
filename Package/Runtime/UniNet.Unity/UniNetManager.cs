@@ -124,6 +124,7 @@ namespace UniNet.Unity
         {
             var factory = RequireFactory();
             UniNetDriver.Ensure();
+            SweepClientDynamicSpawns();   // F06 — purge the PREVIOUS client generation's dynamic mirrors BEFORE the swap: a leftover mirror keeps its cached dynamic netId, is skipped by the fresh generation's scene registration, and a catch-up spawn of a recycled id would instantiate a second live instance beside the stale one
             var prevToken = UniNetEnvironment.Client?.SessionToken ?? string.Empty;
             UniNetEnvironment.SetClient(new NetworkClient());
             UniNetEnvironment.Client.SessionToken = prevToken;   // ADR-0034 — carry for reattach (empty = fresh session)
@@ -198,7 +199,9 @@ namespace UniNet.Unity
 
         /// <summary>Stops the client — closes the hub connection (Disconnect + Dispose) and clears environment state. Idempotent: no-op when not connected. Synchronous — safe in pre-shutdown paths.
         /// Dynamically spawned mirrors are destroyed here — a stale dynamic object keeps its cached netId and
-        /// aliases onto the NEXT session's recycled ids (double joins, wrong-owner reads).
+        /// aliases onto the NEXT session's recycled ids (double joins, wrong-owner reads). The sweep is client-role-aware
+        /// (F06): in host mode the live server's authoritative dynamic originals and their registry entries are
+        /// preserved — the still-listening server owns them until ServerStop.
         /// The voluntary stop is announced on the wire (REC-002, wire 15) so the server skips the grace save —
         /// this stop burns the resume token, so a preserved session could never be resumed and would only block
         /// orphan adoption. Synchronous with a bounded flush window: the notice's reliable send is awaited for at
@@ -210,7 +213,7 @@ namespace UniNet.Unity
             _clientConnected = false;   // explicit stop — state clears immediately regardless of whether the session-end event fires
             UniNetEnvironment.SetClientSender(null);
             UniNetEnvironment.SetClient(null);
-            SweepDynamicSpawns();
+            SweepClientDynamicSpawns();   // F06 — client-role teardown: mirrors only; the host's live server originals survive until ServerStop
             if (sender is global::DRPC.Shared.Network.HubBase hub)
             {
                 // REC-002 — announce BEFORE the close (payload empty: identity rides the channel). UniNetSend is
@@ -340,6 +343,38 @@ namespace UniNet.Unity
         }
 
         /// <summary>
+        /// F06 — client-session dynamic sweep: destroys the local dynamic-spawn objects a CLIENT session owns (mirrors,
+        /// client-only spawns) while preserving the live server's authoritative originals in host mode. Membership is
+        /// decided by LIVE SERVER ENTRY IDENTITY — never by netId alone: a stale mirror can carry a recycled id that a
+        /// NEW server original now holds (a different component/GameObject). An object whose GameObject still matches a
+        /// live dynamic entry's instance component is an authoritative original and survives; every other dynamic object
+        /// is swept. Registry integrity is NOT destroy-callback-driven (nothing unregisters by netId on destruction), so
+        /// a play-mode deferred Destroy surviving past a generation swap cannot wipe the new registry's entries — the
+        /// stale client registry is replaced wholesale on the swap and the new one only ever holds fresh instances.
+        /// </summary>
+        static void SweepClientDynamicSpawns()
+        {
+            var keep = new HashSet<GameObject>();
+            var server = UniNetEnvironment.Server;
+            if (server != null)
+                foreach (var (_, entry) in server.SnapshotObjects())
+                    if (entry.IsDynamic && entry.Instance is NetworkBehaviour nb && nb != null && nb.gameObject != null)
+                        keep.Add(nb.gameObject);   // identity match: this exact GameObject is the live server original
+
+            var doomed = new HashSet<GameObject>();
+            foreach (var nb in UnityEngine.Object.FindObjectsByType<NetworkBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (nb == null || nb.gameObject == null) continue;   // sibling component of a GameObject destroyed earlier in this sweep (multi-component) — already gone
+                if (!nb.IsDynamicSpawn) continue;
+                var go = nb.gameObject;
+                if (keep.Contains(go)) continue;   // host original — identity-matched to a live server entry, kept until ServerStop
+                if (!doomed.Add(go)) continue;   // multi-component object — destroy its GameObject exactly once
+                if (Application.isPlaying) UnityEngine.Object.Destroy(go);
+                else UnityEngine.Object.DestroyImmediate(go);   // edit mode (batch validation) — Destroy is not allowed there
+            }
+        }
+
+        /// <summary>
         /// Server-side dynamic spawn with an explicit owning connection — the object belongs to that
         /// connection from the first message (ownership survives other clients joining/leaving/rejoining).
         /// </summary>
@@ -462,6 +497,15 @@ namespace UniNet.Unity
             SceneManager.sceneLoaded += OnSceneLoaded;   // ADR-0025 — process-lifetime subscription; the driver survives scene reloads
             var go = new GameObject("UniNetDriver") { hideFlags = HideFlags.HideAndDontSave };
             _instance = go.AddComponent<UniNetDriver>();
+        }
+
+        private void OnDestroy()
+        {
+            // F08 — pair the ADR-0025 sceneLoaded subscription with this driver's ACTUAL lifetime: Ensure re-subscribes
+            // when a destroyed singleton is recreated, so without this mirrored unsubscription every destroy/recreate
+            // cycle accumulated a duplicate delegate (double registration runs and double scene-ready reports).
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            if (ReferenceEquals(_instance, this)) _instance = null;   // a stale reference must not block the next Ensure
         }
 
         /// <summary>Late-scene registration (ADR-0025) — re-runs scene-object registration on every scene load so
