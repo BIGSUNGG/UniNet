@@ -13,17 +13,26 @@ namespace UniNet.Core.Hosting
     {
         private static readonly ConcurrentQueue<Action> MainQueue = new();
 
+        // F12 — reserved FIFO for ONE-SHOT cleanup of an ALREADY-ACCEPTED connection (DetachConnection's
+        // fallback when the normal queue is saturated). New connections cannot enter while this FIFO is nonempty,
+        // even if normal work has made room. Otherwise a throwing normal action could starve cleanup while repeated
+        // attach/detach cycles grow an unbounded history queue. Only the already-admitted cohort can add cleanups.
+        private static readonly ConcurrentQueue<Action> ReservedMainQueue = new();
+
         // FR-06 — finite main-queue bound. _mainQueueDepth is incremented before enqueue and decremented at dequeue,
         // so under enqueue races the cap is approximate (a safety bound, not an exact invariant); the drain path is exact.
         private static long _mainQueueDepth;
         private static long _droppedMainActions;
         private static long _droppedReplicateEntries;
+        private static long _reservedCleanupEnqueued;
+        private static long _reservedCleanupDrained;
 
         /// <summary>FR-06 — default cap on queued main-thread actions (see <see cref="MainQueueCapacity"/>).</summary>
         public const int DefaultMainQueueCapacity = 65536;
 
         /// <summary>
-        /// FR-06 — hard cap on actions waiting for <see cref="PumpMain"/>. A healthy pump drains every frame, so real
+        /// FR-06 — hard cap on normal actions waiting for <see cref="PumpMain"/> (reserved disconnect cleanup is separate).
+        /// A healthy pump drains every frame, so real
         /// depth stays in the tens; the cap exists to keep a blocked or starved main thread from growing the queue without
         /// bound. An action enqueued past the cap is DROPPED but never silently: <see cref="LogFault"/> fires and
         /// <see cref="DroppedMainActions"/> counts it (throwing instead would kill network dispatch threads — the least
@@ -33,6 +42,12 @@ namespace UniNet.Core.Hosting
 
         /// <summary>FR-06 — cumulative actions dropped because the main queue was at capacity (explicit overflow observability).</summary>
         public static long DroppedMainActions => Interlocked.Read(ref _droppedMainActions);
+
+        /// <summary>F12 — cumulative one-shot connection cleanups admitted to the reserved FIFO (see <see cref="QueueReservedOnMain"/>).</summary>
+        public static long ReservedCleanupCount => Interlocked.Read(ref _reservedCleanupEnqueued);
+
+        /// <summary>F12 — reserved cleanups dequeued by <see cref="PumpMain"/>. Subtract from ReservedCleanupCount for approximate queued reserve depth (not in-flight work).</summary>
+        public static long ReservedCleanupDrainedCount => Interlocked.Read(ref _reservedCleanupDrained);
 
         /// <summary>
         /// FR-06 — cumulative replication/RPC entries dropped at the client apply step (no live object at the
@@ -103,31 +118,69 @@ namespace UniNet.Core.Hosting
         /// <summary>
         /// Schedules work for the main thread to run (callable from network threads). FR-06 — past
         /// <see cref="MainQueueCapacity"/> the action is dropped with an explicit fault (never a silent loss, never a
-        /// throw that would kill the dispatch thread).
+        /// throw that would kill the dispatch thread). Fire-and-forget callers that cannot observe the drop should
+        /// migrate to <see cref="TryQueueOnMain"/> so the rejection is visible at the call site (F12).
         /// </summary>
-        public static void QueueOnMain(Action action)
+        public static void QueueOnMain(Action action) => TryQueueOnMain(action);
+
+        /// <summary>
+        /// F12 — explicit accept/reject variant of <see cref="QueueOnMain"/>. Returns false when the main queue is at
+        /// <see cref="MainQueueCapacity"/> and the action was NOT scheduled (counted in <see cref="DroppedMainActions"/>,
+        /// fault-logged). Callers that must not advance state on a rejected enqueue (connection admission, approval
+        /// release) branch on this instead of continuing as if the work were queued.
+        /// </summary>
+        public static bool TryQueueOnMain(Action action)
         {
-            if (action == null) return;
+            if (action == null) return true;   // same no-op contract as QueueOnMain — nothing to schedule, nothing rejected
             if (Interlocked.Increment(ref _mainQueueDepth) > MainQueueCapacity)
             {
                 Interlocked.Decrement(ref _mainQueueDepth);
                 Interlocked.Increment(ref _droppedMainActions);
                 LogFault(new InvalidOperationException(
-                    $"[UniNet] main-thread queue over capacity ({MainQueueCapacity}) — action dropped. PumpMain is not keeping up (blocked or starved main thread); UniNet keeps the queue finite instead of growing without bound."));
-                return;
+                    $"[UniNet] main-thread queue over capacity ({MainQueueCapacity}) — action rejected. PumpMain is not keeping up (blocked or starved main thread); UniNet keeps the queue finite instead of growing without bound."));
+                return false;
             }
             MainQueue.Enqueue(action);
+            return true;
+        }
+
+        /// <summary>Schedules connection admission only if normal capacity is available AND no reserved cleanup is waiting.
+        /// The server serializes this check with its detach enqueue under the connection registry gate. Once reserve
+        /// work exists, new arrivals cannot replenish the admitted cohort until the reserve drains.</summary>
+        internal static bool TryQueueConnectionOnMain(Action action)
+        {
+            if (!ReservedMainQueue.IsEmpty)
+            {
+                Interlocked.Increment(ref _droppedMainActions);
+                return false;   // AttachConnection returns 0 and closes the transport; rejection is caller-visible
+            }
+            return TryQueueOnMain(action);
+        }
+
+        /// <summary>
+        /// F12 — schedules a ONE-SHOT cleanup of an ALREADY-ACCEPTED connection (called by NetworkServer.DetachConnection
+        /// only when <see cref="TryQueueOnMain"/> rejected). New connection admission stops at normal capacity OR while
+        /// this FIFO is nonempty, so normal work plus the already-admitted cohort bounds pending main-thread work.
+        /// Drained FIFO by <see cref="PumpMain"/> after the normal queue — never inline, never on a network thread.
+        /// </summary>
+        internal static void QueueReservedOnMain(Action action)
+        {
+            if (action == null) return;
+            ReservedMainQueue.Enqueue(action);
+            Interlocked.Increment(ref _reservedCleanupEnqueued);
         }
 
         /// <summary>FR-06 — counts a dropped apply-time entry (generated dispatch paths; see <see cref="DroppedReplicateEntries"/>).</summary>
         public static void CountDroppedReplicateEntry() => Interlocked.Increment(ref _droppedReplicateEntries);
 
-        /// <summary>Number of main-queue actions waiting for the next pump drain (ADR-0029 queue-depth observability).</summary>
-        public static int PendingMainActions => MainQueue.Count;
+        /// <summary>Number of normal and reserved actions waiting for the next pump drain (ADR-0029 queue-depth observability).</summary>
+        public static int PendingMainActions => MainQueue.Count + ReservedMainQueue.Count;
 
         /// <summary>
         /// Runs ALL scheduled work — call from the main thread (the Unity driver Update). The full-drain contract is
-        /// unchanged (ordering and completion); the FR-06 capacity bounds growth at enqueue time, not here.
+        /// unchanged (ordering and completion); the FR-06 capacity bounds growth at enqueue time, not here. F12 — after
+        /// the normal queue, the reserved cleanup FIFO drains fully in FIFO order. Any throwing action still aborts
+        /// this pump call; queued work remains for the next call. There is no per-call budget or reentrancy guard.
         /// </summary>
         public static void PumpMain()
         {
@@ -135,6 +188,11 @@ namespace UniNet.Core.Hosting
             {
                 Interlocked.Decrement(ref _mainQueueDepth);
                 action();
+            }
+            while (ReservedMainQueue.TryDequeue(out var reserved))
+            {
+                Interlocked.Increment(ref _reservedCleanupDrained);
+                reserved();
             }
         }
     }

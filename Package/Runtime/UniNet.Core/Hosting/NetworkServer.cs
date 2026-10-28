@@ -31,6 +31,7 @@ namespace UniNet.Core.Hosting
         private readonly Dictionary<Type, int> _typeBudgetLeft = new();
         private readonly List<DeferredDelta> _queue = new();
         private readonly List<DeferredDelta> _pending = new();
+        private readonly Dictionary<(ulong NetId, byte SubId), double> _queuedPriorities = new();
         private bool[] _relevanceScratch = Array.Empty<bool>();
         private ulong[] _relevanceOverflowScratch = Array.Empty<ulong>();
         private long _seq;
@@ -547,7 +548,7 @@ namespace UniNet.Core.Hosting
             }
         }
 
-        /// <summary>Attaches a new connection — schedules the Welcome; the remaining attach work (ownership reassignment, catch-up, the ClientConnected event) runs at approval (CON-001): immediately when version checking is inactive (empty <see cref="ExpectedProtocolVersion"/>) AND no <see cref="ConnectionApprover"/> is set, otherwise once the client's wire-7 declaration matches and — with an approver — the game approval callback accepts it. An undeclared or unapproved connection receives no game data and is swept by <see cref="SweepUnapprovedConnections"/>.</summary>
+        /// <summary>Attaches a new connection — schedules the Welcome; the remaining attach work (ownership reassignment, catch-up, the ClientConnected event) runs at approval (CON-001): immediately when version checking is inactive (empty <see cref="ExpectedProtocolVersion"/>) AND no <see cref="ConnectionApprover"/> is set, otherwise once the client's wire-7 declaration matches and — with an approver — the game approval callback accepts it. An undeclared or unapproved connection receives no game data and is swept by <see cref="SweepUnapprovedConnections"/>. F12 — returns 0 and rolls the registration back COMPLETELY (connection, approval index, channel id, plus a real transport close) when the normal main queue is saturated OR reserved disconnect cleanup is still waiting. New arrivals cannot replenish the admitted cohort while cleanup is backlogged; each previously admitted connection contributes at most one cleanup.</summary>
         public long AttachConnection(IUniNetSystemChannel channel)
         {
             lock (_gate)
@@ -569,15 +570,29 @@ namespace UniNet.Core.Hosting
                 _connections.Add(conn);
                 var connId = conn.ConnId;
                 var sessionToken = conn.SessionToken;
-                UniNetEnvironment.QueueOnMain(() =>
+                bool admitted = UniNetEnvironment.TryQueueConnectionOnMain(() =>
                 {
                     conn.AttachedAtClock = UniNetTime.LocalClock();   // CON-001 — main-thread stamp: the undeclared-timeout window starts once the Welcome is dispatchable (the client can declare from then on)
                     channel.SendWelcome(connId, ExpectedProtocolVersion, sessionToken);   // always — the client needs the server version + session token to declare
                     conn.WelcomeSent = true;
                     RunPostApproval(conn);
                 });
-                return conn.ConnId;
+                if (admitted) return conn.ConnId;
+                // F12 — reject admission at capacity or while reserved cleanup is backlogged (even if normal work made room).
+                // Roll the registration back completely (no half-attached residue) while still under the gate.
+                _connections.RemoveAt(_connections.Count - 1);
+                _approvedConns.TryRemove(conn.ConnId, out _);
+                channel.UniNetConnId = 0;
             }
+            // F12 — actually refuse the transport side too (outside the registry gate: the hub's Disconnected event may
+            // re-enter DetachConnection, which takes _gate — reentrant Monitor, but transport callbacks never run under
+            // the registry lock). The channel is gone from every index, so the re-entrant detach is a no-op.
+            if (channel is global::DRPC.Shared.Network.HubBase hub)
+            {
+                try { hub.Disconnect(); }
+                catch { /* admission-reject close noise must not propagate into the accept path */ }
+            }
+            return 0;
         }
 
         /// <summary>
@@ -634,7 +649,7 @@ namespace UniNet.Core.Hosting
                         _approvedConns.TryRemove(conn.ConnId, out _);   // CON-001 — the approval index dies with the connection (unknown → unapproved)
                         _connections.RemoveAt(i);
                         bool wasApproved = conn.VersionApproved;   // CON-001 — a never-approved connection never surfaced to the game (no event, no grace session); it owns nothing
-                        UniNetEnvironment.QueueOnMain(() =>
+                        Action cleanup = () =>
                         {
                             conn.PendingSceneDestroys = null;
                             _viewerPositions.Remove(conn.ConnId);   // P3/P4 cleanup — same main thread as the tick
@@ -675,7 +690,13 @@ namespace UniNet.Core.Hosting
                                 _sceneReadyConnections.Remove(conn.ConnId);   // ADR-0035 — scene gate readiness dies too
                                 CheckSceneGate();   // departure may complete the gate
                             }
-                        });
+                        };
+                        // F12 — a saturated main queue must not orphan this ONE-SHOT cleanup (dead-owner invariant,
+                        // player mapping, grace session, lifecycle event). The normal queue keeps FIFO ordering; only a
+                        // REJECTED enqueue falls back to the reserved cleanup FIFO, which PumpMain guarantees to drain —
+                        // bounded because AttachConnection refuses admission while reserve work remains, not just at the normal cap.
+                        if (!UniNetEnvironment.TryQueueOnMain(cleanup))
+                            UniNetEnvironment.QueueReservedOnMain(cleanup);
                         return;
                     }
                 }
@@ -711,7 +732,16 @@ namespace UniNet.Core.Hosting
                         {
                             conn.VersionApproved = true;
                             _approvedConns[conn.ConnId] = 1;   // hot-path index — kept in sync with the approval flag
-                            UniNetEnvironment.QueueOnMain(() => RunPostApproval(conn));   // dispatch thread — held work runs in order on the main queue
+                            if (!UniNetEnvironment.TryQueueOnMain(() => RunPostApproval(conn)))
+                            {
+                                // F12 — the release work was rejected by a saturated main queue. Revert the approval so the
+                                // connection does not stay stuck approved-but-held forever: the declare-timeout sweep now
+                                // owns it (kick), and a re-declaration can retry the release (ApprovalRequested is still false).
+                                conn.VersionApproved = false;
+                                _approvedConns.TryRemove(conn.ConnId, out _);
+                                UniNetEnvironment.LogFault(new InvalidOperationException(
+                                    $"[UniNet] post-approval release for connection {conn.ConnId} was rejected by a saturated main queue — reverting to unapproved; the declare-timeout sweep will kick it."));
+                            }   // dispatch thread — held work runs in order on the main queue
                         }
                 }
                 var approver = ConnectionApprover;
@@ -726,10 +756,9 @@ namespace UniNet.Core.Hosting
                     if (target != null && !target.Disconnected && !target.ApprovalRequested && !target.VersionApproved)
                     {
                         target.ApprovalRequested = true;   // dispatch-thread write; read on the main queue and by later declarations
-                        UniNetEnvironment.QueueOnMain(() => RunApprovalAsync(target, version, credential));
-                    }
-                    else
-                    {
+                        if (!UniNetEnvironment.TryQueueOnMain(() => RunApprovalAsync(target, version, credential)))
+                            UniNetEnvironment.LogFault(new InvalidOperationException(
+                                $"[UniNet] approval callback dispatch for connection {target.ConnId} was rejected by a saturated main queue — the connection stays unapproved and the declare-timeout sweep will kick it."));   // F12 — the request is not re-armed (ApprovalRequested stays true), matching the hung-callback contract
                     }
                 }
                 return true;
@@ -760,7 +789,11 @@ namespace UniNet.Core.Hosting
                 UniNetEnvironment.LogFault(ex);   // user-code fault surfaced, not swallowed — then handled like a rejection
                 approved = false;
             }
-            UniNetEnvironment.QueueOnMain(() => FinishApproval(conn, approved));
+            if (!UniNetEnvironment.TryQueueOnMain(() => FinishApproval(conn, approved)))
+                UniNetEnvironment.LogFault(new InvalidOperationException(
+                    $"[UniNet] approval verdict for connection {conn.ConnId} was rejected by a saturated main queue — the connection stays unapproved and the declare-timeout sweep will kick it."));
+            // F12 — a rejected verdict enqueue is explicit: the connection stays unapproved and ApprovalRequested stays
+            // true, which the declare-timeout sweep already owns exactly like a hung callback (CON-002 contract).
         }
 
         /// <summary>Applies the CON-002 callback verdict (main thread). Approval sets the CON-001 approval state and runs
@@ -1279,9 +1312,11 @@ namespace UniNet.Core.Hosting
         public long DeferredCoalescedCount => _deferredCoalesced;
 
         /// <summary>
-        /// FR-06 — cumulative entries force-sent past the replication budget because the deferred queue was at
-        /// <see cref="MaxDeferredDeltas"/>. An overload beyond the cap is EXPLICIT (counter + transmitted state), never a
-        /// silent drop; the burst drains the queue back under the cap. Observation counter (main thread).
+        /// FR-06 — cumulative entries force-sent past the replication budget: entries pushed through when the deferred
+        /// queue was at <see cref="MaxDeferredDeltas"/>, plus F11 merge-fallback evictions (a same-key merge that a
+        /// faulted serializer view voided — the older entry is drained reliably so the queue stays bounded by the cap).
+        /// An overload beyond the budget is EXPLICIT (counter + transmitted state), never a silent drop. Observation
+        /// counter (main thread).
         /// </summary>
         public long DeferredForcedSendCount => _deferredForcedSends;
 
@@ -1632,12 +1667,40 @@ namespace UniNet.Core.Hosting
                     }
                 }
 
-                // Merge candidates with the previous tick's deferrals → send in starvation-boosted priority order (UE GetNetPriority: priority × (1 + waitSec / 0.1))
+                // A queued predecessor and its fresh successor form one scheduling dependency. Give every candidate
+                // of that key the group's highest effective priority, then Seq orders them oldest first. Comparing Seq
+                // only for same-key pairs inside the old comparator would be NON-TRANSITIVE against other priorities.
+                // Scratch space is reused and limited to queued keys, not all active objects.
+                _queuedPriorities.Clear();
+                foreach (var item in _queue)
+                {
+                    var key = (item.NetId, item.SubId);
+                    double score = item.Priority * (1 + (timed ? time - item.EnqueuedAt : 0) / 0.1);
+                    _queuedPriorities[key] = _queuedPriorities.TryGetValue(key, out double previous)
+                        ? Math.Max(previous, score) : score;
+                }
+                if (_queuedPriorities.Count != 0)
+                {
+                    foreach (var item in _pending)
+                    {
+                        var key = (item.NetId, item.SubId);
+                        if (_queuedPriorities.TryGetValue(key, out double previous))
+                        {
+                            double score = item.Priority * (1 + (timed ? time - item.EnqueuedAt : 0) / 0.1);
+                            _queuedPriorities[key] = Math.Max(previous, score);
+                        }
+                    }
+                }
                 _pending.AddRange(_queue);
                 _pending.Sort((a, b) =>
                 {
                     double effA = a.Priority * (1 + (timed ? time - a.EnqueuedAt : 0) / 0.1);
                     double effB = b.Priority * (1 + (timed ? time - b.EnqueuedAt : 0) / 0.1);
+                    if (_queuedPriorities.Count != 0)
+                    {
+                        if (_queuedPriorities.TryGetValue((a.NetId, a.SubId), out double groupedA)) effA = groupedA;
+                        if (_queuedPriorities.TryGetValue((b.NetId, b.SubId), out double groupedB)) effB = groupedB;
+                    }
                     int cmp = effB.CompareTo(effA);
                     return cmp != 0 ? cmp : a.Seq.CompareTo(b.Seq);
                 });
@@ -1797,16 +1860,77 @@ namespace UniNet.Core.Hosting
                     _deferredCoalesced++;
                     return;   // the new candidate is subsumed — the queue keeps exactly one entry for this key
                 }
-                break;   // rewrite impossible (serializer fault / every field condition-hidden) — keep BOTH entries (loss-free fallback). NOTE: this fallback Add bypasses the cap (only this pathological path can: it needs a faulting serializer or a condition asymmetry EVERY tick, both already surfaced via LogFault); under normal merge success the queue is bounded by the distinct-key count and the cap force-send.
+                // F11 — merge impossible (a faulted serializer view or an all-empty rewrite). The old keep-BOTH fallback
+                // appended a same-key entry EVERY tick, growing the queue past MaxDeferredDeltas without bound. Instead
+                // the OLDER entry (by Seq — priority sorting can reorder pending entries, so the held entry is NOT always
+                // the older one) is force-drained to the wire on the RELIABLE batch past the budget (same precedent as the
+                // cap force-send), and the NEWER entry stays queued — the queue keeps exactly one entry per key, the
+                // per-key wire stream stays seq-monotonic (an op-delta never runs ahead of an older full), and nothing is
+                // dropped. The evicted entry leaves the queue BEFORE its send, so a channel fault is at most a loss on the
+                // unsent receivers (the existing force-send exposure) — never a duplicate re-send.
+                // Keep the retained successor on the SAME reliable stream as the forced predecessor. Otherwise an
+                // Unreliable op can overtake its required predecessor on another delivery lane.
+                held.ForceReliable = true;
+                item.ForceReliable = true;
+                if (item.Seq < held.Seq)
+                {
+                    ForceSendHeld(item, entry, connections);   // the incoming candidate is the older one (a re-processed queue entry) — drain it, keep held
+                    return;
+                }
+                _queue[i] = item;   // replace in place — FIFO position preserved; held (older) is evicted below
+                item.Queued = true;
+                ForceSendHeld(held, entry, connections);
+                return;
             }
             _queue.Add(item);
             item.Queued = true;
         }
 
         /// <summary>
-        /// FR-06 — rewrites a held deferral's payloads to the entry's CURRENT full state. A faulted or all-empty write
-        /// must not wipe the retained payload (that would be a silent loss), so a failed rewrite keeps the caller's
-        /// both-entries fallback. Per-side: a successful side replaces, a faulted side keeps the older payload.
+        /// F11 — force-drains one deferred entry to every currently-eligible recipient on the RELIABLE batch, past the
+        /// tick budget (the merge-fallback counterpart of the cap force-send). Recipient semantics are identical to the
+        /// normal send loop: stable recipient IDs + this entry's own visibility bits, current relevancy/owner/
+        /// approval/scene-ready gates, pooled overflow words owned by the entry. Returns the payload bytes delivered
+        /// (0 = no eligible recipient — not a send).
+        /// </summary>
+        private int ForceSendHeld(DeferredDelta held, ServerObjectEntry entry, IReadOnlyList<ServerConnection> connections)
+        {
+            // The entry has already left _queue. Clear ownership BEFORE any hook/channel call, so TickReplication's
+            // finally returns overflow bits even if a relevance hook or an intermediate batch flush throws.
+            held.Queued = false;
+            int spent = 0;
+            int recipientCursor = 0;
+            for (int i = 0; i < connections.Count; i++)
+            {
+                var conn = connections[i];
+                if (conn.Disconnected || !conn.VersionApproved || conn.AwaitingSceneReady) continue;   // CON-001/SCN-002 — same receive gates as the tick send loop
+                if (held.Recipients == null) continue;   // defensive — every entry reaching the merge fallback has recipients stamped
+                while (recipientCursor < held.Recipients.Length && held.Recipients[recipientCursor] < conn.ConnId)
+                    recipientCursor++;
+                if (recipientCursor >= held.Recipients.Length || held.Recipients[recipientCursor] != conn.ConnId
+                    || !held.IsRecipientIndex(recipientCursor) || !IsRelevant(entry, conn, held.NetId))
+                    continue;
+                var payload = conn.ConnId == entry.OwnerConnId ? held.Owner : held.Others;
+                if (IsEmpty(payload)) continue;
+                var batch = _batchRel[i];
+                var candidate = new ReplicateEntry(held.NetId, held.SubId, held.MethodId, payload);
+                if (batch.Count > 0 && batch.Bytes + candidate.WireBytes > MaxReplicateBatchBytes)
+                    FlushBatch(batch, conn.Channel, unreliable: false);   // reliable — the merge fallback must not ride the lossy stream
+                batch.Add(candidate);
+                spent += payload.Length;
+            }
+            held.ReleaseRecipients();
+            if (spent > 0) _deferredForcedSends++;   // count actual forced deliveries, not zero-recipient attempts
+            return spent;
+        }
+
+        /// <summary>
+        /// FR-06 — rewrites a held deferral's payloads to the entry's CURRENT full state. F11 — the replacement is
+        /// ATOMIC per fault: a WriteFull fault on EITHER view voids the whole merge (a partial success — e.g. the owner
+        /// view faulting while the others view succeeds — must not keep the retained STALE side and destroy the fresh
+        /// candidate's payload for that view), so the caller's merge-fallback force-drains the older entry instead. A
+        /// legitimately EMPTY view (every field condition-hidden — not a fault) does not void the merge; per side, a
+        /// non-empty write replaces and an empty write keeps the retained payload (pre-existing contract).
         /// </summary>
         private bool CoalesceIntoHeld(DeferredDelta held, ServerObjectEntry entry)
         {
@@ -1814,9 +1938,21 @@ namespace UniNet.Core.Hosting
             var sub = entry.Subs[held.SubId];
             var handler = sub.Replication;
             if (handler == null || !handler.HasFields) return false;
-            byte[] ownerFull = TryWriteFull(handler, sub.Instance, true);
-            byte[] othersFull = TryWriteFull(handler, sub.Instance, false);
-            if (IsEmpty(ownerFull) && IsEmpty(othersFull)) return false;
+            byte[] ownerFull;
+            byte[] othersFull;
+            try { ownerFull = handler.WriteFull(sub.Instance, true); }
+            catch (Exception ex)
+            {
+                UniNetEnvironment.LogFault(ex);
+                return false;   // F11 — faulted view = partial failure: void the merge, keep the candidate's own payloads
+            }
+            try { othersFull = handler.WriteFull(sub.Instance, false); }
+            catch (Exception ex)
+            {
+                UniNetEnvironment.LogFault(ex);
+                return false;   // F11 — same atomicity for the others view
+            }
+            if (IsEmpty(ownerFull) && IsEmpty(othersFull)) return false;   // both legitimately empty — nothing to merge onto (caller's fallback keeps the newer delta queued)
             if (!IsEmpty(ownerFull)) held.Owner = ownerFull;
             if (!IsEmpty(othersFull)) held.Others = othersFull;
             return true;

@@ -2,7 +2,7 @@
 
 - **상태**: 구현됨
 - **최초 작성**: 2026-09-21
-- **마지막 갱신**: 2026-10-20 (ADR-0045 — 씬 전환 잔여·0.8.0)
+- **마지막 갱신**: 2026-10-27 (AUDIT-F12 — 포화 시 정리 보존·입장 역압)
 
 ## 개요
 
@@ -102,8 +102,19 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - **기존 한계**: `ReconnectAsync`의 반환값은 서버의 재부착 성공 응답이 아니다. 빠른 재접속 경합·결과 통보·아바타 정리와 유예의 상호작용은 REC-001, 연결 승인/독립 wire 버전 게이트는 CON-001/002에 남아 있다. 자발적 `ClientStop`은 클라이언트 환경을 지우므로 일반적인 원격 연결 상실 후 재접속과 구분한다.
 - **Arena 예시**: Play Mode의 `ArenaBootstrap` 메뉴 `Diag/SEC-001 위조 토큰 재개 거부 (기존 세션 정지 후)`는 기존 데모 세션을 명시적으로 정지하고 실제 RUDP로 위조 토큰 거부·정상 재부착·플레이어 매핑 복원을 검증한다. 비동적 마커를 사용하며 **아바타 복구 검증은 아니다**. 진단의 환경/토큰 주입은 공격 재현용 테스트 절차이지 게임 수명주기의 권장 사용법이 아니다. 성공 마커는 `[UNINET-VERIFY] SEC-001 DIAG PASS`다.
 
+## 메인 큐 포화·입장 거부·예약 정리 (AUDIT-20261027-F12, 2026-10-27)
+
+물리 disconnect의 cleanup(가시성/P3·P4 집합·연기 수신자·`ClientDisconnected` 1회·소유권 재배정·플레이어 매핑·RPC 레이트 상태·씬 준비 집합·씬 게이트)은 메인 큐가 포화돼도 유실되지 않는다:
+
+- **일반 작업은 명시적 수락/거부**: `UniNetEnvironment.TryQueueOnMain`이 `bool`을 반환한다(거부 = 상한 초과·`DroppedMainActions` 계수·`LogFault`). 기존 `QueueOnMain`은 같은 동작의 fire-and-forget 래퍼로 유지(기존 호출자 호환).
+- **수락된 연결의 일회성 detach cleanup은 예약 FIFO에 보존**: `NetworkServer.DetachConnection`은 일반 큐 적재가 거부된 경우에만 `UniNetEnvironment.QueueReservedOnMain`(internal)으로 들어가고 `PumpMain`이 일반 큐 드레인 후 예약 FIFO를 전량 처리한다. 인라인 콜백·재시도 루프·블로킹 없음. 작업 예외는 기존처럼 펌프 호출을 중단하며 남은 작업은 다음 호출에 남는다. 처리 지연·재진입·호출당 예산 계약은 이번에 바꾸지 않는다(D03 후속). 예약 관측: `ReservedCleanupCount`(입장 누계)·`ReservedCleanupDrainedCount`(dequeue 누계 — 차감은 처리 중 작업을 제외한 대략적 대기 깊이), `PendingMainActions`는 일반+예약 대기 수다.
+- **일반 큐 포화 OR 예약 적체 중 신규 입장은 실제 거부**: `AttachConnection`은 **0을 반환**하고 등록을 완전 롤백한다(연결 제거·승인 인덱스 제거·채널 ID 초기화 + 실제 hub disconnect). 일반 큐에 빈자리가 생겨도 예약 정리가 남았으면 입장을 재개하지 않는다. 일반 작업 예외가 매번 예약 드레인을 막는 동안 접속/해제를 반복해 과거 연결 수만큼 정리가 늘어나는 초안 반례를 차단한다. **일반 상한 + 적체 시작 시 이미 수락된 연결 집단의 일회성 정리**에 묶이며, 예약이 드레인된 뒤 입장이 재개된다. 예약 적체 거부도 `DroppedMainActions`에 집계하고 반환값 0으로 관측한다.
+- **상태 선진행 후 갇힘 방지**: 버전 선언 승인 해제(`RunPostApproval` 예약 실패 → 승인 플래그 원복, 선언 타임아웃 스윕이 킥), 승인 콜백 디스패치·판정(`RunApprovalAsync`/`FinishApproval` 예약 실패 → `LogFault` 명시, 미승인 유지로 스윕 소관 — CON-002 hung-callback 계약과 동일).
+- 반복 `DetachConnection`은 첫 정리 후 무연산(콜백 추가 없음·유계). 스레드 경계 불변: detach 정리는 언제나 메인 스레드에서만 실행.
+
 ## 테스트 / 검증
 
+- **2026-10-27 AUDIT-F11/F12/F15**: `CoreInvariantRegressionTests` **15/15 EditMode PASS**(격리 Unity CLI). 포화 네트워크 스레드 detach의 메인 콜백·일반 FIFO→예약 FIFO 순서·정확히 1회·플레이어 정리·유예 토큰 재부착, 일반 작업 예외+12회 연결 churn의 입장 거부/예약 깊이 1·드레인 후 재입장을 실제 Core로 검증했다. 원시 결과 `Logs/pi-unity-tests-editmode-20261027T070203283Z-b4f3f4a8d42a41b7a32288ae70c35a9f.json`. 앞선 70/70 관련 회귀에는 새 파일이 포함되지 않았다(초안 `.meta` GUID가 33자리여서 무시됨); GUID 수정 후 클래스 15개 기록의 실제 실행을 별도로 확인했다. 전수 최종 검증·독립 리뷰·커밋은 별도 게이트다.
 - **리뷰 5 검증**: `SceneTransitionTests`에 파괴 유보/재등록 2케이스와 disconnect 정리 1케이스를 추가했다(총 34케이스). 즉시 송신 없음·잘못된 보고 유지·ready 후 파괴 1회 및 기준선보다 먼저 전달·중복 보고/다음 전환 재송신 없음·준비된 연결 즉시 수신·미승인 무통보·재등록 대체 객체 Score=42 적용·연결별 상태 폐기를 단언한다. 순차 Core/EditMode/PlayMode `dotnet build --no-restore` 및 패키지 정적 검증 PASS(기존 CS8632 경고). 독립 headless Core는 기존/후발 참여자 × 파괴/재등록 4종 + 전송 스레드 detach 정리 1종 **5/5 PASS**, 기존 리뷰 4 probe 재실행 **22/22 PASS**. 수정 전 소스 음성 대조는 `held destroy delivered exactly once after ready`에서 예상 실패했다. 재현 소스/수정 전 소스/로그: `.pi-subagents/artifacts/commercial-netcode/scn-r5/`. 초기 probe 파일 분리 시 using 누락 빌드 실패 기록도 보존했으며 수정 후 전체 검증을 완료했다. worker는 Unity MCP를 사용하지 않았으나 부모가 최신 코드에서 `SceneTransitionTests` **34/34 EditMode PASS**(job `ece5ab18f3f34cccb3cc7813ad733e98`)·`CurrentSceneJoinPlayTests` **1/1 PlayMode PASS**(job `6c7c7a306ca94ef0826f0d90d68c0860`)를 실행했다. 필수 독립 reviewer CLEAN 대기, 커밋/스테이징/릴리스 없음.
 
 - **리뷰 4 검증**: Core→EditMode→PlayMode `dotnet build --no-restore` 순차 빌드·패키지 검증·`git diff --check` PASS. EditMode에 승인 꼬리/LoadScene 경합 1종과 2/66명 × 비관련/해제 마지막 수신자 정리 4케이스 추가. 독립 headless Core **22/22 PASS**: 기존 9종+경합 1종+2/66/130명 정리 6종+생성 relevancy/지연 송신 relevancy/중간 batch flush 채널 예외 3종+3/66/130명 append 및 선행/중간 제거 후 병합 3종. 예외 probe는 fresh·현재·미처리 후보의 overflow 참조 해제와 기존/재연기 큐의 동일 배열·비트 보존, 회복 후 peers에 정확히 1회 전달을 확인한다. 이전 소스에 같은 경합/정리/예외 probe를 실행하면 각각 예상 실패한다. 재현 소스·전 소스·순차 빌드·음성 대조 로그: `.pi-subagents/artifacts/commercial-netcode/scn-r4/`.
@@ -128,6 +139,8 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 - **종료·실패·재시작 대칭 정리 (LIF-001/ADR-0052)** — `ServerStopAsync`도 동기 정지와 동일하게 동적 스폰을 스윕하고(메인 스레드 계약), `ServerAsync` listen 실패는 환경 탈착 후 재던진다. 등록 추적은 세대 스탬프(`NetworkServer.Generation`/`NetworkClient.Generation`)로 교체 — 새 서버/클라 인스턴스마다 씬 객체가 자동 재등록되고 같은 세대 재호출은 멱등이다. 세대 값은 와이어 미전송(0.19.0).
 
 ## 변경 이력
+
+- 2026-10-27 — AUDIT-F12: 포화 메인 큐에서 detach cleanup 유실(dead-owner·플레이어 매핑·콜백 누락) 수정 — `TryQueueOnMain` 명시적 수락/거부·수락 연결 1회성 cleanup 예약 FIFO(포화 시 신규 입장 실제 거부로 유계)·승인 경로 예약 실패 가시화 문서화·회귀 추가
 - 2026-10-21 — ADR-0047 연결 승인 콜백: 와이어 7 페이로드 확장 `[version][credential]`(조건부 읽기로 구 클라 호환)·`UniNetEndpointOptions.ConnectionApprover/ConnectionCredential`·`UniNetDisconnectReason.ApprovalRejected = 6`·콜백 대기 중 CON-001 유예 상태 재사용·`VersionDeclareTimeoutMs` 총예산 재사용. 0.10.0 (CON-002 CLOSED — EditMode 221/221·PlayMode 35/35·실RUDP 승인/거부/초과페이로드 PASS·리뷰 r11→r12 CLEAN)
 - 2026-10-21 — ADR-0046 자발 퇴장 통보: 시스템 와이어 15 `IntentionalLeave`(C→S) 신설 — ClientStop이 close 직전 통보, 서버는 유예 저장 생략+토큰 툼스톤+소유권 즉시 재배정. 전송 신뢰성: SendRPC Task 250ms 유계 대기 + 150ms 드레인 창. 구 클라 호환(미통보 = 기존 유예). 0.9.0 (REC-002 CLOSED — 실루프백 3/3·Arena 진단 PASS·전수 209/32 PASS)
 
