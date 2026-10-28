@@ -120,6 +120,9 @@ namespace UniNet.Tests
             ulong netId = spawned.NetId;
 
             yield return WaitUntil(() => spawned.IsOwner, 5, "호스트 클라 소유권 (HostRoundtrip 하네스)");
+            // OwnerUpdate is applied on dispatch before Spawn's queued main-thread registration. IsOwner alone
+            // can be true while Get is still null; require registration so the later null actually proves destroy.
+            yield return WaitUntil(() => UniNetEnvironment.Client.Get(netId) != null, 5, "호스트 스폰 등록 완료 (파괴 전 필수 장벽)");
             Assert.AreEqual(UniNetEnvironment.Client.LocalConnId, UniNetEnvironment.Client.GetOwner(netId), "파괴 전 — 호스트 클라가 소유");
 
             UniNetManager.NetworkDestroy(go);   // 호스트 서버 파괴 — local GO + server dereg + wire 4
