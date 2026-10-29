@@ -21,10 +21,10 @@ UniNet is a **server-authoritative** networking framework for Unity, targeting t
 Add one line to your project's `Packages/manifest.json`:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.1"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.23.0"
 ```
 
-- `#v0.4.1` pins a release tag (omit to track the default branch).
+- `#v0.23.0` pins a release tag (omit to track the default branch).
 - All dependencies are bundled — no NuGet feed, no extra config. Private repos work if your editor account can `git clone`.
 
 ### Mental model

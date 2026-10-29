@@ -120,10 +120,10 @@ Everything above is implemented and verified (EditMode/PlayMode tests + two-proc
 Add one line to your project's `Packages/manifest.json`:
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.4.1"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.23.0"
 ```
 
-`#v0.4.1` pins a version tag (omit it to track the default branch). Releases: [Releases](https://github.com/BIGSUNGG/UniNet/releases) · details: [Document/deployment.md](Document/deployment.md)
+`#v0.23.0` pins a version tag (omit it to track the default branch). Releases: [Releases](https://github.com/BIGSUNGG/UniNet/releases) · details: [Document/deployment.md](Document/deployment.md)
 
 ### 2. Declare a networked object
 

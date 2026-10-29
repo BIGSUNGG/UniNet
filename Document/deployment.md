@@ -6,7 +6,7 @@
 ## 소비자 설치
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.8.0"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.23.0"
 ```
 
 - Unity `6000.0+` 필요. 의존성 전부 패키지 동봉 — 추가 설정 없음.
@@ -14,7 +14,7 @@
 
 ## CI/CD (GitHub Actions — `.github/workflows/upm.yml`)
 
-- **CI (push/PR→main)** — `Package/tools/validate-package.sh` 정적 검증: package.json 유효성·DLL 15종+메타·RoslynAnalyzer 라벨·UPM 표준 구조·NuGetForUnity 부재·주소 플레이스홀더 부재. Unity 라이선스 불필요 (Unity 테스트는 로컬 배치·verify-install.sh 게이트 유지)
+- **CI (push/PR→main)** — `Package/tools/validate-package.sh` 정적 검증(package.json·DLL 15종+메타·RoslynAnalyzer 라벨·UPM 구조·NuGetForUnity/주소 플레이스홀더 부재), 설치 스크립트 허미틱 회귀, 생성기 소스 빌드와 source-built/동봉 analyzer 양 경로 headless 회귀. Unity 라이선스 불필요 (Unity 테스트·신규 설치는 로컬 배치 게이트 유지)
 - **CD (v* 태그 푸시)** — 태그↔package.json 버전↔`Package/CHANGELOG.md` 섹션 정합 검사 통과 시 GitHub Release 자동 생성 (해당 버전 섹션이 릴리스 노트). 태그 자체가 UPM 배포다
 
 ## 배포 절차 (태그→푸시뿐)
@@ -24,7 +24,7 @@
 매 배포:
 
 1. `Package/package.json`의 `version` 상향 + `Package/CHANGELOG.md` `## X.Y.Z` 섹션 추가 + `Document/changelog.md` 기록
-2. 커밋 → 태그 (`git tag vX.Y.Z`) → 푸시 (`git push && git push --tags`) → CI 검증 통과 시 Release 자동 생성
+2. 커밋 → 새 태그 (`git tag vX.Y.Z`) → main과 해당 태그만 명시적으로 푸시 (`git push origin main && git push origin vX.Y.Z`) → CI 검증 통과 시 Release 자동 생성
 3. 태그 재지정 금지 — 소비자 `packages-lock.json`이 해시로 고정하므로 수정 배포는 항상 새 태그로
 
 ## 기반 스택 버전 갱신 (개발 시)
@@ -42,6 +42,15 @@ Package/tools/update-dlls.sh          # C:/Projects/DS/unity-nuget의 nupkg에�
 - 신규 프로젝트 재현: `Package/tools/verify-install.sh` — 빈 Unity 프로젝트에 로컬 git URL로 설치 → 컴파일 에러 0 확인 (file://+`.git` 접미사로 git 전송 경로 실측)
 - 공개 태그 게이트 (배포 절차 2의 태그 푸시→Release **후** 실행): `Package/tools/verify-install-public.sh [TAG=package.json version]` — `git ls-remote`로 원격 태그 존재 확인 → 소비자 계약 URL(`https://github.com/BIGSUNGG/UniNet.git?path=/Package#TAG`)로 빈 프로젝트 설치 → PackageCache에서 샘플 추출·재임포트 컴파일 → `packages-lock.json`이 git 소스(github.com/BIGSUNGG/UniNet)로 git 소스로 기록됐는지 단언(해시는 로그 에코). PASS면 배포 완료. 태그 재지정 금지 — 수정 배포는 항상 새 태그
 - 로컬 정적 검증: `Package/tools/validate-package.sh [--tag vX.Y.Z]` (CI와 동일 스크립트)
+
+## v0.23.0 배포 준비 검증 (2026-10-29)
+
+- 제품·테스트 기준 커밋: `7272d73964965a63e7ef23a1ee2a1f405810ffe9`. 기존 A/B/C/D 리뷰 원문의 첫 줄 CLEAN·실행 종료 metadata·동결 diff와 실제 커밋의 일치를 재확인했다. 사용자 선택에 따라 추가 reviewer는 호출하지 않았다.
+- 새 실행: EditMode **330통과/0실패/1기존 Ignore**(도구 종합 판정 `uncertain` — 전체 통과로 바꾸지 않음), PlayMode **50/50**, 생성기 source-built/동봉 각각 **49/49**, 설치 스크립트 허미틱 **4/4**, 태그 정적 검증 및 로컬 Git 신규 설치·샘플 컴파일 PASS.
+- 원시 증거: `.pi-glla/releases/v0.23.0-20261029/`의 `local-gates.json`·`existing-clean-verification.json`·실행 로그/XML. 루트 LSP의 Roslyn 참조 미해결은 실제 csproj 빌드 오류와 구분하며, 직접 빌드는 오류 0개(기존 NU5128 경고 1개)다.
+- README·패키지 문서·소비자 SKILL 설치 URL을 `#v0.23.0`으로 통일했다. 이번 세션의 제품 코드·동봉 DLL 변경은 없다. 기존 `.gitignore`·하네스 타임스탬프 변경은 커밋에서 제외한다.
+- 후속 D02(`AllClientsSceneLoaded` 구독자 격리)·D03(`PumpMain` 호출당 처리 예산)는 별도 큐에 남으며 이번 릴리스에는 포함하지 않는다. 기본 핸드셰이크 버전 상승에 대한 양단 업데이트 안내는 [[migration-v0-23]] 참조.
+- 태그·GitHub Release·원격 CI·공개 URL 신규 설치 결과는 게시 후 이 절에 추가한다. 태그는 재지정하지 않는다.
 
 ## 잔여 리스크
 
