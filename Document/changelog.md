@@ -7,7 +7,8 @@
 
 ### Changed
 
-- v0.23.0 배포 준비 재검증 — 제품 기준 `7272d73`의 기존 A/B/C/D CLEAN 원문·실행 metadata·동결 diff/커밋 정합을 확인(사용자 선택: 추가 reviewer 없음). 새 실행 EditMode 330통과/0실패/1기존 Ignore(도구 `uncertain` 그대로), PlayMode 50/50, 생성기 양 경로 각49/49·설치 판정 허미틱4/4·패키지 정적 검사·로컬 Git 신규 설치와 샘플 컴파일 PASS. 증거 `.pi-glla/releases/v0.23.0-20261029/`. README·패키지 문서·소비자 SKILL·[[deployment]] 설치 URL을 `#v0.23.0`으로 통일했다. 제품 코드·동봉 DLL 무변경, 사용자 미커밋 2개 경로는 제외. 원격 게시/공개 URL 설치는 후행 확인하며, D02/D03 후속 과제는 이번 배포에 포함하지 않는다.
+- v0.23.0 배포 준비 재검증 — 제품 기준 `7272d73`의 기존 A/B/C/D CLEAN 원문·실행 metadata·동결 diff/커밋 정합을 확인(사용자 선택: 추가 reviewer 없음). 새 실행 EditMode 330통과/0실패/1기존 Ignore(도구 `uncertain` 그대로), PlayMode 50/50, 생성기 양 경로 각49/49·설치 판정 허미틱4/4·패키지 정적 검사·로컬 Git 신규 설치와 샘플 컴파일 PASS. 증거 `.pi-glla/releases/v0.23.0-20261029/`. README·패키지 문서·소비자 SKILL·[[deployment]] 설치 URL을 `#v0.23.0`으로 통일했다. 제품 코드·동봉 DLL 무변경, 사용자 미커밋 2개 경로는 제외. 원격 게시/공개 URL 설치 결과는 아래에 기록하며, D02/D03 후속 과제는 이번 배포에 포함하지 않는다.
+- **v0.23.0 UPM 배포 완료** — 태그 `v0.23.0` → `1d124ec0d639e4e44dabba0b924e146dd8583ac1`, [Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.23.0) 게시, [main CI](https://github.com/BIGSUNGG/UniNet/actions/runs/40840129785)·[tag CI](https://github.com/BIGSUNGG/UniNet/actions/runs/40840133181) success. `verify-install-public.sh v0.23.0`으로 실제 공개 Git URL 신규 설치·배포 샘플 컴파일 PASS, lock의 source/URL/commit hash와 설치된 package.json `0.23.0` 일치 확인. 보존 대상 334경로 SHA256 동일. 태그 재지정 없이 후행 docs-only 영수증을 main에 남긴다. 상세 [[deployment]].
 
 ## [2026-10-28]
 

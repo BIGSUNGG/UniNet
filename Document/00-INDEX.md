@@ -107,6 +107,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-10-29 — **v0.23.0 배포 완료**: 안정화+감사 수정 커밋을 `v0.23.0`(`1d124ec`)으로 게시, [Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.23.0)·main/tag CI·실제 공개 URL 신규 설치와 샘플 컴파일 확인. 새 검증 EditMode 330통과/0실패/1기존 Ignore·PlayMode 50/50·생성기 양 경로 각49/49. 기존 CLEAN 재사용(추가 reviewer 없음), 사용자 보존 대상 334경로 동일. D02/D03는 후속 범위. [[deployment]] 참조.
 - 2026-10-26 — **v0.23.0 FR-01~07 안정화** (FR 검토 7건 전부 해결·배포 준비 — 태그/릴리스 제외): 승인/씬 준비 전 게임 RPC 즉시 드롭(`CanReceiveGameData`), Unreliable 이동 중 1.0s 주기 기준선·AOI 재진입 기존 인스턴스 갱신, RPC 컬렉션 코덱 경계(수신 List 복원·65535 초과 명시 거부·미소비 검증), 위치 무관 권위 TState 리컨사일(`ReconcileState` DIM), 연기 큐 최신 전체 병합·상한 강제 송신·메인 큐 상한, 생성기 소스 빌드 복구·headless 회귀 CI 게이트(0.2.18). EditMode 연속 2회 310/0/1·PlayMode 47/47·headless 양경로 19/19·사용자 자산 61파일 무변경. [[migration-v0-23]]·[[research/v0-23-stabilization-review]] 신규. 구현은 pi-crew executor(glm-5.3)+탐색/reviewer(glm-5.3-flash) 4단계·중간 reviewer CLEAN 4회.
 - 2026-10-26 — **Unity 작업 수단 일원화 — Unity CLI** (ADR-0055·[[harness]] "Unity 작업 수단" 절 신설. Sandbox·Builds 2Proc의 에디터 연동 패키지 매니페스트·잠금·캐시와 pi 하네스의 연동 서버 등록 제거. Unity 작업은 배치 모드 CLI(`-runTests`·`run2proc.sh`·`UniNetSolutionGenerator`)로 수행·증거는 종료코드·로그·NUnit XML. `AGENTS.md` 프로젝트 사실에도 반영)
 - 2026-10-23 — **상용 Unity 서버용 기능 재검토**: v0.22.0 코드·동봉 생성기·격리 실행에서 승인 전 게임 RPC 송신·유실 필드 미복구·RPC List/길이 경계·예산 적체를 확인하고, 정적 재진입/상태 리컨사일 경로·생성기 소스 빌드 오류를 구분해 기록. 4개 프레임워크 공식 본문 17개로 추가 비교. [[research/unity-server-functional-review]] — 구현 변경·결함 해결·신규 배포 아님.
