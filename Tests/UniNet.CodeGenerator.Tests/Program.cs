@@ -100,6 +100,10 @@ internal static class Program
             "RPC custom-only element arrays are rejected with UNINET002, unlike replicated-field serializers");
         Check(!negDiags.Any(d => d.Id is "UNINET013" or "UNINET014"),
             "a zero-byte replicated element serializer remains valid; it does not make that element an RPC type");
+        Check(negDiags.Any(d => d.Id == "UNINET017" && d.Severity == DiagnosticSeverity.Error),
+            "negative driver pass — RpcSender in the RPC declaration reports UNINET017 (got: " + string.Join(",", negDiags.Select(d => d.Id)) + ")");
+        Check(negDiags.Any(d => d.Id == "UNINET018" && d.Severity == DiagnosticSeverity.Error),
+            "negative driver pass — trailing RpcSender on a ClientRpc implementation reports UNINET018 (got: " + string.Join(",", negDiags.Select(d => d.Id)) + ")");
 
         // ── runtime phase: execute the generated send/codec paths on the real Core runtime ──
         AppDomain.CurrentDomain.AssemblyResolve += (_, e) => ResolveFromDirs(e.Name, depsDir, fwDir);
@@ -129,7 +133,7 @@ internal static class Program
         var fixture = Activator.CreateInstance(codecType)!;
         codecType.GetProperty("NetId")!.SetValue(fixture, netId);
         codecType.GetProperty("IsServer")!.SetValue(fixture, true);   // the shim exposes the registration stamp as a settable property
-        serverType.GetMethod("RegisterSceneObject")!.Invoke(server, new object[] { netId, new object[] { fixture } });
+        serverType.GetMethod("RegisterSceneObject")!.Invoke(server, new object[] { netId, new object[] { fixture }, "" });   // ADR-0057 — explicit empty scene tag (reflection does not fill optional params)
 
         var channel = ChannelProxy.Create(asm);
         var connId = (long)serverType.GetMethod("AttachConnection")!.Invoke(server, new object[] { channel })!;
@@ -297,6 +301,23 @@ internal static class Program
             pump.Invoke(null, null);
             Check((int)Field(codecType, fixture, callsField)! == maxCallsBefore + 1, "FR-03/F05 — 65,535-element payload dispatches to the implementation (" + encode + ")");
         }
+
+        // ── ADR-0056 — trailing RpcSender injection on the real dispatch path: the transport-assigned connId
+        // reaches _Validate/_Implementation; it is absent from the caller surface and the wire frame.
+        int senderId = MethodId(fnv, $"{FixtureNs}.CodecRpcObject.RpcSenderChat");
+        var senderWire = (byte[])codecType.GetMethod("__UniNetEncode_RpcSenderChat", AllFlags)!.Invoke(null,
+            new object[] { netId, (byte)0, "hi" })!;
+        Check(senderWire.Length == 8 + 1 + 4 + 2, "ADR-0056 — wire frame carries only [netId][subId][int32-prefix string] (sender never serialized)");
+        Dispatch(dispatch, senderId, connId, senderWire);
+        pump.Invoke(null, null);
+        Check((long)Field(codecType, fixture, "SenderValidateSeen")! == connId,
+            "ADR-0056 — _Validate receives the transport-assigned sender connId");
+        Check((long)Field(codecType, fixture, "SenderConnSeen")! == connId && !(bool)Field(codecType, fixture, "SenderIsLocalSeen")!,
+            "ADR-0056 — _Implementation receives the same remote sender (IsLocal false)");
+        Invoke(codecType, fixture, "RpcSenderChat", "local");   // local authority path — sender 0
+        pump.Invoke(null, null);
+        Check((long)Field(codecType, fixture, "SenderConnSeen")! == 0 && (bool)Field(codecType, fixture, "SenderIsLocalSeen")!,
+            "ADR-0056 — local authority call reports connId 0 / IsLocal true");
 
         // ── F13 (AUDIT-20261027) — legal user parameter names that collide with the generated plumbing, on the real paths ──
         // RpcHygiene(int netId, int w, int r, List<int> __n, int[] __i, int server): ServerRpc whose names collide with
@@ -496,6 +517,8 @@ namespace UniNet.Unity
     public static class UniNetManager
     {
         public static void OnSceneTransitionRequested(string scene) { }
+        public static void OnSceneAdditiveRequested(string scene) { }   // ADR-0057
+        public static void OnSceneUnloadRequested(string scene) { }   // ADR-0057
     }
 }
 ";
@@ -569,6 +592,18 @@ namespace UniNet.Tests.Headless
         [global::UniNet.Core.MulticastRpc]
         internal partial void McPing(int x);
         private void McPing_Implementation(int x) { McCalls++; }
+
+        // ADR-0056 — trailing RpcSender injection (non-ownership ServerRpc + validated call).
+        public long SenderConnSeen = -999;
+        public bool SenderIsLocalSeen;
+        public long SenderValidateSeen = -999;
+
+        [global::UniNet.Core.ServerRpc(RequireOwnership = false, Validate = true)]
+        internal partial void RpcSenderChat(string message);
+        private System.Threading.Tasks.Task<bool> RpcSenderChat_Validate(string message, global::UniNet.Core.Hosting.RpcSender sender)
+        { SenderValidateSeen = sender.ConnId; return System.Threading.Tasks.Task.FromResult(true); }
+        private void RpcSenderChat_Implementation(string message, global::UniNet.Core.Hosting.RpcSender sender)
+        { SenderConnSeen = sender.ConnId; SenderIsLocalSeen = sender.IsLocal; }
     }
 }
 ";
@@ -589,6 +624,18 @@ namespace UniNet.Tests.Headless
         [global::UniNet.Core.ServerRpc]
         internal partial void RpcCustomOnly(ZeroElement[] values);
         private void RpcCustomOnly_Implementation(ZeroElement[] values) { }
+
+        // ADR-0056 negatives — RpcSender must not ride the RPC declaration (UNINET017).
+        [global::UniNet.Core.ServerRpc(RequireOwnership = false)]
+        internal partial void RpcDeclSender(string message, global::UniNet.Core.Hosting.RpcSender sender);
+        private void RpcDeclSender_Implementation(string message, global::UniNet.Core.Hosting.RpcSender sender) { }
+    }
+    public sealed partial class BadClientSenderObject : global::UniNet.Unity.NetworkBehaviour
+    {
+        // ADR-0056 negatives — the trailing RpcSender is ServerRpc-only (UNINET018).
+        [global::UniNet.Core.ClientRpc]
+        internal partial void ClWithSender(int x);
+        private void ClWithSender_Implementation(int x, global::UniNet.Core.Hosting.RpcSender sender) { }
     }
     public struct ZeroElement { }
     public static class ZeroSerializer
@@ -613,6 +660,7 @@ namespace UniNet.Tests.Headless
             o.ClHygieneTo(c, subId: 5, senderConnId: 6, o: 7, connId: 8, e: ""evt"");
             o.ClHygieneToOwner(subId: 5, senderConnId: 6, o: 7, connId: 8, e: ""evt"");
             o.McHygiene(owner: 9, sender: 10, @event: ""mc"");
+            o.RpcSenderChat(message: ""named"");   // ADR-0056 — caller surface unchanged (sender never appears)
         }
     }
 }

@@ -3,6 +3,17 @@
 의미 있는 모든 변경(기능 추가/수정/제거, 규약, 구조, 하네스)을 기록한다.
 형식: 날짜 그룹 아래 `### Added / Changed / Removed / Fixed`. 최신 날짜가 위로 오게 관리한다.
 
+## [2026-11-02]
+
+### Added
+
+- **비소유 ServerRpc 발신자 컨텍스트 — RpcSender 주입 (ADR-0056, 0.24.0)**: 상용화 검토 블로커 3번 해소. `RequireOwnership = false` RPC(채팅·상호작용·상점)의 `_Implementation`/`_Validate` 시그니치 끝에 `RpcSender`를 선언하면 생성 dispatch가 전송 계층이 부여한 실제 발신자(connId·IsLocal·PlayerNetId)를 주입한다. 위조 불가 — 와이어 프레임 불변(헤드리스 회귀가 바이트로 고정), 호출부 시그니처 무변경, 선택적 도입(기존 RPC 생성 코드 동일). 진단 UNINET017(선언부에 RpcSender)·UNINET018(Client/Multicast 구현의 RpcSender). 검증: 헤드리스 55/55(주입 4종·진단 2종·와이어 프레임) + Unity EditMode `SenderContextTests` 6종(주입·PlayerNetId·검증 거부·로컬 경로·소유권 직교·무발신자 호환).- **additive 씬 동기화 (ADR-0057, 0.24.0)**: 상용화 검토 블로커 5번(단계 A) 해소. `NetworkServer.LoadSceneAdditive(name)`·`UnloadScene(name)` — 활성 씬 집합(base+additive)·한 번에 한 전환(진행 중 throw)·조인 시퀀스 재생(활성 집합 전체를 모드와 순서대로 전달, 전 보고 전 게임 데이터 유보)·언로드 시 해당 씬 등록 객체 파괴 선행 전파(씬 태그 `RegisterSceneObject(..., sceneName)`)·클라 sceneUnloaded 보고 훅. 와이어 11 `[mode][sceneName]` 확장 — 구버전(≤0.23) 클라는 핸드셰이크 버전 불일치로 거부(마이그레이션 참조). `AwaitingSceneReady` bool → 연결별 `PendingScenes` 집합(계산 속성으로 게이트 14곳 무변경). 리뷰 r1 수정 3건 반영: 항목별 세대 대조(그 씬 송신 이전 캡처 보고만 기각 — 조인 중 새 전환이 세대를 올려도 유효 보고 소진, 스칼라 가드의 영구 교찰 제거)·Replace 수신 시 연결 잔여 대기 항목 소거·해제 알림 예외가 보고를 되살리지 않음(기존 불변식)·additive 씬 빌드 세팅 누락 시 오류 로그+즉시 보고(무침묵 교찰 방지). 검증: 헤드리스 55/55(Replace 경로 전수 포함) + Unity EditMode `SceneAdditiveTests` 13종(모드 방송·동시 전환 거부·언로드 파괴 순서·조인 재생·진행 중 조인·무효 보고 무시·Replace 소거·세대 인터리브 r1-1·SCN-003 유지·Replace 선행 소거·알림 예외 소진 r1-2).
+
+### Changed
+
+- **배치 모델 확정 — 프로세스당 매치 1개 (상용화 검토 문제 4번, 옵션 A)**: `Document/deployment.md`에 매치/오케스트레이션 가이드 추가. 코드 불변 — 다중 인스턴스(스코프)는 실측 요구 확정 시 #5-C(연결별 씬)와 통합 설계로 연기.
+- 패키지 0.24.0 · 생성기 0.3.0 ( RpcSender 진단·주입 방출 + 와이어 11 모드 방출 ).
+
 ## [2026-10-29]
 
 ### Changed

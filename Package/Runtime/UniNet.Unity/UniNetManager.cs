@@ -88,6 +88,41 @@ namespace UniNet.Unity
             SceneManager.LoadScene(sceneName);
         }
 
+        /// <summary>
+        /// ADR-0057 — additive scene load requested by the server (wire 11, mode 1). Async so the current world keeps
+        /// rendering during the load; the sceneLoaded hook (ADR-0025) re-registers the new scene's objects and reports
+        /// ready (wire 12) automatically.
+        /// </summary>
+        public static void OnSceneAdditiveRequested(string sceneName)
+        {
+            Debug.Log($"[UniNet] 씬 추가 적재 지시 — {sceneName}");
+            var op = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
+            if (op == null)   // r1-3 — scene missing from Build Settings: LoadSceneAsync returns null and NOTHING reports — the server's SCN-002 hold would deadlock silently
+            {
+                Debug.LogError($"[UniNet] additive 씬 적재 실패 — 빌드 세팅에 없음: {sceneName} (즉시 준비 보고로 전환 게이트는 유지됨)");
+                ReportSceneLoaded(sceneName);   // symmetric with the unload path — the gate survives, the game sees the error
+            }
+        }
+
+        /// <summary>
+        /// ADR-0057 — additive scene unload requested by the server (wire 11, mode 2). The server already destroyed
+        /// that scene's registered objects (destroy messages precede this command on the same reliable stream), so the
+        /// unload only removes the local scene; the sceneUnloaded hook (driver) reports ready (wire 12).
+        /// </summary>
+        public static void OnSceneUnloadRequested(string sceneName)
+        {
+            Debug.Log($"[UniNet] 씬 언로드 지시 — {sceneName}");
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var s = SceneManager.GetSceneAt(i);
+                if (s.name != sceneName) continue;
+                _ = SceneManager.UnloadSceneAsync(s);
+                return;
+            }
+            Debug.LogWarning($"[UniNet] 언로드 지시 씬이 로드되어 있지 않음 — 즉시 준비 보고: {sceneName}");
+            ReportSceneLoaded(sceneName);   // not loaded (already gone) — report so the server's gate does not wait forever
+        }
+
         /// <summary>Sends the scene-loaded report to the server (ADR-0035, wire 12) — call after the scene and registration settle.</summary>
         public static void ReportSceneLoaded(string sceneName)
         {
@@ -495,8 +530,17 @@ namespace UniNet.Unity
             if (_instance != null) return;
             UniNetTime.LocalClock = () => Time.unscaledTimeAsDouble;   // P4 — swap the core clock for Unity's unscaled clock (shared process-wide)
             SceneManager.sceneLoaded += OnSceneLoaded;   // ADR-0025 — process-lifetime subscription; the driver survives scene reloads
+            SceneManager.sceneUnloaded += OnSceneUnloaded;   // ADR-0057 — unload readiness reporting (paired unsubscribe in OnDestroy, F08 pattern)
             var go = new GameObject("UniNetDriver") { hideFlags = HideFlags.HideAndDontSave };
             _instance = go.AddComponent<UniNetDriver>();
+        }
+
+        /// <summary>ADR-0057 — reports a scene UNLOAD as ready (wire 12) so the server's transition gate completes. Mirrors the
+        /// sceneLoaded registration+report hook (ADR-0025) for the unload direction; queued to the main pump like its sibling.</summary>
+        private static void OnSceneUnloaded(Scene scene)
+        {
+            string sceneName = scene.name;
+            UniNetEnvironment.QueueOnMain(() => UniNetManager.ReportSceneLoaded(sceneName));
         }
 
         private void OnDestroy()
@@ -505,6 +549,7 @@ namespace UniNet.Unity
             // when a destroyed singleton is recreated, so without this mirrored unsubscription every destroy/recreate
             // cycle accumulated a duplicate delegate (double registration runs and double scene-ready reports).
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            SceneManager.sceneUnloaded -= OnSceneUnloaded;   // ADR-0057 — F08 mirrored unsubscribe
             if (ReferenceEquals(_instance, this)) _instance = null;   // a stale reference must not block the next Ensure
         }
 

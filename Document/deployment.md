@@ -6,11 +6,20 @@
 ## 소비자 설치
 
 ```json
-"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.23.0"
+"com.ds.uninet": "https://github.com/BIGSUNGG/UniNet.git?path=/Package#v0.24.0"
 ```
 
 - Unity `6000.0+` 필요. 의존성 전부 패키지 동봉 — 추가 설정 없음.
 - 저장소는 **공개** — 소비자 인증 불필요. (사설 전환 시: Unity가 git clone에 로컬 git 자격증명을 사용한다 — 에디터 실행 계정에서 `git clone <url>`이 성공하면 UPM 설치도 성공)
+
+## 매치 배치 모델 — 프로세스당 매치 1개 (2026-11-02 확정)
+
+UniNet의 서버 런타임은 프로세스 전역(`UniNetEnvironment` 정적)이라 **하나의 유니티 서버 프로세스가 하나의 매치/월드**를 담당한다. 이는 확정된 배포 모델이지 제약이 아니다 — Unity 데디케이티드 서버 오케스트레이션(Agones·GameLift·PlayFab MPS 등)이 전제하는 표준 토폴로지와 일치하며, 장애 격리·메모리/GC 회수·동시 재시작이 프로세스 경계에서 가장 확실히 풀린다.
+
+- **1매치 = 1프로세스**: 매치메이커가 매치 생성 시 유니티 서버 빌드 프로세스를 기동하고(포트 할당·환경변수로 매치 파라미터 전달), `AllClientsSceneLoaded`·`ClientDisconnected`·게임 종료 판정으로 매치 종료를 판정해 `ServerStopAsync` 후 프로세스를 종료한다.
+- **우아한 종료**: `ServerStopAsync`는 모든 클라이언트에 ServerShutdown 사유 통보→플러시→리슨 해제 순서를 보장한다(ADR-0027) — 오케스트레이터의 종료 신호(SIGTERM) 핸들러에서 호출할 것.
+- **헬스체크**: `UniNetEnvironment.PendingMainActions`·`DroppedMainActions`·`server.TrafficStats`·연결 수로 프로세스 건강을 노출할 수 있다(카운터는 Interlocked — 어떤 스레드에서도 읽기 가능).
+- **다중 인스턴스(한 프로세스에서 여러 매치)는 미지원** — 필요해지면 연결별 씬·스코프 인스턴스화와 통합 설계로 별도 ADR을 연다(2026-11-02 상용화 검토 참조). 매치당 상태가 작으면 프로세스 기동 비용이 지배적이므로, 실측 전까지 밀도 최적화는 금물이다.
 
 ## CI/CD (GitHub Actions — `.github/workflows/upm.yml`)
 

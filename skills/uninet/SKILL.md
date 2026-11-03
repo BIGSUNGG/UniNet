@@ -95,6 +95,7 @@ Rules that follow from the design:
 - **Delivery modes** — `[ClientRpc(Delivery.Unreliable)]` / `[MulticastRpc(Delivery.Unreliable)]` for loss-tolerant data (movement, FX). Default is `Delivery.ReliableOrdered`. The bundled RUDP transport provides five delivery modes underneath.
 - **Owner enforcement (security default)** — the server rejects `ServerRpc` calls from connections that do not own the object (spoofed `netId` payloads cannot invoke another object's RPC). Opt out for cross-client reporting with `[ServerRpc(RequireOwnership = false)]`. Rejections are logged with a rate-limited warning (see Exception & Error).
 - **Validation hooks (opt-in)** — `[ServerRpc(Validate = true)]` awaits `{Name}_Validate` (same parameters, returns `Task<bool>`) after the ownership check; returning `false` skips the implementation. There is **no automatic detection**: a `_Validate` method without the flag never runs (warning UNINET012).
+- **Verified sender context (ADR-0056)** — append a trailing `RpcSender` parameter to `{Name}_Implementation` and/or `{Name}_Validate` and the generated dispatch injects the transport-assigned caller. `sender.ConnId` is unforgeable (never a client-supplied argument, never on the wire), `sender.IsLocal` marks server/host direct calls, `sender.PlayerNetId` resolves the connection's declared player object (main thread). The RPC declaration and every call site stay unchanged. Replace any existing "pass connId as an argument" pattern — client arguments are forgeable.
 - **Message parameters** — RPC parameters can be primitives, `string`, or `[Message]` types (MessageProtocol). `[Message]` types support **official polymorphism**: declare the base type, send a subclass, cast on receipt. One-dimensional collections (`T[]` / `List<T>` with a supported element type) are also accepted as RPC parameters: null flag + `UInt16` element count + elements in order. **Length limit**: at most **65,535 elements** — anything larger throws `ArgumentException` before serialization (no silent truncation). A malformed payload (truncated collection, unconsumed trailing bytes) is dropped at the generated decode boundary and never invokes your implementation.
 
 ```csharp
@@ -212,6 +213,8 @@ server.SessionGraceSeconds = 10;  // reconnect grace (ADR-0034) — preserve own
 // The session token behind it (ADR-0041) is a 256-bit random opaque string issued in the Welcome and carried by
 // ReconnectAsync/ClientAsync — treat it as a secret: never log or persist it; it is never printed by UniNet.
 server.LoadScene("BattleScene");                               // scene transition (ADR-0035) — clients auto-load + report; gate event:
+server.LoadSceneAdditive("ForestStage");                      // additive (ADR-0057) — active set = base + additive; one transition at a time
+server.UnloadScene("ForestStage");                            // unload — destroys that scene's registered objects FIRST (wire order), then the unload command; clients report via the sceneUnloaded hook
 // Editor debugging: Window → UniNet → Network Debugger — live connections, traffic, objects, ownership (ADR-0036)
 server.AllClientsSceneLoaded += scene => { /* all clients ready — start gameplay */ };
 // Scene-ready guard (ADR-0045): the generated wire-12 handler captures each connection's scene generation at dispatch
@@ -282,6 +285,8 @@ The source generator rejects broken declarations before you can ship them. Fix a
 | UNINET014 | Error | Replicated field collection element type unsupported | Elements must be primitives, `string`, `[Message]` types, or field-serializer-designated types. Custom field serializers do not extend RPC parameter types (UNINET002). |
 | UNINET015 | Error | Nested collection (`T[][]`, `List<List<T>>`) | Wrap inner collections in a `[Message]` type or flatten. (The 65,535 element cap is a runtime check — see the runtime table.) |
 | UNINET016 | Error | Generic `NetworkBehaviour` definition (`class Foo<T> : NetworkBehaviour`) | A generic type can never be attached as a Unity component. Declare a closed non-generic derived type (e.g. `class Player : Foo<int>`) — it flows the normal generation path. |
+| UNINET017 | Error | `RpcSender` declared as an RPC parameter | The RPC declaration keeps the caller-facing signature — declare the trailing `RpcSender` on `{Name}_Implementation`/`{Name}_Validate` instead (ADR-0056). |
+| UNINET018 | Error | Trailing `RpcSender` on a Client/Multicast `_Implementation` | Client-side implementations have no sender concept — ServerRpc only (ADR-0056). |
 
 ### Runtime errors & warnings
 

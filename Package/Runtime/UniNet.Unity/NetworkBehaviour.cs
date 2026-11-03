@@ -195,7 +195,7 @@ namespace UniNet.Unity
                     Debug.LogError($"[UniNet] 오브젝트당 NetworkBehaviour는 최대 255개다 (SubId byte 상한) — 등록 건너뜀: {comps[0].gameObject.name}");
                     continue;
                 }
-                server.RegisterSceneObject(comps[0].NetId, comps);
+                server.RegisterSceneObject(comps[0].NetId, comps, comps[0].gameObject.scene.name);   // ADR-0057 — scene tag for UnloadScene's object sweep
                 for (byte i = 0; i < comps.Length; i++)
                 {
                     comps[i].AssignSubId(i);

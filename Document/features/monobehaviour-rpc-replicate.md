@@ -78,6 +78,27 @@ internal partial void RpcHeal(int amount);
 - 호스트는 서버 권위 경로로 실행되므로 영향 없음. ClientRpc/MulticastRpc(서버→클라 방향)는 대상 아님
 - **마이그레이션** — 기본값이 보안 우선으로 바뀌었다. 기존에 비소유 클라가 호출하던 크로스-클라 ServerRpc는 업그레이드 후 거부되므로 명시적 `RequireOwnership = false`가 필요하다
 
+## 발신자 컨텍스트 주입 (RpcSender, 0.24.0 — ADR-0056)
+
+`RequireOwnership = false` RPC(채팅·월드 상호작용·상점 등 전 클라 보고형)에서 서버이 **누가 호출했는지** 알아야 검증할 수 있다. `_Implementation`/`_Validate` 시그니처 끝에 `RpcSender`(값 타입, `UniNet.Core.Hosting`)를 선언하면 생성 디스패치가 전송 계층이 부여한 실제 발신자를 주입한다 — **RPC 선언부·호출부·와이어 프레임은 불변** (발신자는 직렬화되지 않는다):
+
+```csharp
+[ServerRpc(RequireOwnership = false, Validate = true)]
+internal partial void RpcChat(string message);          // 호출부 시그니처 무변화
+
+private Task<bool> RpcChat_Validate(string message, RpcSender sender)   // 발신자 필요하면 여기에
+    => Task.FromResult(차단목록_검사(sender.ConnId));
+
+private void RpcChat_Implementation(string message, RpcSender sender)   // 마지막 인자로 주입
+    => Broadcast($"{sender.ConnId}: {message}");
+```
+
+- **위조 불가** — `sender.ConnId`는 전송 계층이 부여한다. 인자로 connId를 받는 기존 패턴(클라가 위조 가능)은 교체할 것
+- **멤버** — `ConnId`(원격 발신 연결) · `IsLocal`(connId 0 — 서버/호스트 직접 호출) · `IsValid`(원격 여부) · `PlayerNetId`(`SetPlayerObject`로 선언된 발신자 플레이어 오브젝트, 0=없음 — 메인 스레드에서만)
+- **ServerRpc 전용** — Client/Multicast 구현에 `RpcSender`가 있으면 컴파일 에러(UNINET018). RPC 선언부에 두어도 에러(UNINET017 — 구현/검증 마지막에 선언할 것)
+- **소유권 강제와 직교** — `RequireOwnership = true`(기본)에도 주입 가능하다
+- **선택적** — 발신자 없는 기존 시그니처의 생성 코드·동작은 불변
+
 ## ServerRpc 검증 훅 (Validate)
 
 검증 훅은 **옵트인**이다 — `[ServerRpc(Validate = true)]`로 선언한 RPC에만 서버 디스패치가 소유자 강제(ADR-0016) 통과 직후 `<RPC>_Validate`를 `await`하고, `false`면 `_Implementation`을 실행하지 않는다 (ADR-0018). 훅은 RPC와 같은 매개변수 + `Task<bool>` 반환:

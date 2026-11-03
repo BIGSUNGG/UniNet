@@ -1,3 +1,12 @@
+## 0.24.0
+
+**Sender context + additive scenes (generator 0.3.0; wire 11 format changed — update both ends together, the version handshake rejects mixed versions).**
+
+### Added
+
+- **Verified sender context — `RpcSender` (ADR-0056)** — append a trailing `RpcSender` parameter to `{Name}_Implementation`/`{Name}_Validate` on a ServerRpc and the generated dispatch injects the transport-assigned caller: `ConnId` (unforgeable — never serialized, never a client-supplied argument), `IsLocal` (server/host direct call), `PlayerNetId` (the connection's declared player object). The RPC declaration and every call site stay unchanged. ServerRpc-only: UNINET018 rejects it on Client/Multicast implementations, UNINET017 rejects it on the RPC declaration. Wire format unchanged — existing RPCs regenerate identically.
+- **Additive scene synchronization (ADR-0057)** — `server.LoadSceneAdditive(name)` / `server.UnloadScene(name)` extend scene management beyond Replace: the active set is base + additive scenes, one transition at a time (a second start throws until `AllClientsSceneLoaded`), joiners replay the whole active set in order with per-scene modes, and unload destroys that scene's registered objects BEFORE the unload command on the same reliable stream. Clients report unload readiness automatically (sceneUnloaded hook). Wire 11 now carries `[mode][sceneName]` — clients ≤0.23 are rejected by the version handshake, so update both ends together.
+
 ## 0.23.0
 
 **Stabilization release — FR-01..07 plus audit hardening (generator 0.2.19; wire formats unchanged, default handshake version bumps as usual).**

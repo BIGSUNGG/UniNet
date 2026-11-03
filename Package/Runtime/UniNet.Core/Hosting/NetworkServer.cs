@@ -186,8 +186,9 @@ namespace UniNet.Core.Hosting
 
         // ADR-0035 — scene transition tracking
         private string? _pendingScene;
-        private string? _currentScene;   // SCN-001 — the last COMPLETED transition's scene: post-completion joiners receive it (previously unrecoverable)
-        private readonly HashSet<long> _sceneReadyConnections = new();
+        private SceneLoadMode _pendingSceneMode;   // ADR-0057 — kind of the in-flight transition
+        private string? _currentScene;   // SCN-001 — the last COMPLETED Replace scene: post-completion joiners receive it (previously unrecoverable)
+        private readonly List<string> _additiveScenes = new();   // ADR-0057 — COMPLETED additive scenes in load order (joiner replay + unload validation)
         private const int MaxPendingSceneDestroys = 4096;
 
         /// <summary>Fires on the main thread when every live connection has reported the pending scene loaded (ADR-0035). Parameter: the scene identifier.</summary>
@@ -220,6 +221,10 @@ namespace UniNet.Core.Hosting
 
             /// <summary>Spawnable prefab identity (stamped NetworkSpawnable GUID hash — ADR-0024) — carried on spawn messages so clients instantiate the same prefab.</summary>
             public ulong PrefabId;
+
+            /// <summary>ADR-0057 — owning scene name ("" = dynamic/unknown). UnloadScene destroys exactly the registered
+            /// scene objects of that scene; joiner replay never needs it (the pending-set sequence carries ordering).</summary>
+            public string SceneName = "";
 
             /// <summary>Sub-object table in slot (SubId) order — holds each NetworkBehaviour's replication state.</summary>
             public SubObjectEntry[] Subs = Array.Empty<SubObjectEntry>();
@@ -343,10 +348,40 @@ namespace UniNet.Core.Hosting
             /// <summary>The post-approval attach work already ran — makes approval idempotent under any main-queue ordering (CON-001).</summary>
             internal bool PostApprovalRun;
 
-            /// <summary>SCN-002 — wire 11 was sent to this connection and its ready report has not arrived: game data
-            /// (catch-up, replication, spawns, ownership notices) is held. Reports land after client registration
-            /// (UniNetManager registers scene objects BEFORE reporting), so full-state baselines are never dropped.</summary>
-            internal bool AwaitingSceneReady;
+            /// <summary>SCN-002 — wire 11 was sent to this connection and the listed scenes' ready reports have not all
+            /// arrived: game data (catch-up, replication, spawns, ownership notices) is held. Reports land after client
+            /// registration (UniNetManager registers scene objects BEFORE reporting), so full-state baselines are never dropped.
+            /// ADR-0057 — a list, not a flag: joiners replay the whole active set (Replace + additive scenes) and additive
+            /// transitions add one more scene mid-session.</summary>
+            /// <summary>One awaited scene — the name plus the connection's scene-load generation stamped at ITS wire-11 send
+            /// (review r1-1: per-entry generation, not a per-connection scalar — a report answers the send it was dispatched
+            /// after, so later sibling sends in a joiner sequence must not invalidate earlier scenes' reports).</summary>
+            internal readonly struct PendingScene
+            {
+                public readonly string Scene;
+                public readonly long Gen;
+                public PendingScene(string scene, long gen) { Scene = scene; Gen = gen; }
+            }
+
+            internal readonly List<PendingScene> PendingScenes = new();
+
+            /// <summary>Stamps the next scene-load generation and records the awaited scene against it — call AT the wire-11 send.</summary>
+            internal void AddPendingScene(string scene)
+            {
+                long gen = System.Threading.Interlocked.Increment(ref SceneLoadGeneration);
+                PendingScenes.Add(new PendingScene(scene, gen));
+            }
+
+            /// <summary>Index of the connection's awaited entry for a scene (-1 = not awaited).</summary>
+            internal int IndexOfPendingScene(string scene)
+            {
+                for (int i = 0; i < PendingScenes.Count; i++)
+                    if (PendingScenes[i].Scene == scene) return i;
+                return -1;
+            }
+
+            /// <summary>Computed — the legacy SCN-002 gate. Every receive/send gate reads this; it stays false until the connection's PendingScenes drain.</summary>
+            internal bool AwaitingSceneReady => PendingScenes.Count > 0;
 
             // Main-thread only, including detach cleanup: absent objects have no catch-up baseline to retire client survivors.
             internal HashSet<ulong> PendingSceneDestroys;
@@ -377,11 +412,11 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>Registers a scene object — once per object, with all components in slot order. Both ends read the same edit-time-stamped serialized id (GlobalObjectId hash — ADR-0023); unstamped objects fall back to the hierarchy-path hash.</summary>
-        public void RegisterSceneObject(ulong netId, IReadOnlyList<object> components)
+        public void RegisterSceneObject(ulong netId, IReadOnlyList<object> components, string sceneName = "")
         {
             lock (_gate)
             {
-                var entry = new ServerObjectEntry(components[0]);
+                var entry = new ServerObjectEntry(components[0]) { SceneName = sceneName ?? "" };   // ADR-0057 — unload targets a scene's registered objects
                 AttachSubs(entry, components);
                 _objects[netId] = entry;
             }
@@ -615,20 +650,47 @@ namespace UniNet.Core.Hosting
             if (conn.Disconnected || conn.PostApprovalRun) return;
             if (!conn.VersionApproved) return;   // held — no game data, no reassignment, no event yet
             conn.PostApprovalRun = true;
-            string? scene = _pendingScene ?? _currentScene;   // SCN-001 — completed transitions reach post-completion joiners too
-            if (scene != null)
+            var joinScenes = JoinerSceneSequence();   // SCN-001 + ADR-0057 — the joiner replays the active set (base + additive, plus any in-flight transition)
+            if (joinScenes.Count > 0)
             {
-                // SCN-002 — hold game data until the ready report: the report is sent AFTER client registration
+                // SCN-002 — hold game data until every ready report: reports are sent AFTER client registration
                 // (UniNetManager registers scene objects, then reports), so the catch-up full state always lands on
                 // registered objects instead of being silently dropped. Timeout/retry is game responsibility (ADR-0035).
-                conn.AwaitingSceneReady = true;
-                System.Threading.Interlocked.Increment(ref conn.SceneLoadGeneration);
-                conn.SceneLoadSent = true;
-                conn.CatchupHeld = true;   // SCN-002 — the attach tail waits for the ready report
-                conn.Channel.SendLoadScene(scene);
-                return;   // the reassignment/catch-up/ClientConnected tail runs on the ready report (RunPostSceneReady)
+                conn.CatchupHeld = true;   // SCN-002 — the attach tail waits for the ready reports
+                foreach (var (scene, mode) in joinScenes)
+                {
+                    conn.AddPendingScene(scene);   // per-entry generation — later sends never invalidate earlier scenes' reports (r1-1)
+                    conn.SceneLoadSent = true;
+                    conn.Channel.SendLoadScene(scene, mode);
+                }
+                return;   // the reassignment/catch-up/ClientConnected tail runs on the LAST ready report (RunPostSceneReady)
             }
             RunPostSceneReady(conn, true);
+        }
+
+        /// <summary>
+        /// ADR-0057 — the scene sequence a freshly-approved joiner must load (in order) with each entry's wire-11 mode.
+        /// A pending Replace supersedes the old world (joiner loads only the new scene — the old set is dead state).
+        /// A pending Additive appends after the active set. A pending Unload is EXCLUDED — the joiner never loads a
+        /// scene the server is already destroying (it would register objects the registry no longer holds).
+        /// Empty when no scene was ever loaded (fresh server) — attach proceeds without the gate.
+        /// </summary>
+        private List<(string Scene, SceneLoadMode Mode)> JoinerSceneSequence()
+        {
+            var list = new List<(string, SceneLoadMode)>();
+            if (_pendingScene != null && _pendingSceneMode == SceneLoadMode.Replace)
+            {
+                list.Add((_pendingScene, SceneLoadMode.Replace));
+                return list;
+            }
+            if (_currentScene != null)
+                list.Add((_currentScene, SceneLoadMode.Replace));
+            foreach (var additive in _additiveScenes)
+                if (additive != _pendingScene)   // an in-flight Unload excludes its victim; an in-flight Additive is appended below
+                    list.Add((additive, SceneLoadMode.Additive));
+            if (_pendingScene != null && _pendingSceneMode == SceneLoadMode.Additive)
+                list.Add((_pendingScene, SceneLoadMode.Additive));
+            return list;
         }
 
         /// <summary>Reconciles ownership and full state after approval or scene readiness. Only the initial attach
@@ -696,7 +758,7 @@ namespace UniNet.Core.Hosting
                                     ReassignOwnership();
                                 _playerObjects.Remove(conn.ConnId);   // ADR-0031 — the mapping dies with the connection, AFTER the event (ClientDisconnected handlers can still read GetPlayerObject for custom cleanup — loot drops etc.)
                                 _rpcWindows.TryRemove(conn.ConnId, out _);   // ADR-0032 — rate state dies with the connection
-                                _sceneReadyConnections.Remove(conn.ConnId);   // ADR-0035 — scene gate readiness dies too
+                                conn.PendingScenes.Clear();   // ADR-0035/0057 — the scene gate readiness dies with the connection (CheckSceneGate skips disconnected)
                                 CheckSceneGate();   // departure may complete the gate
                             }
                         };
@@ -982,21 +1044,70 @@ namespace UniNet.Core.Hosting
         /// begins immediately: <see cref="AllClientsSceneLoaded"/> fires once every live connection reports loaded (wire 12).
         /// The Unity layer loads via SceneManager; this Core method broadcasts and tracks (main thread).
         /// </summary>
-        public void LoadScene(string sceneName)
+        /// <summary>Tells every client to load a scene (ADR-0035, wire 11) — the server must load its own copy itself (game responsibility —
+        /// RegisterAllToServer picks it up on load, and catch-up baselines land on registered objects).</summary>
+        public void LoadScene(string sceneName) => StartSceneTransition(sceneName, SceneLoadMode.Replace);
+
+        /// <summary>
+        /// ADR-0057 — tells every client to load a scene ADDITIVELY (wire 11, mode 1). Existing objects are untouched;
+        /// game data is held per connection until the ready report (SCN-002 semantics), then a catch-up baseline covers
+        /// the new scene's objects. The server loads its own copy itself (game responsibility, same contract as Replace).
+        /// One transition at a time — throws while another is in flight (await AllClientsSceneLoaded, then transition again).
+        /// Throws for a scene that is already active.
+        /// </summary>
+        public void LoadSceneAdditive(string sceneName) => StartSceneTransition(sceneName, SceneLoadMode.Additive);
+
+        /// <summary>
+        /// ADR-0057 — tells every client to UNLOAD a previously loaded additive scene (wire 11, mode 2). The server first
+        /// destroys that scene's registered scene objects (the destroys are propagated before the unload command on the
+        /// same reliable stream), then clients unload locally. The server unloads its own copy itself (game responsibility).
+        /// Only additive scenes can be unloaded — replacing the base scene is LoadScene. Throws while another transition is in flight.
+        /// </summary>
+        public void UnloadScene(string sceneName) => StartSceneTransition(sceneName, SceneLoadMode.Unload);
+
+        /// <summary>Transition core (main thread) — one in-flight transition, per-connection pending-scene tracking, SCN-003 generation guard.</summary>
+        private void StartSceneTransition(string sceneName, SceneLoadMode mode)
         {
             if (string.IsNullOrEmpty(sceneName)) throw new ArgumentNullException(nameof(sceneName));
+            if (_pendingScene != null)
+                throw new InvalidOperationException($"[UniNet] another scene transition is in flight ('{_pendingScene}') — await AllClientsSceneLoaded before starting '{sceneName}' (ADR-0057)");
+            if (mode == SceneLoadMode.Additive && IsActiveScene(sceneName))
+                throw new ArgumentException($"[UniNet] scene '{sceneName}' is already active (ADR-0057)", nameof(sceneName));
+            if (mode == SceneLoadMode.Unload && !_additiveScenes.Contains(sceneName))
+                throw new ArgumentException($"[UniNet] scene '{sceneName}' is not a loaded additive scene — only additive scenes can be unloaded (ADR-0057)", nameof(sceneName));
+
+            if (mode == SceneLoadMode.Unload)
+                DestroySceneObjects(sceneName);   // destroys propagate BEFORE the unload command — same reliable stream, ordered per connection
+
             _pendingScene = sceneName;
-            _sceneReadyConnections.Clear();
+            _pendingSceneMode = mode;
             foreach (var conn in SnapshotConnections())
             {
                 System.Threading.Interlocked.Increment(ref conn.SceneLoadGeneration);
                 conn.SceneLoadSent = false;   // SCN-003 — reports predating THIS transition's wire 11 are stale (same-name re-transition guard)
                 if (conn.Disconnected || !conn.WelcomeSent || !conn.VersionApproved || !conn.PostApprovalRun) continue;   // the pending approval tail delivers this transition exactly once
-                conn.AwaitingSceneReady = true;   // SCN-002 — hold game data until the ready report
-                System.Threading.Interlocked.Increment(ref conn.SceneLoadGeneration);
+                if (mode == SceneLoadMode.Replace)
+                    conn.PendingScenes.Clear();   // r1-1 — a Replace supersedes THIS connection's awaited set too: the old scenes never load (or report) after the world is replaced — leaving them pending would strand the gate forever
+                conn.AddPendingScene(sceneName);   // SCN-002 + r1-1 per-entry generation — hold game data until the ready report
                 conn.SceneLoadSent = true;
-                conn.Channel.SendLoadScene(sceneName);   // wire 11
+                conn.Channel.SendLoadScene(sceneName, mode);   // wire 11
             }
+        }
+
+        /// <summary>Whether the scene is part of the active set (base or completed additive, excluding an in-flight transition).</summary>
+        private bool IsActiveScene(string sceneName)
+            => sceneName == _currentScene || _additiveScenes.Contains(sceneName);
+
+        /// <summary>ADR-0057 — destroys every REGISTERED scene object of one scene (unload path). Dynamic objects are not scene-tagged; games destroy their dynamics before unloading.</summary>
+        private void DestroySceneObjects(string sceneName)
+        {
+            List<ulong>? victims = null;
+            foreach (var (netId, entry) in SnapshotObjects())
+                if (entry.SceneName == sceneName)
+                    (victims ??= new List<ulong>()).Add(netId);
+            if (victims == null) return;
+            foreach (var netId in victims)
+                DestroyObject(netId);   // registry removal + destroy propagation to every connection
         }
 
         /// <summary>Applies a client's scene-loaded report (ADR-0035, wire 12). Convenience overload for legacy generated
@@ -1022,35 +1133,44 @@ namespace UniNet.Core.Hosting
         }
 
         /// <summary>Processes a queued scene-ready report on the main thread using its dispatch-receipt generation.
-        /// Reports received before a newer LoadScene or wire-11 send cannot release that newer transition.</summary>
+        /// ADR-0057 — the report must name a scene this connection is still awaiting (multi-scene joiner sequences drain one
+        /// report at a time; only the LAST one releases the hold and runs the attach tail). r1-1 — staleness is judged PER ENTRY:
+        /// a report dispatched BEFORE its scene's wire-11 send (captured generation &lt; the entry's stamped generation) is stale;
+        /// later sibling sends bump the connection scalar but never invalidate an earlier scene's valid report (the tokenless
+        /// same-name ambiguity — an old report dispatched AFTER a newer send — remains the accepted ADR-0045 limitation).</summary>
         public void OnClientSceneLoaded(long connId, string sceneName, long receivedGeneration)
         {
             var conn = FindConnection(connId);
             if (conn == null || conn.Disconnected || !conn.VersionApproved) return;
-            if (!conn.SceneLoadSent || receivedGeneration != System.Threading.Interlocked.Read(ref conn.SceneLoadGeneration)) return;
-            string? expectedScene = _pendingScene ?? _currentScene;
-            if (expectedScene == null || sceneName != expectedScene) return;
-            bool destroysDrained = false;
+            if (!conn.SceneLoadSent) return;
+            int idx = conn.IndexOfPendingScene(sceneName);
+            if (idx < 0) return;   // not awaited by this connection — stale or unknown report
+            var consumed = conn.PendingScenes[idx];
+            if (receivedGeneration < consumed.Gen) return;   // dispatched before that scene's wire-11 send — SCN-003 per-entry guard
+            conn.PendingScenes.RemoveAt(idx);
+            bool released = false;
             try
             {
-                DrainPendingSceneDestroys(conn);   // keep the hold until every pending destroy has succeeded
-                destroysDrained = true;
-                conn.AwaitingSceneReady = false;
-                conn.SceneLoadSent = false;
-                if (_pendingScene != null) _sceneReadyConnections.Add(connId);
-                bool notifyConnected = conn.CatchupHeld;
-                conn.CatchupHeld = false;
-                RunPostSceneReady(conn, notifyConnected);   // existing participants also missed ownership notices and state while held
+                if (conn.PendingScenes.Count == 0)
+                {
+                    DrainPendingSceneDestroys(conn);   // keep the hold until every pending destroy has succeeded
+                    conn.SceneLoadSent = false;
+                    bool notifyConnected = conn.CatchupHeld;
+                    conn.CatchupHeld = false;
+                    released = true;   // r1-2 — the report is consumed HERE (original invariant): a subscriber fault during the release tail must not restore the pending entry — the client will not re-report
+                    RunPostSceneReady(conn, notifyConnected);   // existing participants also missed ownership notices and state while held
+                }
+                else
+                    released = true;   // mid-sequence — the hold stays, nothing to restore
             }
             finally
             {
-                if (!destroysDrained)
+                if (!released)
                 {
-                    conn.AwaitingSceneReady = true;
+                    conn.PendingScenes.Add(consumed);   // restore — only a THROWING DRAIN consumes nothing (r1-2: notify faults no longer reach here)
                     conn.SceneLoadSent = true;
-                    _sceneReadyConnections.Remove(connId);
                 }
-                CheckSceneGate();   // a post-ready subscriber fault must not strand the last valid report
+                CheckSceneGate();   // gate evaluation always runs — a throwing drain must not strand the last valid report either
             }
         }
 
@@ -1069,22 +1189,44 @@ namespace UniNet.Core.Hosting
             conn.PendingSceneDestroys = null;
         }
 
-        /// <summary>The pending scene identifier (null when no transition is in progress — ADR-0035).</summary>
+        /// <summary>The pending scene identifier (null when no transition is in progress — ADR-0035/0057).</summary>
         public string? PendingScene => _pendingScene;
 
-        /// <summary>Whether a specific connection has reported the pending scene loaded (ADR-0035).</summary>
-        public bool IsClientSceneReady(long connId) => _sceneReadyConnections.Contains(connId);
+        /// <summary>The kind of the in-flight transition (meaningful only while <see cref="PendingScene"/> is non-null — ADR-0057).</summary>
+        public SceneLoadMode PendingSceneMode => _pendingSceneMode;
 
-        /// <summary>Fires AllClientsSceneLoaded when every live connection has reported (ADR-0035, main thread).</summary>
+        /// <summary>Completed additive scenes in load order (ADR-0057) — read-only view.</summary>
+        public IReadOnlyList<string> AdditiveScenes => _additiveScenes;
+
+        /// <summary>Whether a specific connection has reported every scene it was sent (ADR-0035; ADR-0057 generalizes to the
+        /// multi-scene pending set — true once the connection's PendingScenes drain; false while any hold remains).</summary>
+        public bool IsClientSceneReady(long connId)
+        {
+            var conn = FindConnection(connId);
+            return conn != null && !conn.Disconnected && conn.VersionApproved && conn.PendingScenes.Count == 0;
+        }
+
+        /// <summary>Fires AllClientsSceneLoaded when every live connection has drained its pending scenes (ADR-0035/0057, main thread).</summary>
         private void CheckSceneGate()
         {
             if (_pendingScene == null) return;
             foreach (var conn in SnapshotConnections())
-                if (!conn.Disconnected && conn.VersionApproved && (conn.AwaitingSceneReady || !_sceneReadyConnections.Contains(conn.ConnId))) return;   // someone not ready — undeclared connections cannot report (CON-001); scene-held connections report after loading (SCN-002)
+                if (!conn.Disconnected && conn.VersionApproved && conn.PendingScenes.Count > 0) return;   // someone not ready — undeclared connections cannot report (CON-001); scene-held connections report after loading (SCN-002)
             var scene = _pendingScene;
+            var mode = _pendingSceneMode;
             _pendingScene = null;
-            _currentScene = scene;   // SCN-001 — post-completion joiners receive this scene
-            AllClientsSceneLoaded?.Invoke(scene);
+            if (mode == SceneLoadMode.Replace)
+            {
+                _currentScene = scene;   // SCN-001 — post-completion joiners receive this scene
+                _additiveScenes.Clear();   // ADR-0057 — Replace supersedes the whole additive set
+            }
+            else if (mode == SceneLoadMode.Additive)
+            {
+                if (!_additiveScenes.Contains(scene!)) _additiveScenes.Add(scene!);
+            }
+            else
+                _additiveScenes.Remove(scene!);
+            AllClientsSceneLoaded?.Invoke(scene!);
         }
 
         /// <summary>Saves a grace session for a disconnecting connection (ADR-0034, main thread). An empty token (never issued —

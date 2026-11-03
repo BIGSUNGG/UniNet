@@ -155,6 +155,13 @@ namespace UniNet.CodeGenerator
             // emit path share one source of truth and can never diverge.
             foreach (var p in rpc.Parameters)
             {
+                // ADR-0056 — RpcSender never rides the RPC declaration (callers keep the original signature); the
+                // generic gate below would report it as an unsupported wire type with a misleading message.
+                if (p.Type.ToDisplayString() == RpcSenderTypeName)
+                {
+                    Report(Diagnostics.SenderInDeclaration, method.Locations[0], method.Name);
+                    return;
+                }
                 p.IsMessage = IsMessageType(p.Type);
                 if (!Emitter.IsRpcArgSupported(p.Type))
                 {
@@ -163,15 +170,26 @@ namespace UniNet.CodeGenerator
                 }
             }
 
-            // _Implementation presence and signature check
+            // _Implementation presence and signature check — the signature may append ONE trailing RpcSender (ADR-0056):
+            // the generated server dispatch injects the verified sender there. Client/Multicast implementations run on
+            // clients with no sender concept — the trailing RpcSender is a ServerRpc-only contract.
             var impl = type.GetMembers(method.Name + "_Implementation").OfType<IMethodSymbol>().FirstOrDefault();
-            if (impl == null || !SignatureMatches(impl, method))
+            bool implHasSender = false;
+            bool implOk = impl != null && SignatureMatchesWithOptionalSender(impl, method, out implHasSender);
+            if (implOk && implHasSender && rpc.Kind != RpcKind.Server)
+            {
+                Report(Diagnostics.SenderOnNonServerRpc, impl.Locations.Length > 0 ? impl.Locations[0] : method.Locations[0], method.Name);
+                return;
+            }
+            if (!implOk)
             {
                 Report(Diagnostics.ImplementationMissing, method.Locations[0], method.Name);
                 return;
             }
+            rpc.ImplHasSender = implHasSender;
 
-            // _Validate hook — wired only when the ServerRpc opts in with Validate = true (no auto-detection — see ADR-0018)
+            // _Validate hook — wired only when the ServerRpc opts in with Validate = true (no auto-detection — see ADR-0018).
+            // Same trailing-RpcSender rule as _Implementation (ADR-0056): validation often needs the caller's identity most.
             var validate = type.GetMembers(method.Name + "_Validate").OfType<IMethodSymbol>().FirstOrDefault();
             if (rpc.Kind == RpcKind.Server)
             {
@@ -179,8 +197,11 @@ namespace UniNet.CodeGenerator
                 {
                     if (validate == null)
                         Report(Diagnostics.ValidateMissing, method.Locations[0], method.Name);
-                    else if (!SignatureMatches(validate, method) || validate.ReturnType.ToDisplayString() != "System.Threading.Tasks.Task<bool>")
+                    else if (!SignatureMatchesWithOptionalSender(validate, method, out bool validateHasSender)
+                             || validate.ReturnType.ToDisplayString() != "System.Threading.Tasks.Task<bool>")
                         Report(Diagnostics.ValidateSignature, validate.Locations.Length > 0 ? validate.Locations[0] : method.Locations[0], method.Name);
+                    else
+                        rpc.ValidateHasSender = validateHasSender;
                 }
                 else if (validate != null)
                 {
@@ -457,6 +478,29 @@ namespace UniNet.CodeGenerator
             return true;
         }
 
+        internal const string RpcSenderTypeName = "UniNet.Core.Hosting.RpcSender";
+
+        /// <summary>Whether a's signature equals b's plus exactly one trailing RpcSender parameter (ADR-0056).</summary>
+        private static bool SignatureMatchesWithTrailingSender(IMethodSymbol a, IMethodSymbol b)
+            => a.Parameters.Length == b.Parameters.Length + 1
+               && a.Parameters[a.Parameters.Length - 1].Type.ToDisplayString() == RpcSenderTypeName
+               && SignatureMatchesPrefix(a, b, b.Parameters.Length);
+
+        /// <summary>Whether a matches b exactly, or b plus a trailing RpcSender (out: which of the two).</summary>
+        private static bool SignatureMatchesWithOptionalSender(IMethodSymbol a, IMethodSymbol b, out bool hasSender)
+        {
+            if (SignatureMatches(a, b)) { hasSender = false; return true; }
+            hasSender = SignatureMatchesWithTrailingSender(a, b);
+            return hasSender;
+        }
+
+        private static bool SignatureMatchesPrefix(IMethodSymbol a, IMethodSymbol b, int count)
+        {
+            for (int i = 0; i < count; i++)
+                if (!SymbolEqualityComparer.Default.Equals(a.Parameters[i].Type, b.Parameters[i].Type)) return false;
+            return true;
+        }
+
         public void Report(DiagnosticDescriptor descriptor, Location location, params object[] args)
             => _report(Diagnostic.Create(descriptor, location, args));
 
@@ -506,6 +550,12 @@ namespace UniNet.CodeGenerator
         public string IdKey = "";
         public List<ParamModel> Parameters = new();
         public bool HasValidate;
+
+        /// <summary>ADR-0056 — _Implementation declares a trailing RpcSender (dispatch injects the verified sender).</summary>
+        public bool ImplHasSender;
+
+        /// <summary>ADR-0056 — _Validate declares a trailing RpcSender.</summary>
+        public bool ValidateHasSender;
 
         /// <summary>ServerRpc only — whether server dispatch enforces that the sender owns the object (default true, see ADR-0016).</summary>
         public bool RequireOwnership = true;
@@ -642,5 +692,11 @@ namespace UniNet.CodeGenerator
 
         public static readonly DiagnosticDescriptor GenericNetworkBehaviour =
             Make(16, "제네릭 NetworkBehaviour 미지원", "제네릭 NetworkBehaviour는 Unity 컴포넌트로 사용 불가 — 비제네릭 파생 타입(예: class A : Foo<int>)을 선언하세요", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor SenderInDeclaration =
+            Make(17, "RpcSender는 RPC 선언에 올 수 없음", "RPC '{0}' 의 매개변수로 RpcSender 를 선언할 수 없습니다 — 선언부는 호출 시그니처 그대로 두고, _Implementation/_Validate 의 마지막 매개변수로 선언하면 서버가 실제 발신자를 주입합니다 (ADR-0056)", DiagnosticSeverity.Error);
+
+        public static readonly DiagnosticDescriptor SenderOnNonServerRpc =
+            Make(18, "RpcSender는 ServerRpc 전용", "RPC '{0}' — 끝에 RpcSender 를 추가한 _Implementation/_Validate 는 ServerRpc 에서만 지원됩니다. Client/Multicast 구현은 클라이언트에서 실행되어 발신자 개념이 없습니다 (ADR-0056)", DiagnosticSeverity.Error);
     }
 }

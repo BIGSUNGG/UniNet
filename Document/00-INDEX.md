@@ -95,6 +95,8 @@
 - [[0046-자발-퇴장-통보-와이어15-IntentionalLeave-유예-세션-즉시-폐기]] — REC-002: 시스템 와이어 15 `IntentionalLeave`(C→S) 신설 — ClientStop이 close 직전 통보, 서버는 유예 저장 생략+토큰 툼스톤+즉시 재배정. ClientStop 유계 플러시 창(전송 Task 250ms+드레인 150ms). 구 클라 호환 (0.9.0)
 - [[0047-게임-접속-승인-콜백-와이어7-자격증명]] — CON-002: 와이어 7 페이로드 확장 `[version][credential]`(조건부 읽기로 구 클라 호환)·`UniNetEndpointOptions.ConnectionApprover/ConnectionCredential`·`UniNetDisconnectReason.ApprovalRejected = 6`·콜백 대기 중 CON-001 유예 상태 재사용·`VersionDeclareTimeoutMs` 총예산 재사용 (0.10.0)
 - [[0048-소유권-이전-조건-필드-baseline-재전송]] — OWN-002: 소유권 이전 3경로(SetOwner/ResumeSession/ReassignOwnership)에 상태 전용 baseline 재전송(신규 owner isOwner=true·직전 owner false·관련성 게이트·즉시 캐치업 억제) — 신규 owner의 OwnerOnly/InitialOnly 누락과 이전 owner의 SkipOwner 기본값 고착 해소, RepNotify 올바른 prev 발화 (0.11.0)
+- [[0056-비소유-RPC-발신자-컨텍스트-RpcSender-주입]] — 비소유 ServerRpc 발신자 컨텍스트: `_Implementation`/`_Validate` 끝 RpcSender 선언 시 전송 계층 발신자 주입(위조 불가·와이어 불변)·진단 UNINET017/018 (0.24.0)
+- [[0057-additive-씬-동기화]] — additive 씬 동기화: LoadSceneAdditive/UnloadScene·활성 집합(base+additive)·한 번에 한 전환·조인 시퀀스 재생·언로드 파괴 선행·와이어 11 [mode][sceneName] 확장(구버전 핸드셰이크 거부) (0.24.0)
 
 ### deployment — 배포
 
@@ -107,6 +109,7 @@
 
 ## 최근 변경 (자세한 것은 [[changelog]])
 
+- 2026-11-02 — **상용화 검토 후속 3건 확정·구현**: 블로커 검토(비소유 RPC 발신자 부재·프로세스당 서버 1개·단일 씬 모델)의 방향 확정 — ① RpcSender 주입 파라미터(ADR-0056·와이어 불변·진단 UNINET017/018) ② additive 씬 동기화(ADR-0057·LoadSceneAdditive/UnloadScene·와이어 11 모드 확장) ③ 매치 배치 모델 프로세스당 1개 확정([[deployment]] 신설). 패키지 0.24.0·생성기 0.3.0. **검증 완료**: 헤드리스 55/55·Unity EditMode 350테스트 349통과/0실패/1기존 Ignore(신규 20종 — SenderContext 6·SceneAdditive 13·기존 SCN-003 재전환 정합 1)·PlayMode 50/50. 리뷰 r1 ISSUES 3건(세대 가드 교찰·finally 불변식 역전·LoadSceneAsync 침묵) 수정 → r2 잔여 1건(주석 산술) → r3 **CLEAN**(XML 증거·동봉 DLL 정합 포함 검증).
 - 2026-10-29 — **v0.23.0 배포 완료**: 안정화+감사 수정 커밋을 `v0.23.0`(`1d124ec`)으로 게시, [Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.23.0)·main/tag CI·실제 공개 URL 신규 설치와 샘플 컴파일 확인. 새 검증 EditMode 330통과/0실패/1기존 Ignore·PlayMode 50/50·생성기 양 경로 각49/49. 기존 CLEAN 재사용(추가 reviewer 없음), 사용자 보존 대상 334경로 동일. D02/D03는 후속 범위. [[deployment]] 참조.
 - 2026-10-26 — **v0.23.0 FR-01~07 안정화** (FR 검토 7건 전부 해결·배포 준비 — 태그/릴리스 제외): 승인/씬 준비 전 게임 RPC 즉시 드롭(`CanReceiveGameData`), Unreliable 이동 중 1.0s 주기 기준선·AOI 재진입 기존 인스턴스 갱신, RPC 컬렉션 코덱 경계(수신 List 복원·65535 초과 명시 거부·미소비 검증), 위치 무관 권위 TState 리컨사일(`ReconcileState` DIM), 연기 큐 최신 전체 병합·상한 강제 송신·메인 큐 상한, 생성기 소스 빌드 복구·headless 회귀 CI 게이트(0.2.18). EditMode 연속 2회 310/0/1·PlayMode 47/47·headless 양경로 19/19·사용자 자산 61파일 무변경. [[migration-v0-23]]·[[research/v0-23-stabilization-review]] 신규. 구현은 pi-crew executor(glm-5.3)+탐색/reviewer(glm-5.3-flash) 4단계·중간 reviewer CLEAN 4회.
 - 2026-10-26 — **Unity 작업 수단 일원화 — Unity CLI** (ADR-0055·[[harness]] "Unity 작업 수단" 절 신설. Sandbox·Builds 2Proc의 에디터 연동 패키지 매니페스트·잠금·캐시와 pi 하네스의 연동 서버 등록 제거. Unity 작업은 배치 모드 CLI(`-runTests`·`run2proc.sh`·`UniNetSolutionGenerator`)로 수행·증거는 종료코드·로그·NUnit XML. `AGENTS.md` 프로젝트 사실에도 반영)

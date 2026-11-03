@@ -77,6 +77,23 @@ if (UniNetManager.IsClientConnected) { /* 세션 살아있음 */ }
 
 수신 표현의 비용 절충: 실제 연기가 있는 tick마다 정렬된 connId 배열 1개를 공유한다(`AttachConnection`은 잠금 안에서 단조 증가 ID를 append하고 detach는 순서 보존). 각 후보는 기존 inline 64비트 및 초과분 pooled `ulong` 비트셋만 보유한다. 초과분은 기존 visibility pass에서 수집하고 후보에 word 단위 복사하므로 연기 후보마다 연결을 다시 훑거나 HashSet/버킷을 할당하지 않는다. 항목별 비트만 제거하므로 공유 ID 배열의 다른 수신자·후보는 변하지 않는다. 완료/파괴/빈 후보의 초과 비트 배열은 pool에 반환한다. 사용자 hook/채널 예외로 tick이 중단돼도 `finally`가 현재·미처리 후보를 해제하며, `_queue`에 실제 남겨 둔 후보의 소유권만 보존한다. 반환 뒤 참조를 null로 만들어 후속 정리의 중복 반환을 막고, 큐가 참조 중인 배열은 반환하거나 지우지 않는다. 송신은 정렬된 공유 ID와 현재 연결을 단방향 cursor로 병합하므로 후보당 O(이전 수신 ID 수+현재 연결 수)이며 개별 무효화만 이진 검색을 유지한다. 추가 공간은 tick 공유 O(N)+후보별 O(N/64)이다. 기존 HashSet 대신 메모리를 줄이며, 송신 시 현재 relevancy hook/거리 검사를 다시 하는 CPU 비용은 누출 차단에 필요하다. ready 캐치업은 첫 기준선 전에 보고 연결의 기존 큐 전달을 한 번에 제거하고, 객체별 기준선에서는 중복 검사하지 않는다(큐 순회 1회/캐치업). 단일 객체 가시성 재진입·`BroadcastSpawn`은 해당 netId/connId만 제거하는 선형 검사를 유지한다(전환이 매우 잦고 큐가 크면 별도 인덱싱 검토; 이번 범위 밖).
 
+## additive 씬 동기화 (0.24.0 — ADR-0057)
+
+`LoadScene`(Replace) 외에 **additive 적재·언로드**를 지원한다. 활성 씬 집합은 base(마지막 Replace) + additive 목록으로 구성되고, **한 번에 한 전환**만 진행된다(진행 중 두 번째 시작은 `InvalidOperationException` — `AllClientsSceneLoaded` 대기 후 다음 전환). additive 중복 적재·비-additive 언로드는 `ArgumentException`.
+
+```csharp
+server.LoadScene("Lobby");                        // Replace — 기존 동작
+server.LoadSceneAdditive("ForestStage");          // additive — 활성 집합에 추가
+server.UnloadScene("ForestStage");                // 해당 씬 등록 객체 파괴 후 언로드 지시
+```
+
+- **와이어 11 확장 `[mode][sceneName]`** — mode 0=Replace/1=Additive/2=Unload(`SceneLoadMode`). 구버전(≤0.23) 클라는 핸드셰이크 버전 불일치로 거부된다(전원 0.24.0 동시 갱신)
+- **유보 계약 확장** — 연결별 대기 씬이 bool → 집합으로 일반화됐다. 조인 시퀀스 재생 시 여러 씬을 받으며 전 보고 완료까지 게임 데이터가 유보된다(SCN-002 계약 그대로). 무효 씬 이름 보고는 무시된다
+- **언로드 순서** — 서버가 해당 씬 태그(`RegisterSceneObject`의 `sceneName`) 등록 객체를 먼저 파괴·전파하고(같은 신뢰 스트림에서 선행) 언로드 지시가 후행한다. 동적 객체는 씬 태그가 없어 대상 아님 — 게임이 언로드 전 정리할 것
+- **조인 시퀀스** — 이후 접속자는 활성 집합 전체를 순서대로 수신(base → additive들 → 진행 중 전환). 진행 중 Replace는 새 씬만, 진행 중 Unload는 희생 씬 제외
+- **클라 측 자동 보고** — additive 적재는 기존 sceneLoaded 훅(ADR-0025), 언로드는 드라이버의 sceneUnloaded 훅이 wire 12로 보고한다. 언로드 지시 씬이 없으면 즉시 보고(게이트 교찰 방지)
+- **서버 본체 씬 적재는 게임 책임** — Replace와 동일 계약. 전환 시작과 같은 프레임에 서버 자기 복사본을 적재/제거할 것(캐치업 baseline이 ready 시점 등록 객체에만 전달)
+
 ## 연결 승인 콜백 (0.10.0 — ADR-0047)
 
 게임이 자격 증명을 검사해 접속을 승인/거부하는 확장점(CON-002). 클라 옵션 `ConnectionCredential`이 설정되면 와이어 7 버전 선언에 자격 증명 문자열이 동봉된다(페이로드 `[version][credential]` — 상한 4096바이트, 초과는 파싱 전 조용 폐기; 구 클라는 문자열 1개라 잔여 0으로 credential="" 처리). 서버 옵션 `ConnectionApprover`가 설정되면 승인 흐름이 확장된다: 버전 수용 → **승인 콜백**(메인 스레드 시작, `UniNetApprovalRequest{ConnId, ProtocolVersion, Credential}` 전달, `Task<bool>` — DB/HTTP 검증 가능) → true면 기존 순서(대기 씬→재배정→캐치업→ClientConnected), false·예외면 `DisconnectClient(ApprovalRejected)`로 마감(클라 `ClientDisconnected(ApprovalRejected)` 관측). 콜백 대기 중 연결은 CON-001 유예 상태를 그대로 유지한다(게임 데이터 전면 유보·게임 ServerRpc 게이트). await 재개는 thread pool → `QueueOnMain`으로 메인 복귀 — 상태 변경은 메인 계약 유지. **게임 콜백의 반환 Task는 메인 스레드 펌프와 무관하게 완료 가능해야 한다**(DB/HTTP I/O형 — 내부 await에 `ConfigureAwait(false)` 권장; 메인 캡처 continuation은 메인이 막혀 있으면 완료가 굶는다). 타임아웃: `VersionDeclareTimeoutMs`는 선언+콜백 완료까지의 총 예산 — 스윕이 콜백 진행 중 연결도 VersionMismatch 킥으로 마감(무기한 유보 없음; 느린 인증 게임은 상향). 재접속(ResumeSession) 재선언도 콜백 1회 통과 — 게임이 재검증하거나 통과시킨다. 콜백 미설정(null, 기본)은 CON-001 동작과 완전히 동일하고 구 클라와 양방향 호환이다.

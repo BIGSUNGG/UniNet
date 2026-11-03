@@ -32,6 +32,7 @@ namespace UniNet.Tests
         internal readonly List<double> TimeSyncs = new();
         internal readonly List<UniNet.Core.UniNetDisconnectReason> DisconnectNotices = new();
         internal readonly List<string> LoadScenes = new();
+        internal readonly List<UniNet.Core.Hosting.SceneLoadMode> LoadSceneModes = new();   // ADR-0057 — mode per recorded SendLoadScene
 
         public void Clear()
         {
@@ -44,6 +45,7 @@ namespace UniNet.Tests
             TimeSyncs.Clear();
             DisconnectNotices.Clear();
             LoadScenes.Clear();
+            LoadSceneModes.Clear();
         }
 
         public void SendWelcome(long connId, string serverVersion, string sessionToken) { }
@@ -98,6 +100,11 @@ namespace UniNet.Tests
             return System.Threading.Tasks.Task.CompletedTask;
         }
         public void SendLoadScene(string sceneName) => LoadScenes.Add(sceneName);
+        public void SendLoadScene(string sceneName, UniNet.Core.Hosting.SceneLoadMode mode)   // ADR-0057 — shadows the interface default so modes are recorded
+        {
+            LoadScenes.Add(sceneName);
+            LoadSceneModes.Add(mode);
+        }
         public void UniNetSend(int methodId, byte[] payload, RpcDeliveryMode mode) { }
     }
 }

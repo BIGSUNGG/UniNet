@@ -873,6 +873,14 @@ namespace UniNet.Tests
             writer.WriteString("Battle");
             byte[] payload = writer.ToArray();
             Receive();   // dispatch receipt queues the old report BEFORE the new LoadScene
+            if (previousLoadSent)
+            {
+                // ADR-0057 — one transition at a time: complete the FIRST transition with a valid report before
+                // starting the same-name re-transition (the stale queued report must still be rejected after it).
+                server.OnClientSceneLoaded(ch.UniNetConnId, "Battle", server.CaptureSceneLoadGeneration(ch.UniNetConnId));
+                UniNetEnvironment.PumpMain();
+                gates = 0;   // the completion fired the gate — count only the second transition from here
+            }
             server.LoadScene("Battle");
             UniNetEnvironment.PumpMain();
             Assert.AreEqual(0, gates, "이전 수신 세대는 현재 송신 플래그를 통과하지 못함");

@@ -483,8 +483,12 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("        /// <summary>Wire message 10 (ADR-0034) — grace-session resume request. Reattaches ownership on the main thread.</summary>");
             sb.AppendLine("        /// <summary>Wire message 11 (ADR-0035) — server tells clients to load a scene.</summary>");
             sb.AppendLine("        public void SendLoadScene(string sceneName)");
+            sb.AppendLine("            => SendLoadScene(sceneName, global::UniNet.Core.Hosting.SceneLoadMode.Replace);   // legacy surface — interface default forwards here from the mode variant");
+            sb.AppendLine();
+            sb.AppendLine("        public void SendLoadScene(string sceneName, global::UniNet.Core.Hosting.SceneLoadMode mode)");
             sb.AppendLine("        {");
             sb.AppendLine($"            var w = {Writer}.Create();");
+            sb.AppendLine("            w.WriteByte((byte)mode);   // ADR-0057 — [mode][sceneName] on the wire (Replace/Additive/Unload)");
             sb.AppendLine("            w.WriteString(sceneName);");
             sb.AppendLine("            var p11 = w.ToArray();");
             sb.AppendLine($"            {Env}.Server?.TrafficStats.OnSent(p11.Length);");
@@ -774,9 +778,18 @@ namespace UniNet.CodeGenerator
             sb.AppendLine("            try");
             sb.AppendLine("            {");
             sb.AppendLine($"                var r = new {Reader}(data);");
+            sb.AppendLine("                var mode = (global::UniNet.Core.Hosting.SceneLoadMode)r.ReadByte();   // ADR-0057");
             sb.AppendLine("                var scene = r.ReadString();");
             sb.AppendLine($"                {Env}.Client?.TrafficStats.OnReceived(data.Length);");
-            sb.AppendLine($"                {Env}.QueueOnMain(() => global::UniNet.Unity.UniNetManager.OnSceneTransitionRequested(scene));   // ADR-0035");
+            sb.AppendLine($"                {Env}.QueueOnMain(() =>");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    if (mode == global::UniNet.Core.Hosting.SceneLoadMode.Additive)");
+            sb.AppendLine("                        global::UniNet.Unity.UniNetManager.OnSceneAdditiveRequested(scene);   // ADR-0057");
+            sb.AppendLine("                    else if (mode == global::UniNet.Core.Hosting.SceneLoadMode.Unload)");
+            sb.AppendLine("                        global::UniNet.Unity.UniNetManager.OnSceneUnloadRequested(scene);   // ADR-0057");
+            sb.AppendLine("                    else");
+            sb.AppendLine("                        global::UniNet.Unity.UniNetManager.OnSceneTransitionRequested(scene);   // ADR-0035 (Replace)");
+            sb.AppendLine("                });");
             sb.AppendLine("                return EmptyResponse();");
             sb.AppendLine("            }");
             sb.AppendLine("            catch (global::System.Exception ex)");
@@ -1270,9 +1283,14 @@ namespace UniNet.CodeGenerator
                             sb.AppendLine("                    }");
                             sb.AppendLine("                }");
                         }
+                        // ADR-0056 — the trailing RpcSender parameter (when declared) is injected from the transport-assigned
+                        // senderConnId — never serialized, never client-supplied. Local authority calls pass 0 (IsLocal).
+                        string senderArg = "new global::UniNet.Core.Hosting.RpcSender(senderConnId)";
+                        string validateSuffix = rpc.ValidateHasSender ? ", " + senderArg : "";
+                        string implSuffix = rpc.ImplHasSender ? ", " + senderArg : "";
                         if (rpc.HasValidate)
-                            sb.AppendLine($"                if (!await o.{rpc.Name}_Validate({PrivateArgList(rpc)})) return;");
-                        sb.AppendLine($"                o.{rpc.Name}_Implementation({PrivateArgList(rpc)});");
+                            sb.AppendLine($"                if (!await o.{rpc.Name}_Validate({PrivateArgList(rpc)}{validateSuffix})) return;");
+                        sb.AppendLine($"                o.{rpc.Name}_Implementation({PrivateArgList(rpc)}{implSuffix});");
                         sb.AppendLine("            }");
                         sb.AppendLine("            catch (global::System.Exception e) { UnityEngine.Debug.LogException(e); }");
                         sb.AppendLine("        }");

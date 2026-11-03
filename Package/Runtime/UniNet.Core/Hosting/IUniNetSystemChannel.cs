@@ -46,8 +46,14 @@ public interface IUniNetSystemChannel
     /// </summary>
     System.Threading.Tasks.Task SendDisconnectNoticeAsync(UniNetDisconnectReason reason);
 
-    /// <summary>Tells the client to load a scene (ADR-0035, wire 11 — scene transition).</summary>
+    /// <summary>Tells the client to load a scene (ADR-0035, wire 11 — scene transition). ADR-0057 — the mode
+    /// variant carries Replace/Additive/Unload on the wire; the single-argument overload stays the abstract member
+    /// test channels implement (defaults to Replace).</summary>
     void SendLoadScene(string sceneName);
+
+    /// <summary>ADR-0057 — mode-carrying wire-11 send. Default forwards to the Replace overload so existing test
+    /// channels keep compiling; the generated hub implements this one.</summary>
+    void SendLoadScene(string sceneName, SceneLoadMode mode) => SendLoadScene(sceneName);
 
     /// <summary>
     /// Sends the grace-session resume result (REC-001, wire 14) to THIS connection — every terminal outcome of a
