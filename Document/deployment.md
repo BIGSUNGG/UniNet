@@ -52,6 +52,15 @@ Package/tools/update-dlls.sh          # C:/Projects/DS/unity-nuget의 nupkg에�
 - 공개 태그 게이트 (배포 절차 2의 태그 푸시→Release **후** 실행): `Package/tools/verify-install-public.sh [TAG=package.json version]` — `git ls-remote`로 원격 태그 존재 확인 → 소비자 계약 URL(`https://github.com/BIGSUNGG/UniNet.git?path=/Package#TAG`)로 빈 프로젝트 설치 → PackageCache에서 샘플 추출·재임포트 컴파일 → `packages-lock.json`이 git 소스(github.com/BIGSUNGG/UniNet)로 git 소스로 기록됐는지 단언(해시는 로그 에코). PASS면 배포 완료. 태그 재지정 금지 — 수정 배포는 항상 새 태그
 - 로컬 정적 검증: `Package/tools/validate-package.sh [--tag vX.Y.Z]` (CI와 동일 스크립트)
 
+## v0.24.0 배포 검증·영수증 (2026-11-02)
+
+- 제품 커밋: `697a34dd51621889ea40acd35d2b0f2281c6bf7e` — ADR-0056 RpcSender 주입(와이어 불변)·ADR-0057 additive 씬 동기화(와이어 11 `[mode][sceneName]` 확장 — 구버전 클라는 핸드셰이크로 거부, 양단 동시 갱신)·#4-A 매치 배치 모델 문서 확정. 패키지 0.24.0 · 생성기 0.3.0 (동봉 DLL 갱신 — md5 정합).
+- 검증: 헤드리스 생성기 **55/55**(양경로), Unity EditMode **349통과/0실패/1기존 Ignore** (350테스트 — 신규 20종: SenderContext 6·SceneAdditive 13·SCN-003 재전환 정합 1), PlayMode **50/50**. `Sandbox/Logs/uninet-024-edit-r2.xml`·`uninet-024-play-r1.xml`.
+- 품질 게이트: reviewer 라운드 3회 — r1 ISSUES 3건(세대 가드 교찰·finally 불변식 역전·LoadSceneAsync 침묵 — 전부 수정 + 회귀 테스트 4종 추가)→ r2 잔여 1건(주석 산술)→ r3 **CLEAN** (실행 증거·동봉 DLL md5 포함 확인).
+- 배포: main·tag CI 모두 success([tag CI](https://github.com/BIGSUNGG/UniNet/actions/runs/41555584024)), [Release](https://github.com/BIGSUNGG/UniNet/releases/tag/v0.24.0) 게시 `2026-11-03T00:50:12Z`. 원격 태그·패키지 버전 `0.24.0` 확인. 태그 재지정 없음.
+- 공개 설치: `bash Package/tools/verify-install-public.sh v0.24.0` PASS — 공개 URL 신규 설치 + PackageCache 샘플 컴파일, `packages-lock.json` `hash=697a34dd51621889ea40acd35d2b0f2281c6bf7e` 단언 (`/tmp/uninet-verify-public-N3YC/`). 로컬 Git 설치 회귀 `verify-install.sh`도 PASS (`/tmp/uninet-verify-UACs/`).
+- 사용자 기존 staged 변경(`.gitignore`·`.pi/teams/artifacts/.last-cleanup`)은 커밋에서 제외하고 staged 상태로 보존했다.
+
 ## v0.23.0 배포 검증·영수증 (2026-10-29)
 
 - 제품·테스트 기준 커밋: `7272d73964965a63e7ef23a1ee2a1f405810ffe9`. 기존 A/B/C/D 리뷰 원문의 첫 줄 CLEAN·실행 종료 metadata·동결 diff와 실제 커밋의 일치를 재확인했다. 사용자 선택에 따라 추가 reviewer는 호출하지 않았다.
