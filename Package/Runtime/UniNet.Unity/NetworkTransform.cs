@@ -115,17 +115,28 @@ namespace UniNet.Unity
         private float _seenX, _seenY, _seenZ;  // last buffered remote sample — per-axis teleport discontinuity detection
         private float _dispEmaX, _dispEmaY, _dispEmaZ;   // per-axis sample-to-sample displacement — the discontinuity tolerance follows the object's motion scale
         private double _lastSampleAt;          // arrival time of the last paced sample (UniNetTime domain)
-        private double _arrivalGapEma = 0.05;  // smoothed inter-sample arrival gap (seconds)
+        private double _arrivalGapEma = 0.05;  // smoothed inter-sample arrival gap (seconds) — seeded by the first real gap
+        private bool _gapSeeded;
+        private double _stampX, _stampY, _stampZ, _stampRot;   // per-buffer sample-axis time of the last buffered snapshot
+        private double _effectiveDelay;        // smoothed render delay — moves continuously, never in a one-frame step
+        private bool _delaySeeded;
         private const double ArrivalGapEmaAlpha = 0.1;
         private const double AdaptiveDelayMinSeconds = 0.03;
         private const double AdaptiveGapMultiplier = 3.0;
+        private const double AdaptiveDelayFloorGaps = 1.25;     // the window never drops below ~one arrival gap (starvation floor)
         private const double SameDeltaArrivalSeconds = 0.002;   // X/Y/Z notifies of one delta land µs apart — not a stream gap
+        private const double StreamStepMinSeconds = 1.0 / 240.0;   // a compressed burst is spaced out to at least this
+        private const double StreamStepMaxSeconds = 0.5;           // a long silence is attributed at most this much
+        private const double StreamResyncSeconds = 1.0;            // beyond this the clock re-anchors on arrival (a real stall)
+        private const double StreamMaxLeadSeconds = 0.25;          // the axis may run at most this far ahead of arrival
         private const float DisplacementEmaAlpha = 0.1f;
         private const float DisplacementEmaMultiplier = 3f;
 
-        /// <summary>Current remote render delay — <see cref="InterpolationDelay"/> capped, shrunk to ~3 arrival gaps for a dense steady stream (test/debug observer).</summary>
-        internal double EffectiveInterpolationDelay
-            => Math.Min(InterpolationDelay, Math.Max(AdaptiveDelayMinSeconds, _arrivalGapEma * AdaptiveGapMultiplier));
+        /// <summary>
+        /// Current remote render delay — <see cref="InterpolationDelay"/> capped, shrunk to ~3 arrival gaps for a dense
+        /// steady stream, and smoothed so the render time never jumps a frame (observer: game instrumentation and tests).
+        /// </summary>
+        internal double EffectiveInterpolationDelay => _effectiveDelay > 0 ? _effectiveDelay : InterpolationDelay;
 
         private static float LerpF(float a, float b, double t) => a + (b - a) * (float)t;
 
@@ -311,7 +322,7 @@ namespace UniNet.Unity
         {
             if (IsServer || IsOwner) return;   // authority keeps its own; the owner reconciles on ack (ADR-0038)
             TrackArrival(UniNetTime.Now);
-            AddRemoteSample(ref _seenX, ref _dispEmaX, _px, _bufX);
+            AddRemoteSample(ref _seenX, ref _dispEmaX, _px, _bufX, ref _stampX);
         }
 
         /// <summary>Networked Y received — same handling as the X axis.</summary>
@@ -319,7 +330,7 @@ namespace UniNet.Unity
         {
             if (IsServer || IsOwner) return;
             TrackArrival(UniNetTime.Now);
-            AddRemoteSample(ref _seenY, ref _dispEmaY, _py, _bufY);
+            AddRemoteSample(ref _seenY, ref _dispEmaY, _py, _bufY, ref _stampY);
         }
 
         /// <summary>Networked Z received — same handling as the X axis.</summary>
@@ -327,7 +338,7 @@ namespace UniNet.Unity
         {
             if (IsServer || IsOwner) return;
             TrackArrival(UniNetTime.Now);
-            AddRemoteSample(ref _seenZ, ref _dispEmaZ, _pz, _bufZ);
+            AddRemoteSample(ref _seenZ, ref _dispEmaZ, _pz, _bufZ, ref _stampZ);
         }
 
         // ---- persistent rotation/scale sync (TRS-001, opt-in) ----
@@ -379,7 +390,7 @@ namespace UniNet.Unity
                 _bufRot.Clear();   // the discontinuity itself must not render as a slide; bounded by 180°, so it may still inform the EMA below
             if (_hasSeenRot)
                 _rotDispEma += (angle - _rotDispEma) * DisplacementEmaAlpha;
-            _bufRot.Add(UniNetTime.Now, q);
+            _bufRot.Add(NextSampleStamp(ref _stampRot), q);
             _seenRot = q;
             _hasSeenRot = true;
         }
@@ -402,9 +413,90 @@ namespace UniNet.Unity
             {
                 double gap = now - _lastSampleAt;
                 if (gap < SameDeltaArrivalSeconds) return;   // same-delta duplicate (X/Y/Z of one apply pass)
-                _arrivalGapEma += (gap - _arrivalGapEma) * ArrivalGapEmaAlpha;
+
+                // The cadence estimate must not be dragged by a burst (two deltas in one frame → gap ≈ 0) or by a
+                // hitch: a sample may move it at most one octave either way. The first real gap seeds it outright —
+                // starting from a guessed 50 ms would run the sample axis ahead of the arrival clock for a while.
+                if (!_gapSeeded)
+                {
+                    _arrivalGapEma = gap;
+                    _gapSeeded = true;
+                }
+                else
+                {
+                    double bounded = Math.Clamp(gap, _arrivalGapEma * 0.5, _arrivalGapEma * 2.0);
+                    _arrivalGapEma += (bounded - _arrivalGapEma) * ArrivalGapEmaAlpha;
+                }
+                UpdateEffectiveDelay();
             }
+            else
+            {
+                UpdateEffectiveDelay();
+            }
+
             _lastSampleAt = now;
+        }
+
+        /// <summary>
+        /// Sample timestamp for one buffer on the interpolation axis. NOT the raw arrival time: two deltas delivered
+        /// within the same frame arrive ~0 ms apart, so an arrival-stamped segment collapses to a sliver (or the
+        /// second sample is refused by the buffer's monotonic guard and its position is lost) — the renderer then
+        /// crosses the missing distance in one frame, which is exactly the «remote dash stutters» symptom. Each
+        /// buffer therefore advances its own clock by the estimated cadence, nudged toward the arrival clock by at
+        /// most half a step per sample, so the axis keeps wall-clock rate while every segment keeps a real width.
+        /// A genuine stall re-anchors on arrival — the buffer froze anyway, so matching wall time again is honest.
+        /// </summary>
+        private double NextSampleStamp(ref double stamp)
+        {
+            double now = UniNetTime.Now;
+            if (stamp <= 0)
+            {
+                stamp = now;
+                return now;
+            }
+
+            double step = Math.Clamp(_arrivalGapEma, StreamStepMinSeconds, StreamStepMaxSeconds);
+
+            // Each sample keeps its own width. The axis may run slightly ahead of the arrival clock — that is
+            // harmless (renderTime looks back by the delay, so a sample ~one step ahead is still reached next
+            // frame); only a runaway lead is capped, and a runaway lag resyncs.
+            double next = stamp + step;
+            if (next > now + StreamMaxLeadSeconds) next = now + StreamMaxLeadSeconds;
+            if (next <= stamp) next = stamp + StreamStepMinSeconds;   // same-instant arrival: widen, never collapse
+
+            if (now - next > StreamResyncSeconds)
+            {
+                stamp = now;   // real stall — resync rather than keep a long-unreachable axis
+                return now;
+            }
+
+            stamp = next;
+            return next;
+        }
+
+        /// <summary>
+        /// Recomputes the render delay continuously: the target is ~3 arrival gaps (bounded by the configured
+        /// <see cref="InterpolationDelay"/>) but never below ~one gap — a window thinner than the sample spacing
+        /// starves the buffer and holds-then-catches-up, which reads as a stutter. The value itself only moves a
+        /// fraction of the way per sample, so changing <see cref="InterpolationDelay"/> (or the stream density) can
+        /// never move the render time a whole frame at once.
+        /// </summary>
+        private void UpdateEffectiveDelay()
+        {
+            // The ceiling is the configured delay (never below the absolute minimum, so a 0-configured
+            // InterpolationDelay cannot invert the clamp and throw).
+            double ceiling = Math.Max(AdaptiveDelayMinSeconds, InterpolationDelay);
+            double floor = Math.Min(ceiling, Math.Max(AdaptiveDelayMinSeconds, _arrivalGapEma * AdaptiveDelayFloorGaps));
+            double target = Math.Clamp(_arrivalGapEma * AdaptiveGapMultiplier, floor, ceiling);
+
+            if (!_delaySeeded || _effectiveDelay <= 0)
+            {
+                _effectiveDelay = target;
+                _delaySeeded = true;
+                return;
+            }
+
+            _effectiveDelay += (target - _effectiveDelay) * ArrivalGapEmaAlpha;
         }
 
         /// <summary>
@@ -416,7 +508,7 @@ namespace UniNet.Unity
         /// the delta's other axes are applied, so the full vector is unavailable here) — unlike the owner re-anchor,
         /// which judges the 3D distance; sub-threshold diagonal jumps may still render as a short slide.
         /// </summary>
-        private void AddRemoteSample(ref float seen, ref float dispEma, float value, SnapshotBuffer<float> buffer)
+        private void AddRemoteSample(ref float seen, ref float dispEma, float value, SnapshotBuffer<float> buffer, ref double stamp)
         {
             float delta = _hasSeen ? Mathf.Abs(value - seen) : 0f;
             bool teleport = _hasSeen && delta > Mathf.Max(SnapThreshold, dispEma * DisplacementEmaMultiplier);
@@ -428,7 +520,7 @@ namespace UniNet.Unity
             {
                 dispEma += (delta - dispEma) * DisplacementEmaAlpha;
             }
-            buffer.Add(UniNetTime.Now, value);
+            buffer.Add(NextSampleStamp(ref stamp), value);
             seen = value;
             _hasSeen = true;
         }

@@ -1,3 +1,20 @@
+## 0.24.1
+
+**Remote-motion smoothness patch (generator unchanged, wire formats unchanged — no client update required).**
+
+### Fixed
+
+- **Remote samples are spaced by cadence, not by arrival time** — `NetworkTransform` stamped every received snapshot with `UniNetTime.Now`. When two deltas land in the same frame their arrival times are ~0 ms apart, so that segment collapsed to a sliver (or the second sample was refused by the buffer's monotonic guard and its position was lost entirely); the renderer then crossed the missing distance in a single frame. Remote bodies visibly jumped — most obvious during a dash, where the per-sample distance is largest. Each position/rotation buffer now advances its own sample clock by the estimated arrival cadence (seeded from the first real gap, bounded lead, stall resync), so every segment keeps a real width while the axis still tracks wall time.
+- **The adaptive interpolation delay no longer steps a whole frame at once** — the effective delay was recomputed from the arrival-gap EMA on every sample and applied instantly, so changing `InterpolationDelay` at runtime (a game widening the window for a burst) moved `renderTime` backwards in one frame and the body jumped by the window change. The delay is now smoothed per sample toward its target, and its target is floored at ~one arrival gap so a sparse stream cannot starve the buffer into hold-then-catch-up.
+
+### Added
+
+- **`NetworkTransform.EffectiveInterpolationDelay` is observable** — the smoothed delay the renderer actually uses (previously an unused internal expression). Game instrumentation and regressions can assert on what is drawn instead of on the configured maximum.
+
+### Verified
+
+- `NetworkTransformRemoteRenderTests` gains two regressions that fail on the old behaviour: a same-frame delta pair must keep both samples and a real segment width (arrival stamping produced a 1.0 ms sliver), and a runtime `InterpolationDelay` change must not move the delay more than a fraction of a sample at a time. Full Unity EditMode suite: 351 passed / 0 failed / 1 pre-existing skip.
+
 ## 0.24.0
 
 **Sender context + additive scenes (generator 0.3.0; wire 11 format changed — update both ends together, the version handshake rejects mixed versions).**

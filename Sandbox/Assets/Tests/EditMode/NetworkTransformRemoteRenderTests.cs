@@ -68,6 +68,28 @@ namespace UniNet.Tests
         private static void Set(NetworkTransform nt, string field, float value)
             => typeof(NetworkTransform).GetField(field, Flags).SetValue(nt, value);
 
+        /// <summary>버퍼의 시간축에서 이웃 표본 사이 최소 간격 — 고른 박자의 증거(관측용, 디버그 전용 경로).</summary>
+        private static double MinSegmentWidth(SnapshotBuffer<float> buffer)
+        {
+            var type = typeof(SnapshotBuffer<float>);
+            var ring = (Array)type.GetField("_ring", Flags).GetValue(buffer);
+            int head = (int)type.GetField("_head", Flags).GetValue(buffer);
+            int count = (int)type.GetField("_count", Flags).GetValue(buffer);
+            if (count < 2) return double.MaxValue;
+
+            double min = double.MaxValue;
+            double prev = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int index = ((head - count + i) % ring.Length + ring.Length) % ring.Length;
+                object entry = ring.GetValue(index);
+                double t = (double)entry.GetType().GetField("Item1").GetValue(entry);
+                if (i > 0) min = Math.Min(min, t - prev);
+                prev = t;
+            }
+            return min;
+        }
+
         private static void InvokeUpdate(NetworkTransform nt)
             => typeof(NetworkTransform).GetMethod("Update", Flags).Invoke(nt, null);
 
@@ -183,6 +205,73 @@ namespace UniNet.Tests
             double effective = (double)typeof(NetworkTransform)
                 .GetProperty("EffectiveInterpolationDelay", Flags).GetValue(nt);
             Assert.Less(effective, 0.12, "수직 전용 스트림 — Y축 노티파이가 박자를 운반해 지연 수축");
+        }
+
+        /// <summary>
+        /// 두 델타가 한 프레임에 몰려 도착해도 표본 간격은 «도착시각» 이 아니라 추정 박자를 따릅니다.
+        /// 도착시각으로 적으면 그 구간이 ~0ms 로 압축되어(또는 같은 시각이라 버려져) 렌더가 한 프레임에
+        /// 한 표본 분량을 건너뜁니다 — 원격 대시가 «끊겨 보이는» 그 모양입니다.
+        /// </summary>
+        [Test]
+        public void 한_프레임에_몰린_표본도_한_프레임에_건너뛰지_않는다()
+        {
+            var nt = NewRemote();
+            nt.InterpolationDelay = 0.12f;
+            nt.SnapThreshold = 0.5f;
+
+            float perSample = 1f / 30f;         // 30Hz 스냅샷, 1 u/s 이동
+            float x = 0f;
+
+            for (int i = 0; i < 12; i++)        // 예열 — 박자 추정이 첫 실제 간격으로 시드된다 (버퍼 용량 32 이하)
+            {
+                x += perSample;
+                Sample(nt, x, 0f, 0f, 1.0 / 30.0);
+                InvokeUpdate(nt);
+            }
+
+            SnapshotBuffer<float> bufX = (SnapshotBuffer<float>)typeof(NetworkTransform)
+                .GetField("_bufX", Flags).GetValue(nt);
+            int before = bufX.SampleCount;
+
+            // 한 프레임에 델타 두 개 (프레임 히치 잔량) — 두 번째는 1ms 뒤에 도착한 것으로 준다.
+            // 도착시각으로 적으면 두 번째는 «같은 시각» 이라 버퍼의 단조 가드에 거부되어 위치 값이 통째로 사라진다.
+            x += perSample;
+            Sample(nt, x, 0f, 0f, 0.001);
+            x += perSample;
+            Sample(nt, x, 0f, 0f, 0.0);
+
+            Assert.AreEqual(before + 2, bufX.SampleCount,
+                "한 프레임에 몰린 두 델타 모두 버퍼에 남는다 — 버려진 표본은 그 거리만큼 한 프레임에 건너뛴다");
+
+            // 그리고 표본 간격이 고르다 — 도착시각으로 적으면 이 구간만 1ms 짜리 조각이 되어,
+            // 그리는 시각이 그 조각을 한 프레임에 건너뛰며 몸이 순간이동한다.
+            double minWidth = MinSegmentWidth(bufX);
+            Assert.Greater(minWidth, 1.0 / 30.0 * 0.4,
+                $"표본 간 최소 간격({minWidth * 1000.0:0.0}ms)이 박자의 40% 이상 — 몰아둔 델타도 제 간격을 받는다");
+        }
+
+        /// <summary>보간 지연은 표본 하나 사이에 급변하지 않는다 — 지연이 튀면 그리는 시각이 튀고 몸이 순간이동한다.
+        /// 게임이 대시 진입에 지연을 바꾸던 동작(0.12→0.18)이 정확히 이 급변이었다.</summary>
+        [Test]
+        public void 게임이_지연을_바꿔도_한_표본_사이에_급변하지_않는다()
+        {
+            var nt = NewRemote();
+            nt.InterpolationDelay = 0.12f;
+
+            for (int i = 0; i < 20; i++)   // 5 Hz — 지연은 설정값(상한)에 붙어 있다: 상한을 바꾸면 지연이 따라 움직인다
+                Sample(nt, i * 0.1f, 0f, 0f, 0.2);
+
+            double before = (double)typeof(NetworkTransform)
+                .GetProperty("EffectiveInterpolationDelay", Flags).GetValue(nt);
+
+            nt.InterpolationDelay = 0.06f;   // 대시 진입에 게임이 지연을 좁히던 그 순간
+            Sample(nt, 20 * 0.1f, 0f, 0f, 0.2);
+            double after = (double)typeof(NetworkTransform)
+                .GetProperty("EffectiveInterpolationDelay", Flags).GetValue(nt);
+
+            Assert.Less(Math.Abs(after - before), 0.02,
+                $"한 표본 사이 지연 변화({Math.Abs(after - before):0.0000}s)가 작다 — 그리는 시각이 튀지 않는다");
+            Assert.Greater(after, 0.06, "설정값으로 수렴 중이다 (한 번에 뛰어가지 않는다)");
         }
     }
 }
