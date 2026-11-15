@@ -129,6 +129,7 @@ namespace UniNet.Unity
         private const double StreamStepMaxSeconds = 0.5;           // a long silence is attributed at most this much
         private const double StreamResyncSeconds = 1.0;            // beyond this the clock re-anchors on arrival (a real stall)
         private const double StreamMaxLeadSeconds = 0.25;          // the axis may run at most this far ahead of arrival
+        private const float TeleportSpeedCeiling = 40f;            // u/s — beyond this a sample-to-sample move is a jump, not motion
         private const float DisplacementEmaAlpha = 0.1f;
         private const float DisplacementEmaMultiplier = 3f;
 
@@ -511,7 +512,16 @@ namespace UniNet.Unity
         private void AddRemoteSample(ref float seen, ref float dispEma, float value, SnapshotBuffer<float> buffer, ref double stamp)
         {
             float delta = _hasSeen ? Mathf.Abs(value - seen) : 0f;
-            bool teleport = _hasSeen && delta > Mathf.Max(SnapThreshold, dispEma * DisplacementEmaMultiplier);
+
+            // Distance alone is not a teleport: a dash (6.2 u/s peak) also covers a long way «in the time it has».
+            // The displacement EMA needs a few samples to adapt, so a cold-EMA burst — two server ticks merged into
+            // one delta while the object is already fast — used to clear the buffer and snap the body (measured
+            // 1.24 u in one frame, the «remote dash stutters» report). Judging the speed against the arrival cadence
+            // keeps fast legitimate motion on the interpolation path; a respawn/teleport (hundreds of u/s) still snaps.
+            double gap = Math.Max(AdaptiveDelayMinSeconds, _arrivalGapEma);
+            bool plausibleMotion = delta / gap <= TeleportSpeedCeiling;
+            bool teleport = _hasSeen && !plausibleMotion
+                            && delta > Mathf.Max(SnapThreshold, dispEma * DisplacementEmaMultiplier);
             if (teleport)
             {
                 buffer.Clear();   // the teleport sample itself does not pollute the motion-scale EMA

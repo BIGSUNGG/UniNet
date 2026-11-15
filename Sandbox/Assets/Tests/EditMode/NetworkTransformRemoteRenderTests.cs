@@ -250,6 +250,35 @@ namespace UniNet.Tests
                 $"표본 간 최소 간격({minWidth * 1000.0:0.0}ms)이 박자의 40% 이상 — 몰아둔 델타도 제 간격을 받는다");
         }
 
+        /// <summary>
+        /// 거리만으로 순간이동을 판정하면 «이미 빠른 몸 + 식은 이동 EMA + 몰아온 두 틱» 이 순간이동으로 오인되어
+        /// 버퍼가 지워지고 몸이 한 프레임에 튑니다(실측 1.24 유닛). 속도가 시간에 맞으면 이동으로 보아야 합니다.
+        /// </summary>
+        [Test]
+        public void 식은_이동EMA에서도_빠른_정상_이동은_순간이동으로_오인하지_않는다()
+        {
+            var nt = NewRemote();
+            nt.SnapThreshold = 0.5f;
+            nt.InterpolationDelay = 0.12f;
+
+            // 아직 EMA 가 식어 있는 상태 — 첫 두 표본만 작다
+            Sample(nt, 0f, 0f, 0f, 1.0 / 30.0);
+            Sample(nt, 0.1f, 0f, 0f, 1.0 / 30.0);
+
+            // 두 서버 틱이 하나의 델타로 합쳐졌다: 0.9 유닛 / 33ms = 27 u/s — 빠르지만 «이동» 이다
+            Sample(nt, 1.0f, 0f, 0f, 1.0 / 30.0);
+            InvokeUpdate(nt);
+
+            SnapshotBuffer<float> bufX = (SnapshotBuffer<float>)typeof(NetworkTransform)
+                .GetField("_bufX", Flags).GetValue(nt);
+            Assert.AreEqual(3, bufX.SampleCount, "빠른 정상 이동 — 버퍼를 지우지 않는다 (스냅 금지)");
+
+            // 진짜 순간이동(수백 u/s)은 여전히 스냅한다
+            Sample(nt, 30f, 0f, 0f, 1.0 / 30.0);
+            InvokeUpdate(nt);
+            Assert.AreEqual(30f, nt.transform.position.x, 0.5f, "실제 순간이동은 최신 값으로 스냅");
+        }
+
         /// <summary>보간 지연은 표본 하나 사이에 급변하지 않는다 — 지연이 튀면 그리는 시각이 튀고 몸이 순간이동한다.
         /// 게임이 대시 진입에 지연을 바꾸던 동작(0.12→0.18)이 정확히 이 급변이었다.</summary>
         [Test]

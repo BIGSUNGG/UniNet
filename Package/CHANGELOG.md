@@ -1,3 +1,15 @@
+## 0.24.2
+
+**Teleport classification follows speed, not distance alone (generator and wire formats unchanged).**
+
+### Fixed
+
+- **Fast legitimate motion is no longer misread as a teleport** — a remote sample was cleared as a teleport whenever its displacement exceeded `max(SnapThreshold, 3 × displacement EMA)`. The EMA needs several samples to adapt, so an object that was already fast when two server ticks merged into one delta (a dash at 27 u/s, 0.9 u in 33 ms) tripped the distance test, the buffer was cleared, and the body snapped — measured 1.24 u in a single frame. The classification now also requires the implied speed (`delta / arrival-cadence`) to exceed `TeleportSpeedCeiling` (40 u/s), so a respawn or an explicit teleport (hundreds of u/s) still snaps immediately.
+
+### Verified
+
+- `NetworkTransformRemoteRenderTests` gains a cold-EMA regression: 0.9 u in one cadence keeps all three samples (interpolation), while a 30 u jump snaps. Full EditMode suite re-run.
+
 ## 0.24.1
 
 **Remote-motion smoothness patch (generator unchanged, wire formats unchanged — no client update required).**
