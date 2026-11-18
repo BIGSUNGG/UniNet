@@ -157,6 +157,13 @@ namespace UniNet.Unity
         /// </summary>
         public float EffectiveDelay => (float)EffectiveInterpolationDelay;
 
+        /// <summary>
+        /// Measured arrival cadence of the incoming stream, in milliseconds (smoothed). Diagnostics only: a
+        /// sender at 30 Hz should report ~33 ms. A value near a multiple of that means samples are being
+        /// batched by the transport, which widens <see cref="EffectiveDelay"/> by the same factor.
+        /// </summary>
+        public float MeasuredGapMs => (float)(_arrivalGapEma * 1000.0);
+
         private static float LerpF(float a, float b, double t) => a + (b - a) * (float)t;
 
         private static Quaternion SlerpQ(Quaternion a, Quaternion b, double t) => Quaternion.Slerp(a, b, (float)t);
