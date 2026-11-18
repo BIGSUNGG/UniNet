@@ -164,6 +164,13 @@ namespace UniNet.Unity
         /// </summary>
         public float MeasuredGapMs => (float)(_arrivalGapEma * 1000.0);
 
+        /// <summary>
+        /// How stale the newest received sample is, in milliseconds. Diagnostics only, and the honest split of
+        /// «why is the remote body late»: everything the transport and the server cost lands here, while
+        /// <see cref="EffectiveDelay"/> is the deliberate buffer on top of it.
+        /// </summary>
+        public float FreshnessMs => _lastSampleAt > 0.0 ? (float)((UniNetTime.Now - _lastSampleAt) * 1000.0) : -1f;
+
         private static float LerpF(float a, float b, double t) => a + (b - a) * (float)t;
 
         private static Quaternion SlerpQ(Quaternion a, Quaternion b, double t) => Quaternion.Slerp(a, b, (float)t);

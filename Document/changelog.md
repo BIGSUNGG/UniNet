@@ -7,6 +7,7 @@
 
 ### Added
 
+- **`NetworkTransform.FreshnessMs` 공개**: 가장 최근에 받은 표본이 «얼마나 낡았는가»(ms, 진단 전용). 남의 몸이 늦는 이유를 둘로 가른다 — 전송·서버가 잡아먹은 시간은 이 값에, 일부러 두는 완충은 `EffectiveDelay` 에 찍힌다.
 - **`NetworkTransform.MeasuredGapMs` 공개**: 들어오는 스트림의 «도착 간격» EMA(ms). 진단 전용 — 30Hz 송신이면 ~33ms 가 나와야 한다. 33ms 의 배수에 가깝게 나오면 전송이 표본을 묶어(batching) 보내는 것이고, 그 배수만큼 보간 지연이 함께 벌어진다(게이트가 이 값으로 «지연이 왜 큰지» 를 숫자로 가른다).
 - **엔진측 네트워크 지연 시뮬레이션 — `UniNetSim.DelayMs`**: 3-프로세스 게이트를 100ms 편도 지연 아래에서 돌리기 위한 선택적 송신 지연. 게임이 부팅 시 값을 설정하며(0 = 꺼짐, 기본), 엔진은 커맨드라인을 파싱하지 않는다. 구현은 전송 채널 데코레이터 하나 — `UniNetManager`가 연결마다 `IMessageChannel`을 감싸므로 RPC·복제(상태 스트림)·시스템 메시지가 전부 같은 지점을 지난다. 수신은 무지연(각 프로세스가 자기 송신만 늦추므로 홉당 1회 지연), 드롭·중복·순서변경 없음. 페이로드는 DRPC가 풀 버퍼를 재사용하므로 복사해 보관하고, 해제는 드라이버 `Update`의 펌프가 `UniNetTime.Now` 기준으로 수행한다. `DelayMs` 0이면 int 비교 1회 후 그대로 전달한다. 검증: `dotnet build UniNet.Tests.EditMode.csproj` 0 오류 + Unity EditMode `SimulatedLatencyTests` 2/2 통과(지연 전 미도달·경과 후 도달·0이면 즉시 전달).
 - **`NetworkTransform.EffectiveDelay` 공개**: 이번 프레임에 실제로 적용된 보간 지연(초). 자리가 아닌 상태·방향·애니 틱을 그리는 게임 코드가 «몸과 같은 시계» 로 앉히려면 이 값이 필요하다(상한 `InterpolationDelay` 를 쓰면 몸보다 먼저 간다).
