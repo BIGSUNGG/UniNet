@@ -487,6 +487,19 @@ private void RpcFire_Implementation(float dirX, float dirY, double hitTime)
 }
 ```
 
+### Simulated network latency (gate runs)
+
+Run a multi-process gate under a fixed one-way delay without a network emulator:
+
+```csharp
+void Awake() => UniNetSim.DelayMs = 100;   // ms; 0 = off (default)
+```
+
+- Every payload the library hands to the transport — RPCs, the replication/state stream, system messages — is held `DelayMs` ms before it is actually sent. Inbound is untouched: each process delays only its own outbound side, so setting the same value in both processes yields one delay per hop.
+- No drops, no duplication, no reordering. `DelayMs == 0` behaves exactly like no simulation.
+- Set it once at boot, **before** `ServerAsync`/`ClientAsync` (a mid-session change can reorder messages already held). It is not read from command-line arguments — the game owns the value.
+- Releases are pumped from the UniNet driver's `Update`, so the effective delay is quantized to the frame rate (~+1 frame of jitter).
+
 ### Security & transport tuning
 
 All transport-level configuration lives in `UniNetEndpointOptions` — game code never touches the underlying stack types:

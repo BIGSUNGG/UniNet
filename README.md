@@ -384,6 +384,20 @@ await UniNetManager.ServerStopAsync();   // also ServerStop / ClientStop / HostS
 
 Idempotent — no-op when not listening. Stop also sweeps dynamically spawned objects, so a fresh session in the same process never collides with stale netIds. Call the sync versions from `OnApplicationQuit`.
 
+### Simulated network latency
+
+Gate a multi-process run under a fixed one-way delay without a network emulator. Every payload the library hands to
+the transport — RPCs, the replication/state stream, system messages — is held `DelayMs` milliseconds before it is
+actually sent; inbound is untouched (each process delays its own outbound side, so 100 in every process is 100 ms
+per hop). No drops, no duplication, no reordering.
+
+```csharp
+void Awake() => UniNetSim.DelayMs = 100;   // ms, 0 = off (default) — set once at boot, before Server/Client start
+```
+
+Releases are pumped from the UniNet driver's `Update`, so the effective delay is quantized to the frame rate
+(~one frame of extra jitter). Not read from command-line arguments — the game owns the value.
+
 ## Sample & example game
 
 - **Basics** — minimal RPC + variable replication sample, installable from the Package Manager (`UniNet ▸ Samples ▸ Basics`). Source: [`Package/Samples~/Basics`](Package/Samples~/Basics).

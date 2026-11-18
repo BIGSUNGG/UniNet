@@ -65,9 +65,9 @@ namespace UniNet.Unity
             {
                 var handle = options != null
                     ? await RpcHost.ListenWithOptionsAsync<HubBase>(port, options.ToRpcEndpointOptions(),
-                        factory.CreateServerHub, OnConnected(server))
+                        CreateServerHub, OnConnected(server))
                     : await RpcHost.ListenAsync<HubBase>(port, null,
-                        factory.CreateServerHub, OnConnected(server));
+                        CreateServerHub, OnConnected(server));
 
                 _listenHandle = handle;
             }
@@ -76,6 +76,9 @@ namespace UniNet.Unity
                 UniNetEnvironment.SetServer(null);
                 throw;
             }
+
+            // UniNetSim — every server connection's channel goes through the same decorator
+            HubBase CreateServerHub(IMessageChannel channel) => factory.CreateServerHub(UniNetSim.Wrap(channel));
         }
 
         /// <summary>
@@ -191,7 +194,7 @@ namespace UniNet.Unity
             // returning and the assignment is covered by the connect-failure catch.
             HubBase CreateWatchedHub(IMessageChannel channel)
             {
-                var hub = factory.CreateClientHub(channel);
+                var hub = factory.CreateClientHub(UniNetSim.Wrap(channel));   // UniNetSim — outbound latency sits between the session and the transport
                 hub.Disconnected += () =>
                 {
                     if (!ReferenceEquals(hub, UniNetEnvironment.ClientSender)) return;   // ignore late observation from a stale session hub
@@ -584,6 +587,7 @@ namespace UniNet.Unity
             // queued work resumes next frame (same pattern as the generated code's main-pump guard)
             try { UniNetEnvironment.PumpMain(); }
             catch (Exception e) { Debug.LogException(e); }
+            UniNetSim.Pump();   // UniNetSim — releases outbound payloads whose simulated delay elapsed (no-op while DelayMs == 0)
             var server = UniNetEnvironment.Server;
             if (server != null)
             {
