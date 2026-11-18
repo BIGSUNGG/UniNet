@@ -38,6 +38,25 @@ namespace UniNet.Core.Hosting
             _count = Math.Min(_count + 1, _ring.Length);
         }
 
+        /// <summary>
+        /// The newest segment (previous sample → latest sample). Remote renderers extrapolate along it when the render
+        /// time has passed the latest sample; returns false with fewer than two samples (nothing to measure a
+        /// velocity against). Generic buffers expose the raw pair because the subtraction belongs to the caller's type.
+        /// </summary>
+        public bool TryGetLastSegment(out double t0, out T v0, out double t1, out T v1)
+        {
+            if (_count < 2)
+            {
+                t0 = t1 = 0;
+                v0 = v1 = default;
+                return false;
+            }
+
+            (t0, v0) = Peek(-2);
+            (t1, v1) = Peek(-1);
+            return true;
+        }
+
         /// <summary>Timestamp of the most recent snapshot — returns false when the buffer is empty.</summary>
         public bool TryGetLatestTime(out double time)
         {

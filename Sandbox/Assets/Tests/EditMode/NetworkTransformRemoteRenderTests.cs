@@ -178,7 +178,14 @@ namespace UniNet.Tests
             Sample(nt, latestX + 0.66f, 0f, 0f, 1.0 / 30.0);   // double-gap arrival carries the merged displacement
             InvokeUpdate(nt);
             float afterMerged = nt.transform.position.x;
-            Assert.Less(afterMerged, latestX + 0.66f - 0.1f, "병합 샘플 — 보간 유지 (스냅·홀드로 끊기지 않는다)");
+
+            // 판정의 본질: 버퍼가 살아 있고(스냅 조건 아님) 그리는 자리가 그 표본 언저리에 있다.
+            // «최신보다 한 지연 미터 뒤» 를 박아 두면 지연 자체를 바꿀 때마다 깨진다 — 그린 값 대신 버퍼를 본다.
+            SnapshotBuffer<float> bufMerged = (SnapshotBuffer<float>)typeof(NetworkTransform)
+                .GetField("_bufX", Flags).GetValue(nt);
+            Assert.Greater(bufMerged.SampleCount, 2, "병합 샘플 — 버퍼를 지우지 않는다 (스냅 금지)");
+            Assert.That(afterMerged, Is.InRange(latestX - 0.5f, latestX + 0.66f + 0.2f),
+                $"병합 샘플 — 보간으로 이어지고 글라이드 폭을 넘지 않는다 (그린 자리 {afterMerged:0.00})");
 
             // a real teleport still snaps
             float tp = latestX + 20f;
@@ -301,6 +308,104 @@ namespace UniNet.Tests
             Assert.Less(Math.Abs(after - before), 0.02,
                 $"한 표본 사이 지연 변화({Math.Abs(after - before):0.0000}s)가 작다 — 그리는 시각이 튀지 않는다");
             Assert.Greater(after, 0.06, "설정값으로 수렴 중이다 (한 번에 뛰어가지 않는다)");
+        }
+
+        /// <summary>표본이 끊기면 몸은 «상한까지» 마지막 구간의 속도로 미끄러지고, 그 뒤에는 멈춘다.
+        /// 예전에는 최신 표본에서 얼어붙어 한 간격 동안 정지했다가 다음 표본에 튀었다(끊김의 원인).</summary>
+        [Test]
+        public void 표본이_끊기면_상한까지_미끄러지고_그뒤_멈춘다()
+        {
+            var nt = NewRemote();
+            nt.InterpolationDelay = 0.12f;
+            nt.ExtrapolationLimit = 0.05f;
+
+            Sample(nt, 0f, 0f, 0f, 1.0 / 30.0);   // 30Hz, 2 u/s
+            Sample(nt, 2f / 30f, 0f, 0f, 1.0 / 30.0);
+            InvokeUpdate(nt);
+
+            float newestSample = 2f / 30f;
+
+            _clock += 0.5;                          // 표본이 끊긴 구간 — 들고 있는 최신보다 한참 뒤
+            InvokeUpdate(nt);
+            float glided = nt.transform.position.x;
+
+            Assert.Greater(glided, newestSample, "끊긴 구간에서 몸이 미끄러진다 (얼어붙지 않는다)");
+            Assert.LessOrEqual(glided, newestSample + 2f * 0.05f / 2f + 0.001f,
+                "상한(ExtrapolationLimit)이 정한 거리까지만 나간다");
+
+            _clock += 1.0;                          // 더 기다려도 더 나가지 않는다
+            InvokeUpdate(nt);
+            Assert.AreEqual(glided, nt.transform.position.x, 1e-4,
+                "상한에서 완전히 멈춘다 — 예측이 계속 달리지 않는다");
+        }
+
+        /// <summary>상한을 끄면(0) 예전처럼 얼어붙는다 — 지연·글라이드 모두 설정으로 끌 수 있어야 한다.</summary>
+        [Test]
+        public void 외삽을_끄면_최신_표본에서_얼어붙는다()
+        {
+            var nt = NewRemote();
+            nt.InterpolationDelay = 0.12f;
+            nt.ExtrapolationLimit = 0f;
+
+            Sample(nt, 0f, 0f, 0f, 1.0 / 30.0);
+            Sample(nt, 2f / 30f, 0f, 0f, 1.0 / 30.0);
+            InvokeUpdate(nt);
+
+            _clock += 0.5;
+            InvokeUpdate(nt);
+
+            Assert.AreEqual(2f / 30f, nt.transform.position.x, 1e-4, "외삽 없음 — 최신 표본 그대로");
+        }
+
+        /// <summary>버퍼 지연은 지정한 상한(InterpolationDelay)을 넘지 않는다 — 도착이 들쭉날쭉해도
+        /// 지연이 무한히 늘어나면 화면이 뒤로 밀리기만 한다.</summary>
+        [Test]
+        public void 도착이_들쭉날쭉해도_지연은_상한을_넘지_않는다()
+        {
+            var nt = NewRemote();
+            nt.InterpolationDelay = 0.12f;
+
+            // 30Hz 기준으로 절반~두 배씩 흘러드는 표본 + 한 번의 0.6초 정지
+            double[] gaps = { 0.016, 0.05, 0.02, 0.067, 0.016, 0.6, 0.033, 0.02 };
+            float x = 0f;
+            for (int round = 0; round < 6; round++)
+            {
+                foreach (double gap in gaps)
+                {
+                    x += 0.05f;
+                    Sample(nt, x, 0f, 0f, gap);
+                }
+            }
+
+            double delay = (double)typeof(NetworkTransform)
+                .GetProperty("EffectiveInterpolationDelay", Flags).GetValue(nt);
+
+            Assert.LessOrEqual(delay, 0.12 + 1e-4, $"지연 {delay:0.000}s 가 상한 0.120s 를 넘지 않는다");
+            Assert.GreaterOrEqual(delay, 0.03, "최소 지연 아래로 내려가지 않는다 (버퍼가 마르면 얼어붙는다)");
+        }
+
+        /// <summary>지터가 실재하면 지연이 넓어지고, 깨끗한 박자로 돌아오면 다시 좁혀진다 — 고정 상수가 아니라 측정된 지터가 근거다.</summary>
+        [Test]
+        public void 지터가_있으면_지연이_넓어진다()
+        {
+            var clean = NewRemote();
+            clean.InterpolationDelay = 0.12f;
+            for (int i = 0; i < 40; i++)
+                Sample(clean, i * 0.1f, 0f, 0f, 1.0 / 30.0);
+            double steady = (double)typeof(NetworkTransform)
+                .GetProperty("EffectiveInterpolationDelay", Flags).GetValue(clean);
+            UnityEngine.Object.DestroyImmediate(clean.gameObject);
+
+            var jittery = NewRemote();
+            jittery.InterpolationDelay = 0.12f;
+            double[] gaps = { 0.016, 0.05, 0.016, 0.05, 0.016, 0.05, 0.016, 0.05 };
+            for (int i = 0; i < 40; i++)
+                Sample(jittery, i * 0.1f, 0f, 0f, gaps[i % gaps.Length]);
+            double jagged = (double)typeof(NetworkTransform)
+                .GetProperty("EffectiveInterpolationDelay", Flags).GetValue(jittery);
+
+            Assert.Greater(jagged, steady, $"지터가 있으면 지연이 더 넓다 ({jagged:0.000}s > {steady:0.000}s)");
+            Assert.LessOrEqual(jagged, 0.12 + 1e-4, "넓혀도 상한 안에서만");
         }
     }
 }

@@ -33,6 +33,15 @@ namespace UniNet.Unity
         public float InterpolationDelay = 0.12f;
 
         /// <summary>
+        /// How far (seconds) a remote renderer may glide past its newest sample when the stream starves (a lost delta,
+        /// a late packet). The glide follows the newest segment's velocity and decays linearly to zero at this limit,
+        /// so the body keeps moving instead of freezing for one interval and snapping when the sample lands. Kept
+        /// short — default 50 ms, under two 30 Hz samples — because a wrong guess is visible as a snap back: the
+        /// glide patches a gap, it does not predict. 0 restores freeze-and-hold.
+        /// </summary>
+        public float ExtrapolationLimit = 0.05f;
+
+        /// <summary>
         /// Reconciliation trigger — predicted-vs-server position divergence (squared distance) beyond this rolls the
         /// simulation back to the server state and re-simulates unacknowledged inputs; smaller values correct harder,
         /// larger values tolerate float noise.
@@ -116,13 +125,16 @@ namespace UniNet.Unity
         private float _dispEmaX, _dispEmaY, _dispEmaZ;   // per-axis sample-to-sample displacement — the discontinuity tolerance follows the object's motion scale
         private double _lastSampleAt;          // arrival time of the last paced sample (UniNetTime domain)
         private double _arrivalGapEma = 0.05;  // smoothed inter-sample arrival gap (seconds) — seeded by the first real gap
+        private double _jitterEma;             // smoothed |arrival gap − cadence| (seconds) — the buffer widens by 2× this
         private bool _gapSeeded;
         private double _stampX, _stampY, _stampZ, _stampRot;   // per-buffer sample-axis time of the last buffered snapshot
         private double _effectiveDelay;        // smoothed render delay — moves continuously, never in a one-frame step
         private bool _delaySeeded;
         private const double ArrivalGapEmaAlpha = 0.1;
         private const double AdaptiveDelayMinSeconds = 0.03;
-        private const double AdaptiveGapMultiplier = 3.0;
+        private const double AdaptiveGapMultiplier = 1.5;      // Source-style 2 gaps is the no-extrapolation answer; the glide covers the rest
+        private const double AdaptiveJitterMultiplier = 2.0;   // ~two arrival-jitter sigmas on top of the cadence
+        private const double JitterEmaAlpha = 0.05;
         private const double AdaptiveDelayFloorGaps = 1.25;     // the window never drops below ~one arrival gap (starvation floor)
         private const double SameDeltaArrivalSeconds = 0.002;   // X/Y/Z notifies of one delta land µs apart — not a stream gap
         private const double StreamStepMinSeconds = 1.0 / 240.0;   // a compressed burst is spaced out to at least this
@@ -138,6 +150,12 @@ namespace UniNet.Unity
         /// steady stream, and smoothed so the render time never jumps a frame (observer: game instrumentation and tests).
         /// </summary>
         internal double EffectiveInterpolationDelay => _effectiveDelay > 0 ? _effectiveDelay : InterpolationDelay;
+
+        /// <summary>
+        /// The delay actually applied this frame, as a float — game code that renders non-position state
+        /// (facing/state/anim ticks) must use the same delay as the body or the two run on different clocks.
+        /// </summary>
+        public float EffectiveDelay => (float)EffectiveInterpolationDelay;
 
         private static float LerpF(float a, float b, double t) => a + (b - a) * (float)t;
 
@@ -313,9 +331,40 @@ namespace UniNet.Unity
         {
             double renderTime = UniNetTime.Now - EffectiveInterpolationDelay;
             if (_bufX.TrySample(renderTime, out var x) && _bufY.TrySample(renderTime, out var y) && _bufZ.TrySample(renderTime, out var z))
-                transform.position = new Vector3(x, y, z);
+            {
+                transform.position = new Vector3(
+                    x + Glide(_bufX, renderTime),
+                    y + Glide(_bufY, renderTime),
+                    z + Glide(_bufZ, renderTime));
+            }
             if (_bufRot.TrySample(renderTime, out var rot))
                 transform.rotation = rot;   // TRS-001 — unreachable with SyncRotation off (no deltas → empty buffer), so the flag needs no re-check here
+        }
+
+        /// <summary>
+        /// Distance to add on top of the interpolated (held) position when the render time has passed this axis's
+        /// newest sample. Velocity comes from the newest segment; travel integrates a linear velocity decay so the
+        /// body eases to a full stop exactly at <see cref="ExtrapolationLimit"/> instead of running until the next
+        /// sample snaps it back. Returns 0 while the render time is inside the buffer, when there is no segment to
+        /// measure, and for speeds above the teleport ceiling (a respawn is not motion — gliding it would fly).
+        /// </summary>
+        private float Glide(SnapshotBuffer<float> buffer, double renderTime)
+        {
+            double limit = ExtrapolationLimit;
+            if (limit <= 0.0) return 0f;
+            if (limit > StreamStepMaxSeconds) limit = StreamStepMaxSeconds;
+
+            if (!buffer.TryGetLastSegment(out double t0, out float v0, out double t1, out float v1)) return 0f;
+
+            double age = renderTime - t1;
+            if (age <= 0.0 || t1 <= t0) return 0f;
+            if (age > limit) age = limit;
+
+            float speed = (float)((v1 - v0) / (t1 - t0));
+            if (speed > TeleportSpeedCeiling || speed < -TeleportSpeedCeiling) return 0f;
+
+            double travel = age - age * age / (2.0 * limit);   // ∫ v·(1 − t/limit) dt — zero velocity at the limit
+            return speed * (float)travel;
         }
 
         /// <summary>Networked X received — ignored by the server (authority) and the predicting owner (reconciliation happens on ack), buffered by remotes.</summary>
@@ -422,9 +471,15 @@ namespace UniNet.Unity
                 {
                     _arrivalGapEma = gap;
                     _gapSeeded = true;
+                    _delaySeeded = false;   // 첫 실제 간격이 스트림을 정의한다 — 추정값(50ms)에서 수렴하지 않고 그 간격의 목표에서 시작
                 }
                 else
                 {
+                    // Jitter is measured before the cadence is damped, and capped at one gap so a single long stall
+                    // cannot inflate the render delay for the rest of the session.
+                    double dev = Math.Min(Math.Abs(gap - _arrivalGapEma), _arrivalGapEma);
+                    _jitterEma += (dev - _jitterEma) * JitterEmaAlpha;
+
                     double bounded = Math.Clamp(gap, _arrivalGapEma * 0.5, _arrivalGapEma * 2.0);
                     _arrivalGapEma += (bounded - _arrivalGapEma) * ArrivalGapEmaAlpha;
                 }
@@ -488,7 +543,11 @@ namespace UniNet.Unity
             // InterpolationDelay cannot invert the clamp and throw).
             double ceiling = Math.Max(AdaptiveDelayMinSeconds, InterpolationDelay);
             double floor = Math.Min(ceiling, Math.Max(AdaptiveDelayMinSeconds, _arrivalGapEma * AdaptiveDelayFloorGaps));
-            double target = Math.Clamp(_arrivalGapEma * AdaptiveGapMultiplier, floor, ceiling);
+            // Cadence alone under-buffers: a body under a steady 30 Hz stream still loses every packet that is late
+            // by more than half a gap. The measured arrival jitter is added on top, so a clean link runs a thin
+            // buffer and a jittery one widens — up to the configured ceiling, never past it.
+            double want = _arrivalGapEma * AdaptiveGapMultiplier + _jitterEma * AdaptiveJitterMultiplier;
+            double target = Math.Clamp(want, floor, ceiling);
 
             if (!_delaySeeded || _effectiveDelay <= 0)
             {
