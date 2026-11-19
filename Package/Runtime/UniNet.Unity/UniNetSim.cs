@@ -16,7 +16,8 @@ namespace UniNet.Unity
         /// <summary>
         /// One-way outbound delay in milliseconds (0 = off). Every payload the library hands to the transport is
         /// held this long before it is actually sent; inbound traffic is untouched (delaying the outbound side of
-        /// each process already yields one delay per hop). No drops, no duplication, no reordering. Set it once at
+        /// each process already yields one delay per hop). No duplication or reordering; the only drop is a payload
+        /// whose peer disconnected while it was held (an in-flight loss). Set it once at
         /// boot, before Server/Client start — changing it while messages are in flight can reorder them.
         /// </summary>
         public static int DelayMs { get; set; }
@@ -69,6 +70,9 @@ namespace UniNet.Unity
                     if (next.Due > UniNetTime.Now) return;
                     Pending.Dequeue();
                 }
+                // a peer that left while the payload was held never receives it — the same in-flight loss a real
+                // link has; the disconnect itself reaches the session through the transport, not through this send
+                if (!next.Channel.IsConnected) continue;
                 _ = SendAsync(next);   // outside the lock — network threads enqueue here too
             }
         }
@@ -81,8 +85,9 @@ namespace UniNet.Unity
             }
             catch (Exception error)
             {
-                // the channel closed while the payload was held — the same message would have failed in-flight
-                UniNetEnvironment.LogFault(error);
+                // the peer left between the check in Pump and this send — the same in-flight loss, not a fault
+                if (!pending.Channel.IsConnected) return;
+                UniNetEnvironment.LogFault(error);   // refused while still connected — a real transport fault
             }
         }
     }
