@@ -407,5 +407,23 @@ namespace UniNet.Tests
             Assert.Greater(jagged, steady, $"지터가 있으면 지연이 더 넓다 ({jagged:0.000}s > {steady:0.000}s)");
             Assert.LessOrEqual(jagged, 0.12 + 1e-4, "넓혀도 상한 안에서만");
         }
+
+        /// <summary>기본 세팅은 30Hz 스트림에서 «한 도착 간격» 만큼만 뒤진다 — 지연 예산을 상수 하나로 못박는다.
+        /// 1.5간격/2지터/0.12s 상한이던 시절엔 67ms 였고, 화면 지연 예산의 절반을 혼자 먹었다.</summary>
+        [Test]
+        public void 기본_세팅은_30Hz_스트림에서_한_간격만_뒤진다()
+        {
+            var nt = NewRemote();
+            Assert.AreEqual(0.09f, nt.InterpolationDelay, 1e-6, "기본 상한 0.09s");
+
+            for (int i = 0; i < 60; i++)
+                Sample(nt, i * 0.1f, 0f, 0f, 1.0 / 30.0);
+
+            double delay = (double)typeof(NetworkTransform)
+                .GetProperty("EffectiveInterpolationDelay", Flags).GetValue(nt);
+
+            Assert.GreaterOrEqual(delay, 1.0 / 30.0 - 1e-3, $"한 간격({1.0 / 30.0:0.000}s) 아래로는 안 내려간다 ({delay:0.000}s)");
+            Assert.LessOrEqual(delay, 0.055, $"30Hz 에서 지연이 55ms 를 넘지 않는다 ({delay:0.000}s)");
+        }
     }
 }

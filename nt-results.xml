@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="14" result="Passed" total="14" passed="14" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.1115327">
+  <test-suite type="TestSuite" id="1000" name="Sandbox" fullname="Sandbox" runstate="Runnable" testcasecount="360" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.111533" total="14" passed="14" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <test-suite type="Assembly" id="1424" name="UniNet.Tests.EditMode.dll" fullname="C:/Projects/DS/UniNet-v0241/Sandbox/Library/ScriptAssemblies/UniNet.Tests.EditMode.dll" runstate="Runnable" testcasecount="360" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.097674" total="14" passed="14" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="89216" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <test-suite type="TestSuite" id="1425" name="UniNet" fullname="UniNet" runstate="Runnable" testcasecount="360" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.095727" total="14" passed="14" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1426" name="Tests" fullname="UniNet.Tests" runstate="Runnable" testcasecount="360" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.093782" total="14" passed="14" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1176" name="NetworkTransformRemoteRenderTests" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" testcasecount="14" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.080831" total="14" passed="14" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1185" name="게임이_지연을_바꿔도_한_표본_사이에_급변하지_않는다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.게임이_지연을_바꿔도_한_표본_사이에_급변하지_않는다" methodname="게임이_지연을_바꿔도_한_표본_사이에_급변하지_않는다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="135998450" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.027454" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1190" name="기본_세팅은_30Hz_스트림에서_한_간격만_뒤진다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.기본_세팅은_30Hz_스트림에서_한_간격만_뒤진다" methodname="기본_세팅은_30Hz_스트림에서_한_간격만_뒤진다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1159793417" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.006828" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1188" name="도착이_들쭉날쭉해도_지연은_상한을_넘지_않는다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.도착이_들쭉날쭉해도_지연은_상한을_넘지_않는다" methodname="도착이_들쭉날쭉해도_지연은_상한을_넘지_않는다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1850170039" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.001653" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1181" name="병합된_고속_샘플은_텔레포트로_오판하지_않는다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.병합된_고속_샘플은_텔레포트로_오판하지_않는다" methodname="병합된_고속_샘플은_텔레포트로_오판하지_않는다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1984610048" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.005400" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1182" name="수직_전용_이동도_적응_지연이_수축한다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.수직_전용_이동도_적응_지연이_수축한다" methodname="수직_전용_이동도_적응_지연이_수축한다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1827076584" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.002072" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1180" name="시뮬레이션_미주입_리모트도_인터폴레이션으로_렌더한다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.시뮬레이션_미주입_리모트도_인터폴레이션으로_렌더한다" methodname="시뮬레이션_미주입_리모트도_인터폴레이션으로_렌더한다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1392038662" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.005411" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1184" name="식은_이동EMA에서도_빠른_정상_이동은_순간이동으로_오인하지_않는다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.식은_이동EMA에서도_빠른_정상_이동은_순간이동으로_오인하지_않는다" methodname="식은_이동EMA에서도_빠른_정상_이동은_순간이동으로_오인하지_않는다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1713779403" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.001492" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1187" name="외삽을_끄면_최신_표본에서_얼어붙는다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.외삽을_끄면_최신_표본에서_얼어붙는다" methodname="외삽을_끄면_최신_표본에서_얼어붙는다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1020821738" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.000532" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1178" name="적응_지연은_밀집_스트림에서_최대치보다_수축한다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.적응_지연은_밀집_스트림에서_최대치보다_수축한다" methodname="적응_지연은_밀집_스트림에서_최대치보다_수축한다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="976470576" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.001227" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1179" name="적응_지연은_희소_스트림에서_최대치를_유지한다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.적응_지연은_희소_스트림에서_최대치를_유지한다" methodname="적응_지연은_희소_스트림에서_최대치를_유지한다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="620761048" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.001014" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1189" name="지터가_있으면_지연이_넓어진다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.지터가_있으면_지연이_넓어진다" methodname="지터가_있으면_지연이_넓어진다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="2145148" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.002439" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1177" name="텔레포트_불연속은_보간없이_스냅한다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.텔레포트_불연속은_보간없이_스냅한다" methodname="텔레포트_불연속은_보간없이_스냅한다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1899794879" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.001150" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1186" name="표본이_끊기면_상한까지_미끄러지고_그뒤_멈춘다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.표본이_끊기면_상한까지_미끄러지고_그뒤_멈춘다" methodname="표본이_끊기면_상한까지_미끄러지고_그뒤_멈춘다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="331038150" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.000693" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1183" name="한_프레임에_몰린_표본도_한_프레임에_건너뛰지_않는다" fullname="UniNet.Tests.NetworkTransformRemoteRenderTests.한_프레임에_몰린_표본도_한_프레임에_건너뛰지_않는다" methodname="한_프레임에_몰린_표본도_한_프레임에_건너뛰지_않는다" classname="UniNet.Tests.NetworkTransformRemoteRenderTests" runstate="Runnable" seed="1357819353" result="Passed" start-time="2026-11-19 08:41:39Z" end-time="2026-11-19 08:41:39Z" duration="0.001354" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Saving results to: C:\Projects\DS\UniNet-v0241\nt-results.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

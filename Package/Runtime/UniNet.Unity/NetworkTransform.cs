@@ -27,10 +27,11 @@ namespace UniNet.Unity
 
         /// <summary>
         /// Maximum remote render delay (seconds) — remotes render at most this far behind the received stream.
-        /// The effective delay shrinks adaptively when snapshots arrive densely and steadily (a 60 Hz stream renders
-        /// ~3 arrival gaps behind instead of the full delay), so remote motion tracks closer to live without stutter.
+        /// The effective delay adapts to the observed arrival cadence and jitter (one gap plus one jitter term by
+        /// default), so remotes track close to live; this ceiling only binds on sparse or wildly bursting streams,
+        /// where the extrapolation glide covers the gap instead of a wide buffer.
         /// </summary>
-        public float InterpolationDelay = 0.12f;
+        public float InterpolationDelay = 0.09f;
 
         /// <summary>
         /// How far (seconds) a remote renderer may glide past its newest sample when the stream starves (a lost delta,
@@ -132,8 +133,8 @@ namespace UniNet.Unity
         private bool _delaySeeded;
         private const double ArrivalGapEmaAlpha = 0.1;
         private const double AdaptiveDelayMinSeconds = 0.03;
-        private const double AdaptiveGapMultiplier = 1.5;      // Source-style 2 gaps is the no-extrapolation answer; the glide covers the rest
-        private const double AdaptiveJitterMultiplier = 2.0;   // ~two arrival-jitter sigmas on top of the cadence
+        private const double AdaptiveGapMultiplier = 1.0;      // one arrival gap: enough to have a sample to interpolate toward, no more
+        private const double AdaptiveJitterMultiplier = 1.0;   // one jitter term: the glide absorbs a late packet instead of a fat buffer
         private const double JitterEmaAlpha = 0.05;
         private const double AdaptiveDelayFloorGaps = 1.25;     // the window never drops below ~one arrival gap (starvation floor)
         private const double SameDeltaArrivalSeconds = 0.002;   // X/Y/Z notifies of one delta land µs apart — not a stream gap
